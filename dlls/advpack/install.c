@@ -582,7 +582,7 @@ HRESULT WINAPI ExecuteCabA(HWND hwnd, CABINFOA* pCab, LPVOID pReserved)
 
     TRACE("(%p, %p, %p)\n", hwnd, pCab, pReserved);
 
-    if (!pCab)
+    if (!pCab || !pCab->pszInf)
         return E_INVALIDARG;
 
     if (pCab->pszCab)
@@ -634,9 +634,12 @@ HRESULT WINAPI ExecuteCabW(HWND hwnd, CABINFOW* pCab, LPVOID pReserved)
 
     TRACE("(%p, %p, %p)\n", hwnd, pCab, pReserved);
 
+    if (!pCab || !pCab->pszInf || !*pCab->pszInf)
+        return E_INVALIDARG;
+
     ZeroMemory(&info, sizeof(ADVInfo));
 
-    if ((pCab->pszCab && *pCab->pszCab) && (pCab->pszInf && *pCab->pszInf) && *pCab->szSrcPath)
+    if ((pCab->pszCab && *pCab->pszCab) && *pCab->szSrcPath)
     {
         TRACE("pszCab: %s, pszInf: %s, szSrcPath: %s\n", debugstr_w(pCab->pszCab), debugstr_w(pCab->pszInf),
                 debugstr_w(pCab->szSrcPath));
