@@ -250,6 +250,7 @@ the folder?"
         IDS_RECYCLEBIN_OVERWRITEFILE      "A file already exists at the path %1.\n\nDo you want to replace it?"
         IDS_RECYCLEBIN_OVERWRITEFOLDER      "A folder already exists at the path %1.\n\nDo you want to replace it?"
         IDS_RECYCLEBIN_OVERWRITE_CAPTION    "Confirm overwrite"
+        IDS_SHORTCUT    "Shortcut"
 }
 
 STRINGTABLE

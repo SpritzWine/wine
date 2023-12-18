@@ -139,6 +139,8 @@
 
 #define IDS_NEW_MENU_FOLDER         180
 
+#define IDS_SHORTCUT                4153
+
 #define IDS_LICENSE                 256
 #define IDS_LICENSE_CAPTION         257
 

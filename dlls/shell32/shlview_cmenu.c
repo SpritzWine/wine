@@ -946,6 +946,117 @@ static void DoOpenProperties(ContextMenu *This, HWND hwnd)
 	    FIXME("No property pages found.\n");
 }
 
+
+static HRESULT DoCreateLink(ContextMenu *This)
+{
+    IShellLinkW* shelllink;
+    IPersistFile* persistfile;
+    WCHAR filename[MAX_PATH];
+    WCHAR root[MAX_PATH];
+    ITEMIDLIST *full_pidl;
+    HRESULT hr = S_OK;
+    int counter = 1;
+    WCHAR shortcutW[255];
+    WCHAR *link_filename;
+    WCHAR *link_filepath;
+    int length;
+
+    LoadStringW(shell32_hInstance, IDS_SHORTCUT, shortcutW, ARRAY_SIZE(shortcutW));
+
+    if (FAILED(hr = IShellLink_Constructor(NULL, &IID_IShellLinkW, (LPVOID*)&shelllink)))
+    {
+        return hr;
+    }
+    full_pidl = ILCombine(This->pidl, This->apidl[0]);
+    if (!full_pidl)
+    {
+        IShellLinkW_Release(shelllink);
+        return E_OUTOFMEMORY;
+    }
+
+    hr = IShellLinkW_SetIDList(shelllink, full_pidl);
+    ILFree(full_pidl);
+    if (FAILED(hr))
+    {
+        IShellLinkW_Release(shelllink);
+        return hr;
+    }
+
+    if (!_ILSimpleGetTextW(This->apidl[0], (LPVOID)filename, MAX_PATH))
+    {
+        IShellLinkW_Release(shelllink);
+        return E_FAIL;
+    }
+
+    if (!SHGetPathFromIDListW(This->pidl, root))
+    {
+        /* Special PIDL, use the desktop */
+        if (FAILED(SHGetFolderPathW(NULL, CSIDL_DESKTOP, NULL, 0, root))) {
+            IShellLinkW_Release(shelllink);
+            return E_FAIL;
+        }
+    }
+
+    /* Clear Extension */
+    PathRenameExtensionW(filename, L"");
+
+    IShellLinkW_QueryInterface(shelllink, &IID_IPersistFile, (LPVOID*)&persistfile);
+    length = wcslen(filename) + wcslen(shortcutW) + 41; /* length of the format and counter */
+    link_filename = malloc((length + 1) * sizeof(WCHAR));
+    if (link_filename == NULL) {
+        IShellLinkW_Release(shelllink);
+        return E_OUTOFMEMORY;
+    }
+    link_filepath = malloc((wcslen(root) + length + 2) * sizeof(WCHAR));
+    if (link_filepath == NULL) {
+        IShellLinkW_Release(shelllink);
+        free(link_filename);
+        return E_OUTOFMEMORY;
+    }
+
+    do {
+        if (counter == 1)
+        {
+            static const WCHAR *fmt = L"%s - %s.lnk";
+            wsprintfW(link_filename, fmt, filename, shortcutW);
+        }
+        else
+        {
+            static const WCHAR *fmt = L"%s - %s (%u).lnk";
+            wsprintfW(link_filename, fmt, filename, shortcutW, counter);
+        }
+
+        length = wcslen(root) + wcslen(link_filename) + 2; /* the path seperator and NULL */
+        if (length > MAX_PATH)
+        {
+            IShellLinkW_Release(shelllink);
+            free(link_filename);
+            free(link_filepath);
+            return E_INVALIDARG;
+        }
+
+        PathCombineW(link_filepath, root, link_filename);
+        counter++;
+
+        if (PathFileExistsW(link_filepath))
+        {
+            hr = HRESULT_FROM_WIN32(ERROR_FILE_EXISTS);
+        }
+        else
+        {
+            hr = IPersistFile_Save(persistfile, link_filepath, FALSE);
+        }
+    } while (hr == HRESULT_FROM_WIN32(ERROR_FILE_EXISTS));
+
+    free(link_filename);
+    free(link_filepath);
+
+    IPersistFile_Release(persistfile);
+    IShellLinkW_Release(shelllink);
+
+    return hr;
+}
+
 static HRESULT WINAPI ItemMenu_InvokeCommand(
 	IContextMenu3 *iface,
 	LPCMINVOKECOMMANDINFO lpcmi)
@@ -1014,6 +1125,9 @@ static HRESULT WINAPI ItemMenu_InvokeCommand(
             TRACE("Verb FCIDM_SHVIEW_PROPERTIES\n");
             DoOpenProperties(This, lpcmi->hwnd);
             break;
+        case FCIDM_SHVIEW_CREATELINK:
+            TRACE("Verb FCIDM_SHVIEW_CREATELINK\n");
+            return DoCreateLink(This);
         default:
             FIXME("Unhandled verb %#x.\n", id);
             return E_INVALIDARG;
