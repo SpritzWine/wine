@@ -35,8 +35,169 @@
 WINE_DEFAULT_DEBUG_CHANNEL(taskschd);
 
 typedef struct {
+    IRepetitionPattern IRepetitionPattern_iface;
+    LONG ref;
+} RepetitionPattern;
+
+static inline RepetitionPattern *impl_from_IRepetitionPattern(IRepetitionPattern *iface)
+{
+    return CONTAINING_RECORD(iface, RepetitionPattern, IRepetitionPattern_iface);
+}
+
+static HRESULT WINAPI RepetitionPattern_QueryInterface(IRepetitionPattern *iface, REFIID riid, void **ppv)
+{
+    if (!riid || !ppv) return E_INVALIDARG;
+
+    TRACE("(%p)->(%s %p)\n", iface, debugstr_guid(riid), ppv);
+
+    if(IsEqualGUID(&IID_IUnknown, riid) ||
+       IsEqualGUID(&IID_IDispatch, riid) ||
+       IsEqualGUID(&IID_IRepetitionPattern, riid))
+    {
+        IRepetitionPattern_AddRef(iface);
+        *ppv = iface;
+        return S_OK;
+    }
+
+    FIXME("unsupported riid %s\n", debugstr_guid(riid));
+    *ppv = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI RepetitionPattern_AddRef(IRepetitionPattern *iface)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    LONG ref = InterlockedIncrement(&This->ref);
+
+    TRACE("(%p) ref=%ld\n", This, ref);
+
+    return ref;
+}
+
+static ULONG WINAPI RepetitionPattern_Release(IRepetitionPattern *iface)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    LONG ref = InterlockedDecrement(&This->ref);
+
+    TRACE("(%p) ref=%ld\n", This, ref);
+
+    if(!ref)
+    {
+        TRACE("destroying %p\n", iface);
+        free(This);
+    }
+
+    return ref;
+}
+
+static HRESULT WINAPI RepetitionPattern_GetTypeInfoCount(IRepetitionPattern *iface, UINT *count)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%p)\n", This, count);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_GetTypeInfo(IRepetitionPattern *iface, UINT index, LCID lcid, ITypeInfo **info)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%u %lu %p)\n", This, index, lcid, info);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_GetIDsOfNames(IRepetitionPattern *iface, REFIID riid, LPOLESTR *names,
+                                            UINT count, LCID lcid, DISPID *dispid)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%s %p %u %lu %p)\n", This, debugstr_guid(riid), names, count, lcid, dispid);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_Invoke(IRepetitionPattern *iface, DISPID dispid, REFIID riid, LCID lcid, WORD flags,
+                                     DISPPARAMS *params, VARIANT *result, EXCEPINFO *excepinfo, UINT *argerr)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%ld %s %lx %x %p %p %p %p)\n", This, dispid, debugstr_guid(riid), lcid, flags,
+          params, result, excepinfo, argerr);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_get_Duration(IRepetitionPattern *iface, BSTR *duration)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%p)\n", This, duration);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_put_Duration(IRepetitionPattern *iface, BSTR duration)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%s)\n", This, debugstr_w(duration));
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_get_Interval(IRepetitionPattern *iface, BSTR *interval)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%p)\n", This, interval);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_put_Interval(IRepetitionPattern *iface, BSTR interval)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%s)\n", This, debugstr_w(interval));
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_get_StopAtDurationEnd(IRepetitionPattern *iface, VARIANT_BOOL *stop)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%p)\n", This, stop);
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI RepetitionPattern_put_StopAtDurationEnd(IRepetitionPattern *iface, VARIANT_BOOL stop)
+{
+    RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
+    FIXME("(%p)->(%x)\n", This, stop);
+    return E_NOTIMPL;
+}
+
+static const IRepetitionPatternVtbl RepetitionPattern_vtbl = {
+    RepetitionPattern_QueryInterface,
+    RepetitionPattern_AddRef,
+    RepetitionPattern_Release,
+    RepetitionPattern_GetTypeInfoCount,
+    RepetitionPattern_GetTypeInfo,
+    RepetitionPattern_GetIDsOfNames,
+    RepetitionPattern_Invoke,
+    RepetitionPattern_get_Duration,
+    RepetitionPattern_put_Duration,
+    RepetitionPattern_get_Interval,
+    RepetitionPattern_put_Interval,
+    RepetitionPattern_get_StopAtDurationEnd,
+    RepetitionPattern_put_StopAtDurationEnd
+};
+
+static HRESULT RepetitionPattern_create(IRepetitionPattern **pattern)
+{
+    RepetitionPattern *rep_pattern;
+
+    rep_pattern = malloc(sizeof(*rep_pattern));
+    if (!rep_pattern)
+        return E_OUTOFMEMORY;
+
+    rep_pattern->IRepetitionPattern_iface.lpVtbl = &RepetitionPattern_vtbl;
+    rep_pattern->ref = 1;
+
+    *pattern = &rep_pattern->IRepetitionPattern_iface;
+    return S_OK;
+}
+
+typedef struct {
     IDailyTrigger IDailyTrigger_iface;
     LONG ref;
+    IRepetitionPattern *repeat;
     short interval;
     WCHAR *start_boundary;
     WCHAR *end_boundary;
@@ -92,6 +253,8 @@ static ULONG WINAPI DailyTrigger_Release(IDailyTrigger *iface)
     if(!ref)
     {
         TRACE("destroying %p\n", iface);
+        if (This->repeat)
+            IRepetitionPattern_Release(This->repeat);
         free(This->start_boundary);
         free(This->end_boundary);
         free(This);
@@ -155,8 +318,21 @@ static HRESULT WINAPI DailyTrigger_put_Id(IDailyTrigger *iface, BSTR id)
 static HRESULT WINAPI DailyTrigger_get_Repetition(IDailyTrigger *iface, IRepetitionPattern **repeat)
 {
     DailyTrigger *This = impl_from_IDailyTrigger(iface);
-    FIXME("(%p)->(%p)\n", This, repeat);
-    return E_NOTIMPL;
+    HRESULT hr;
+
+    TRACE("(%p)->(%p)\n", This, repeat);
+
+    if (!repeat) return E_POINTER;
+
+    if (!This->repeat)
+    {
+        hr = RepetitionPattern_create(&This->repeat);
+        if (hr != S_OK) return hr;
+    }
+
+    IRepetitionPattern_AddRef(This->repeat);
+    *repeat = This->repeat;
+    return S_OK;
 }
 
 static HRESULT WINAPI DailyTrigger_put_Repetition(IDailyTrigger *iface, IRepetitionPattern *repeat)
