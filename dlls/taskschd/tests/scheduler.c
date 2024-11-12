@@ -1316,9 +1316,20 @@ static void change_settings(ITaskDefinition *taskdef, struct settings *test)
 
 static void test_repetition_pattern(IRepetitionPattern *pattern)
 {
+    static const struct
+    {
+        const WCHAR *dur;
+        HRESULT      hr;
+    }
+    start_test[] =
+    {
+        {L"P5D", S_OK},
+        {L"invalid", S_OK},
+    };
     BSTR duration, interval;
     VARIANT_BOOL stopatend;
     HRESULT hr;
+    ULONG i;
 
     hr = IRepetitionPattern_get_Duration(pattern, NULL);
     ok(hr == E_POINTER, "get_Duration failed: %08lx\n", hr);
@@ -1343,6 +1354,28 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
     hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
     ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
     ok(stopatend == VARIANT_FALSE, "got %d\n", stopatend);
+
+    for (i = 0; i < ARRAY_SIZE(start_test); i++)
+    {
+        winetest_push_context("%lu", i);
+        duration = SysAllocString(start_test[i].dur);
+        hr = IRepetitionPattern_put_Duration(pattern, duration);
+        ok(hr == start_test[i].hr, "got %08lx expected %08lx\n", hr, start_test[i].hr);
+        SysFreeString(duration);
+        if (hr == S_OK)
+        {
+            duration = NULL;
+            hr = IRepetitionPattern_get_Duration(pattern, &duration);
+            ok(hr == S_OK, "got %08lx\n", hr);
+            ok(duration != NULL, "duration not set\n");
+            ok(!lstrcmpW(duration, start_test[i].dur), "got %s\n", wine_dbgstr_w(duration));
+            SysFreeString(duration);
+        }
+        winetest_pop_context();
+    }
+
+    hr = IRepetitionPattern_put_Duration(pattern, NULL);
+    ok(hr == S_OK, "put_Duration failed: %08lx\n", hr);
 }
 
 static void test_daily_trigger(ITrigger *trigger)
