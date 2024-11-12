@@ -1348,14 +1348,6 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
     ok(hr == S_OK, "get_Interval failed: %08lx\n", hr);
     ok(interval == NULL, "interval not set\n");
 
-    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, NULL);
-    ok(hr == E_POINTER, "get_Enabled failed: %08lx\n", hr);
-
-    stopatend = VARIANT_TRUE;
-    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
-    ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
-    ok(stopatend == VARIANT_FALSE, "got %d\n", stopatend);
-
     for (i = 0; i < ARRAY_SIZE(start_test); i++)
     {
         winetest_push_context("%lu", i);
@@ -1394,6 +1386,22 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
 
     hr = IRepetitionPattern_put_Interval(pattern, NULL);
     ok(hr == S_OK, "put_Interval failed: %08lx\n", hr);
+
+    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, NULL);
+    ok(hr == E_POINTER, "get_Enabled failed: %08lx\n", hr);
+
+    stopatend = VARIANT_TRUE;
+    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
+    ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
+    ok(stopatend == VARIANT_FALSE, "got %d\n", stopatend);
+
+    hr = IRepetitionPattern_put_StopAtDurationEnd(pattern, VARIANT_TRUE);
+    ok(hr == S_OK, "put_StopAtDurationEnd failed: %08lx\n", hr);
+
+    stopatend = VARIANT_FALSE;
+    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
+    ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
+    ok(stopatend == VARIANT_TRUE, "got %d\n", stopatend);
 }
 
 static void test_daily_trigger(ITrigger *trigger)

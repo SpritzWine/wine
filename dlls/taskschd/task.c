@@ -197,8 +197,11 @@ static HRESULT WINAPI RepetitionPattern_get_StopAtDurationEnd(IRepetitionPattern
 static HRESULT WINAPI RepetitionPattern_put_StopAtDurationEnd(IRepetitionPattern *iface, VARIANT_BOOL stop)
 {
     RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
-    FIXME("(%p)->(%x)\n", This, stop);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%x)\n", This, stop);
+
+    This->stop = !!stop;
+    return S_OK;
 }
 
 static const IRepetitionPatternVtbl RepetitionPattern_vtbl = {
