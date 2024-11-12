@@ -1319,12 +1319,13 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
     static const struct
     {
         const WCHAR *dur;
+        const WCHAR *ivl;
         HRESULT      hr;
     }
     start_test[] =
     {
-        {L"P5D", S_OK},
-        {L"invalid", S_OK},
+        {L"P5D", L"PT30M", S_OK},
+        {L"invalid", L"invalid", S_OK},
     };
     BSTR duration, interval;
     VARIANT_BOOL stopatend;
@@ -1371,11 +1372,28 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
             ok(!lstrcmpW(duration, start_test[i].dur), "got %s\n", wine_dbgstr_w(duration));
             SysFreeString(duration);
         }
+
+        interval = SysAllocString(start_test[i].ivl);
+        hr = IRepetitionPattern_put_Interval(pattern, interval);
+        ok(hr == start_test[i].hr, "got %08lx expected %08lx\n", hr, start_test[i].hr);
+        SysFreeString(interval);
+        if (hr == S_OK)
+        {
+            duration = NULL;
+            hr = IRepetitionPattern_get_Interval(pattern, &interval);
+            ok(hr == S_OK, "got %08lx\n", hr);
+            ok(interval != NULL, "interval not set\n");
+            ok(!lstrcmpW(interval, start_test[i].ivl), "got %s\n", wine_dbgstr_w(interval));
+            SysFreeString(interval);
+        }
         winetest_pop_context();
     }
 
     hr = IRepetitionPattern_put_Duration(pattern, NULL);
     ok(hr == S_OK, "put_Duration failed: %08lx\n", hr);
+
+    hr = IRepetitionPattern_put_Interval(pattern, NULL);
+    ok(hr == S_OK, "put_Interval failed: %08lx\n", hr);
 }
 
 static void test_daily_trigger(ITrigger *trigger)

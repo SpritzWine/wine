@@ -171,8 +171,15 @@ static HRESULT WINAPI RepetitionPattern_get_Interval(IRepetitionPattern *iface, 
 static HRESULT WINAPI RepetitionPattern_put_Interval(IRepetitionPattern *iface, BSTR interval)
 {
     RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
-    FIXME("(%p)->(%s)\n", This, debugstr_w(interval));
-    return E_NOTIMPL;
+    WCHAR *ivl = NULL;
+
+    TRACE("(%p)->(%s)\n", This, debugstr_w(interval));
+
+    if (interval && !(ivl = wcsdup(interval))) return E_OUTOFMEMORY;
+    free(This->interval);
+    This->interval = ivl;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI RepetitionPattern_get_StopAtDurationEnd(IRepetitionPattern *iface, VARIANT_BOOL *stop)
