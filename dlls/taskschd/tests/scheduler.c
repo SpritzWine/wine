@@ -1324,7 +1324,7 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
     todo_wine ok(hr == E_POINTER, "get_Duration failed: %08lx\n", hr);
 
     hr = IRepetitionPattern_get_Interval(pattern, NULL);
-    todo_wine ok(hr == E_POINTER, "get_Interval failed: %08lx\n", hr);
+    ok(hr == E_POINTER, "get_Interval failed: %08lx\n", hr);
 
     duration = (BSTR)0xdeadbeef;
     hr = IRepetitionPattern_get_Duration(pattern, &duration);
@@ -1333,8 +1333,8 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
 
     interval = (BSTR)0xdeadbeef;
     hr = IRepetitionPattern_get_Interval(pattern, &interval);
-    todo_wine ok(hr == S_OK, "get_Interval failed: %08lx\n", hr);
-    todo_wine ok(interval == NULL, "interval not set\n");
+    ok(hr == S_OK, "get_Interval failed: %08lx\n", hr);
+    ok(interval == NULL, "interval not set\n");
 
     hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, NULL);
     ok(hr == E_POINTER, "get_Enabled failed: %08lx\n", hr);
