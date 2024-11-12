@@ -37,6 +37,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(taskschd);
 typedef struct {
     IRepetitionPattern IRepetitionPattern_iface;
     LONG ref;
+    BOOL stop;
 } RepetitionPattern;
 
 static inline RepetitionPattern *impl_from_IRepetitionPattern(IRepetitionPattern *iface)
@@ -152,8 +153,13 @@ static HRESULT WINAPI RepetitionPattern_put_Interval(IRepetitionPattern *iface, 
 static HRESULT WINAPI RepetitionPattern_get_StopAtDurationEnd(IRepetitionPattern *iface, VARIANT_BOOL *stop)
 {
     RepetitionPattern *This = impl_from_IRepetitionPattern(iface);
-    FIXME("(%p)->(%p)\n", This, stop);
-    return E_NOTIMPL;
+
+    TRACE("(%p)->(%p)\n", This, stop);
+
+    if (!stop) return E_POINTER;
+
+    *stop = This->stop ? VARIANT_TRUE : VARIANT_FALSE;
+    return S_OK;
 }
 
 static HRESULT WINAPI RepetitionPattern_put_StopAtDurationEnd(IRepetitionPattern *iface, VARIANT_BOOL stop)
@@ -189,6 +195,7 @@ static HRESULT RepetitionPattern_create(IRepetitionPattern **pattern)
 
     rep_pattern->IRepetitionPattern_iface.lpVtbl = &RepetitionPattern_vtbl;
     rep_pattern->ref = 1;
+    rep_pattern->stop = FALSE;
 
     *pattern = &rep_pattern->IRepetitionPattern_iface;
     return S_OK;

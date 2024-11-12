@@ -1337,12 +1337,12 @@ static void test_repetition_pattern(IRepetitionPattern *pattern)
     todo_wine ok(interval == NULL, "interval not set\n");
 
     hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, NULL);
-    todo_wine ok(hr == E_POINTER, "get_Enabled failed: %08lx\n", hr);
+    ok(hr == E_POINTER, "get_Enabled failed: %08lx\n", hr);
 
     stopatend = VARIANT_TRUE;
     hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
-    todo_wine ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
-    todo_wine ok(stopatend == VARIANT_FALSE, "got %d\n", stopatend);
+    ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
+    ok(stopatend == VARIANT_FALSE, "got %d\n", stopatend);
 }
 
 static void test_daily_trigger(ITrigger *trigger)
