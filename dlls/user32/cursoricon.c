@@ -383,10 +383,10 @@ static BITMAPINFO *load_png(const char *png_data, DWORD *size)
     width = png_get_image_width(png_ptr, info_ptr);
     height = png_get_image_height(png_ptr, info_ptr);
 
-    rowbytes = (width * bpp + 7) / 8;
+    rowbytes = (width * bpp + 31) / 32 * 4;
     image_size = height * rowbytes;
     if (bpp != 32) /* add a mask if there is no alpha */
-        mask_size = (width + 7) / 8 * height;
+        mask_size = (width + 31) / 32 * 4 * height;
 
     info = RtlAllocateHeap(GetProcessHeap(), 0, sizeof(BITMAPINFOHEADER) + image_size + mask_size);
     if (!info)
@@ -416,7 +416,7 @@ static BITMAPINFO *load_png(const char *png_data, DWORD *size)
 
     info->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     info->bmiHeader.biWidth = width;
-    info->bmiHeader.biHeight = height * 2;
+    info->bmiHeader.biHeight = height;
     info->bmiHeader.biPlanes = 1;
     info->bmiHeader.biBitCount = bpp;
     info->bmiHeader.biCompression = BI_RGB;
