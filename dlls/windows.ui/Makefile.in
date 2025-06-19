@@ -6,6 +6,9 @@ SOURCES = \
 	classes.idl \
 	inputpane.c \
 	main.c \
+	radialcontroller.c \
+	radialcontrollerconfiguration.c \
+	radialcontrollermenuitem.c \
 	uisettings.c \
 	uiviewsettings.c \
 	weakref.c
