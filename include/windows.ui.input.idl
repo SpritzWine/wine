@@ -38,8 +38,16 @@ namespace Windows.UI.Input {
     interface IPointerPointStatics;
     interface IPointerPointTransform;
 
+    interface IRadialControllerConfigurationStatics;
+    interface IRadialControllerMenuItemStatics;
+    interface IRadialControllerStatics;
+
     runtimeclass PointerPoint;
     runtimeclass PointerPointProperties;
+
+    runtimeclass RadialController;
+    runtimeclass RadialControllerConfiguration;
+    runtimeclass RadialControllerMenuItem;
 
     declare {
         interface Windows.Foundation.Collections.IVectorView<Windows.UI.Input.PointerPoint *>;
@@ -149,6 +157,33 @@ namespace Windows.UI.Input {
     }
 
     [
+        contract(Windows.Foundation.UniversalApiContract, 3.0),
+        exclusiveto(Windows.UI.Input.RadialControllerConfiguration),
+        uuid(79b6b0e5-069a-4486-a99d-8db772b9642f)
+    ]
+    interface IRadialControllerConfigurationStatics : IInspectable
+    {
+    }
+
+    [
+        contract(Windows.Foundation.UniversalApiContract, 3.0),
+        exclusiveto(Windows.UI.Input.RadialControllerMenuItem),
+        uuid(249e0887-d842-4524-9df8-e0d647edc887)
+    ]
+    interface IRadialControllerMenuItemStatics : IInspectable
+    {
+    }
+
+    [
+        contract(Windows.Foundation.UniversalApiContract, 3.0),
+        exclusiveto(Windows.UI.Input.RadialController),
+        uuid(faded0b7-b84c-4894-87aa-8f25aa5f288b)
+    ]
+    interface IRadialControllerStatics : IInspectable
+    {
+    }
+
+    [
         contract(Windows.Foundation.UniversalApiContract, 1.0),
         marshaling_behavior(none),
         static(Windows.UI.Input.IPointerPointStatics, Windows.Foundation.UniversalApiContract, 1.0)
@@ -166,5 +201,33 @@ namespace Windows.UI.Input {
     {
         [default] interface Windows.UI.Input.IPointerPointProperties;
         [contract(Windows.Foundation.UniversalApiContract, 1.0)] interface Windows.UI.Input.IPointerPointProperties2;
+    }
+
+    [
+        static(Windows.UI.Input.IRadialControllerStatics, Windows.Foundation.UniversalApiContract, 3.0),
+        contract(Windows.Foundation.UniversalApiContract, 3.0),
+        marshaling_behavior(agile)
+    ]
+    runtimeclass RadialController
+    {
+    }
+
+    [
+        static(Windows.UI.Input.IRadialControllerConfigurationStatics, Windows.Foundation.UniversalApiContract, 3.0),
+        contract(Windows.Foundation.UniversalApiContract, 3.0),
+        marshaling_behavior(agile)
+    ]
+    runtimeclass RadialControllerConfiguration
+    {
+    }
+
+
+    [
+        static(Windows.UI.Input.IRadialControllerMenuItemStatics, Windows.Foundation.UniversalApiContract, 3.0),
+        contract(Windows.Foundation.UniversalApiContract, 3.0),
+        marshaling_behavior(agile)
+    ]
+    runtimeclass RadialControllerMenuItem
+    {
     }
 }
