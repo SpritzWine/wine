@@ -1,0 +1,12 @@
+MODULE    = winedmo6.dll
+UNIXLIB   = winedmo6.so
+IMPORTS   = mfuuid
+PARENTSRC = ../winedmo
+UNIX_CFLAGS  = $(FFMPEG6_CFLAGS) -DWINEDMO_VERSION=6
+UNIX_LIBS    = $(FFMPEG6_LIBS) $(PTHREAD_LIBS)
+
+SOURCES = \
+	main.c \
+	unix_demuxer.c \
+	unix_media_type.c \
+	unixlib.c

@@ -1,0 +1,12 @@
+MODULE    = winedmo7.dll
+UNIXLIB   = winedmo7.so
+IMPORTS   = mfuuid
+PARENTSRC = ../winedmo
+UNIX_CFLAGS  = $(FFMPEG7_CFLAGS) -DWINEDMO_VERSION=7
+UNIX_LIBS    = $(FFMPEG7_LIBS) $(PTHREAD_LIBS)
+
+SOURCES = \
+	main.c \
+	unix_demuxer.c \
+	unix_media_type.c \
+	unixlib.c

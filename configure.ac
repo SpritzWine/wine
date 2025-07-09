@@ -1684,26 +1684,41 @@ WINE_NOTICE_WITH(pulse, [test -z "$PULSE_LIBS"],
         [libpulse ${notice_platform}development files not found or too old, Pulse won't be supported.],
         [enable_winepulse_drv])
 
-dnl **** Check for FFmpeg ****
-if test "x$with_ffmpeg" != "xno";
-then
-    WINE_PACKAGE_FLAGS(FFMPEG,[libavutil libavformat libavcodec],,,,
-        [AC_CHECK_HEADERS([libavutil/avutil.h libavformat/avformat.h libavcodec/avcodec.h libavcodec/bsf.h])
-         if test "$ac_cv_header_libavutil_avutil_h" = "yes" -a "$ac_cv_header_libavformat_avformat_h" = "yes" -a "$ac_cv_header_libavcodec_avcodec_h" = "yes"
-         then
-            AC_CHECK_LIB(avutil,av_log_set_callback,
-              [AC_CHECK_LIB(avformat,av_find_input_format,
-                [AC_CHECK_LIB(avcodec,avcodec_get_name,
-                  [AC_DEFINE(HAVE_FFMPEG, 1, [Define to 1 if you have the FFmpeg libraries.])],
-                  [FFMPEG_LIBS=""],[$FFMPEG_LIBS])],
-                [FFMPEG_LIBS=""],[$FFMPEG_LIBS])],
-              [FFMPEG_LIBS=""],[$FFMPEG_LIBS])
-         else
-            FFMPEG_LIBS=""
-         fi])
-fi
-WINE_NOTICE_WITH(ffmpeg,[test "x$FFMPEG_LIBS" = x],
-        [FFmpeg ${notice_platform}development files not found.])
+m4_foreach([ffmpeg_version],[4,5,6,7,8,],[
+    m4_define([ffmpeg_libraries],[m4_case(ffmpeg_version,[4],[libavutil 'libavformat >= 58' 'libavformat < 59' 'libavcodec >= 58' 'libavcodec < 59'],
+                                                         [5],[libavutil 'libavformat >= 59' 'libavformat < 60' 'libavcodec >= 59' 'libavcodec < 60'],
+                                                         [6],[libavutil 'libavformat >= 60' 'libavformat < 61' 'libavcodec >= 60' 'libavcodec < 61'],
+                                                         [7],[libavutil 'libavformat >= 61' 'libavformat < 62' 'libavcodec >= 61' 'libavcodec < 62'],
+                                                         [8],[libavutil 'libavformat >= 62' 'libavformat < 63' 'libavcodec >= 62' 'libavcodec < 63'],
+                                          [libavutil libavformat libavcodec])])
+
+    AS_CASE([$with_ffmpeg],m4_if(ffmpeg_version,[],[[""|,*|*,]],[ffmpeg_version[|*,]ffmpeg_version[|]ffmpeg_version[,*|*,]ffmpeg_version[,*]]),[
+        ac_save_PKG_CONFIG_PATH="$PKG_CONFIG_PATH"
+        PKG_CONFIG_PATH="[$FFMPEG]ffmpeg_version[_PKG_CONFIG_PATH]:$PKG_CONFIG_PATH"
+
+        WINE_PACKAGE_FLAGS([FFMPEG]ffmpeg_version,ffmpeg_libraries,,,,
+            [AC_CHECK_HEADERS([libavutil/avutil.h
+                               libavformat/avformat.h
+                               libavcodec/avcodec.h
+                               libavcodec/bsf.h])
+             if test "$ac_cv_header_libavutil_avutil_h" = "yes" \
+                  -a "$ac_cv_header_libavformat_avformat_h" = "yes" \
+                  -a "$ac_cv_header_libavcodec_avcodec_h" = "yes" \
+             ; then
+                AC_DEFINE([HAVE_FFMPEG]ffmpeg_version, 1, [Define to 1 if you have the FFmpeg libraries.])
+             else
+                [FFMPEG]ffmpeg_version[_LIBS]=""
+             fi])
+
+        m4_if(ffmpeg_version,[],[],
+            WINE_TRY_CFLAGS([-Wno-deprecated-declarations],[FFMPEG]ffmpeg_version[_CFLAGS="-Wno-deprecated-declarations $FFMPEG]ffmpeg_version[_CFLAGS"]))
+
+        WINE_NOTICE_WITH(ffmpeg,[test "x$[FFMPEG]ffmpeg_version[_LIBS]" = x],
+                         [FFmpeg]ffmpeg_version[ ${notice_platform}development files not found.],
+                         m4_if(ffmpeg_version,[],[],[enable_winedmo]ffmpeg_version))
+        PKG_CONFIG_PATH="$ac_save_PKG_CONFIG_PATH"
+    ],[m4_if(ffmpeg_version,[],[],[enable_winedmo]ffmpeg_version=${[enable_winedmo]ffmpeg_version:-no})])
+])
 
 dnl **** Check for gstreamer ****
 if test "x$with_gstreamer" != "xno"
@@ -3362,6 +3377,11 @@ WINE_CONFIG_MAKEFILE(dlls/winecoreaudio.drv)
 WINE_CONFIG_MAKEFILE(dlls/winecrt0)
 WINE_CONFIG_MAKEFILE(dlls/wined3d)
 WINE_CONFIG_MAKEFILE(dlls/winedmo)
+WINE_CONFIG_MAKEFILE(dlls/winedmo4)
+WINE_CONFIG_MAKEFILE(dlls/winedmo5)
+WINE_CONFIG_MAKEFILE(dlls/winedmo6)
+WINE_CONFIG_MAKEFILE(dlls/winedmo7)
+WINE_CONFIG_MAKEFILE(dlls/winedmo8)
 WINE_CONFIG_MAKEFILE(dlls/winegstreamer)
 WINE_CONFIG_MAKEFILE(dlls/winehid.sys)
 WINE_CONFIG_MAKEFILE(dlls/winemac.drv)

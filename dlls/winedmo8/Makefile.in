@@ -1,0 +1,12 @@
+MODULE    = winedmo8.dll
+UNIXLIB   = winedmo8.so
+IMPORTS   = mfuuid
+PARENTSRC = ../winedmo
+UNIX_CFLAGS  = $(FFMPEG8_CFLAGS) -DWINEDMO_VERSION=8
+UNIX_LIBS    = $(FFMPEG8_LIBS) $(PTHREAD_LIBS)
+
+SOURCES = \
+	main.c \
+	unix_demuxer.c \
+	unix_media_type.c \
+	unixlib.c

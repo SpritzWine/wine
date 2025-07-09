@@ -1,0 +1,12 @@
+MODULE    = winedmo4.dll
+UNIXLIB   = winedmo4.so
+IMPORTS   = mfuuid
+PARENTSRC = ../winedmo
+UNIX_CFLAGS  = $(FFMPEG4_CFLAGS) -DWINEDMO_VERSION=4
+UNIX_LIBS    = $(FFMPEG4_LIBS) $(PTHREAD_LIBS)
+
+SOURCES = \
+	main.c \
+	unix_demuxer.c \
+	unix_media_type.c \
+	unixlib.c
