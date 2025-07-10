@@ -26,6 +26,56 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
 
+struct winedmo_demuxer_funcs
+{
+    NTSTATUS (*CDECL p_check)(const char *mime_type);
+    NTSTATUS (*CDECL p_create)(const WCHAR *url, struct winedmo_stream *stream, UINT64 stream_size, INT64 *duration,
+                                UINT *stream_count, WCHAR *mime_type, struct winedmo_demuxer *demuxer);
+    NTSTATUS (*CDECL p_destroy)(struct winedmo_demuxer *demuxer);
+    NTSTATUS (*CDECL p_read)(struct winedmo_demuxer demuxer, UINT *stream, DMO_OUTPUT_DATA_BUFFER *buffer, UINT *buffer_size);
+    NTSTATUS (*CDECL p_seek)(struct winedmo_demuxer demuxer, INT64 timestamp);
+    NTSTATUS (*CDECL p_stream_lang)(struct winedmo_demuxer demuxer, UINT stream, WCHAR *buffer, UINT len);
+    NTSTATUS (*CDECL p_stream_name)(struct winedmo_demuxer demuxer, UINT stream, WCHAR *buffer, UINT len);
+    NTSTATUS (*CDECL p_stream_type)(struct winedmo_demuxer demuxer, UINT stream,
+                                     GUID *major, union winedmo_format **format);
+};
+
+static const struct winedmo_demuxer_funcs winedmo_funcs =
+{
+    .p_check = winedmo_demuxer_check,
+    .p_create = winedmo_demuxer_create,
+    .p_destroy = winedmo_demuxer_destroy,
+    .p_read = winedmo_demuxer_read,
+    .p_seek = winedmo_demuxer_seek,
+    .p_stream_lang = winedmo_demuxer_stream_lang,
+    .p_stream_name = winedmo_demuxer_stream_name,
+    .p_stream_type = winedmo_demuxer_stream_type,
+};
+
+static BOOL use_gst_byte_stream_handler(void)
+{
+    BOOL result;
+    DWORD size = sizeof(result);
+
+    /* @@ Wine registry key: HKCU\Software\Wine\MediaFoundation */
+    if (!RegGetValueW(HKEY_CURRENT_USER, L"Software\\Wine\\MediaFoundation", L"DisableGstByteStreamHandler",
+            RRF_RT_REG_DWORD, NULL, &result, &size))
+        return !result;
+
+    return TRUE;
+}
+
+static const struct winedmo_demuxer_funcs *get_winedmo_demuxer_funcs(const char *mime_type)
+{
+    if (use_gst_byte_stream_handler())
+        return NULL;
+
+    if (!winedmo_funcs.p_check(mime_type))
+        return &winedmo_funcs;
+
+    return NULL;
+}
+
 #define DEFINE_MF_ASYNC_PARAMS(type)                                                               \
     static struct type *type ## _from_IUnknown(IUnknown *iface)                                    \
     {                                                                                              \
@@ -271,6 +321,7 @@ struct media_source
     float rate;
     BOOL thin;
 
+    const struct winedmo_demuxer_funcs *funcs;
     struct winedmo_demuxer winedmo_demuxer;
     struct winedmo_stream winedmo_stream;
     UINT64 file_size;
@@ -496,7 +547,7 @@ static HRESULT media_source_start(struct media_source *source, IMFPresentationDe
         media_stream_start(stream, source->stream_map[i], position);
     }
 
-    if (position->vt == VT_I8 && (status = winedmo_demuxer_seek(source->winedmo_demuxer, position->hVal.QuadPart)))
+    if (position->vt == VT_I8 && (status = source->funcs->p_seek(source->winedmo_demuxer, position->hVal.QuadPart)))
         WARN("Failed to seek to %I64d, status %#lx\n", position->hVal.QuadPart, status);
     source->state = SOURCE_RUNNING;
 
@@ -637,7 +688,7 @@ static HRESULT create_media_buffer_sample(UINT buffer_size, IMFSample **sample, 
     return hr;
 }
 
-static HRESULT demuxer_read_sample(struct winedmo_demuxer demuxer, UINT *index, IMFSample **out)
+static HRESULT source_demuxer_read_sample(struct media_source *source, UINT *index, IMFSample **out)
 {
     UINT buffer_size = 0x1000;
     IMFSample *sample;
@@ -650,7 +701,7 @@ static HRESULT demuxer_read_sample(struct winedmo_demuxer demuxer, UINT *index, 
 
         if (FAILED(hr = create_media_buffer_sample(buffer_size, &sample, &output.pBuffer)))
             return hr;
-        if ((status = winedmo_demuxer_read(demuxer, index, &output, &buffer_size)))
+        if ((status = source->funcs->p_read(source->winedmo_demuxer, index, &output, &buffer_size)))
         {
             if (status == STATUS_BUFFER_TOO_SMALL) hr = E_PENDING;
             else if (status == STATUS_END_OF_FILE) hr = MF_E_END_OF_STREAM;
@@ -696,7 +747,7 @@ static HRESULT media_source_read(struct media_source *source)
     if (source->state != SOURCE_RUNNING)
         return S_OK;
 
-    if (FAILED(hr = demuxer_read_sample(source->winedmo_demuxer, &index, &sample)) && hr != MF_E_END_OF_STREAM)
+    if (FAILED(hr = source_demuxer_read_sample(source, &index, &sample)) && hr != MF_E_END_OF_STREAM)
     {
         WARN("Failed to read stream %u data, hr %#lx\n", index, hr);
         return hr;
@@ -1255,7 +1306,7 @@ static ULONG WINAPI media_source_Release(IMFMediaSource *iface)
     {
         IMFMediaSource_Shutdown(iface);
 
-        winedmo_demuxer_destroy(&source->winedmo_demuxer);
+        source->funcs->p_destroy(&source->winedmo_demuxer);
         free(source->stream_map);
         free(source->streams);
 
@@ -1524,15 +1575,15 @@ static HRESULT media_type_from_winedmo_format( GUID major, union winedmo_format 
     return E_NOTIMPL;
 }
 
-static HRESULT get_stream_media_type(struct winedmo_demuxer demuxer, UINT index, GUID *major, IMFMediaType **media_type)
+static HRESULT get_stream_media_type(struct media_source *source, UINT index, GUID *major, IMFMediaType **media_type)
 {
     union winedmo_format *format;
     NTSTATUS status;
     HRESULT hr;
 
-    TRACE("demuxer %p, index %u, media_type %p\n", &demuxer, index, media_type);
+    TRACE("source %p, index %u, media_type %p\n", source, index, media_type);
 
-    if ((status = winedmo_demuxer_stream_type(demuxer, index, major, &format)))
+    if ((status = source->funcs->p_stream_type(source->winedmo_demuxer, index, major, &format)))
     {
         WARN("Failed to get stream %u type, status %#lx\n", index, status);
         return HRESULT_FROM_NT(status);
@@ -1554,7 +1605,7 @@ static void media_source_init_stream_map(struct media_source *source, UINT strea
     {
         for (i = 0; i < stream_count; i++)
         {
-            if (FAILED(get_stream_media_type(source->winedmo_demuxer, i, &major, NULL)))
+            if (FAILED(get_stream_media_type(source, i, &major, NULL)))
                 continue;
             TRACE("mapping source %p stream %u to demuxer stream %u\n", source, n, i);
             source->stream_map[n++] = i;
@@ -1564,7 +1615,7 @@ static void media_source_init_stream_map(struct media_source *source, UINT strea
 
     for (i = stream_count - 1; i >= 0; i--)
     {
-        if (FAILED(get_stream_media_type(source->winedmo_demuxer, i, &major, NULL)))
+        if (FAILED(get_stream_media_type(source, i, &major, NULL)))
             continue;
         if (IsEqualGUID(&major, &MFMediaType_Audio))
         {
@@ -1574,7 +1625,7 @@ static void media_source_init_stream_map(struct media_source *source, UINT strea
     }
     for (i = stream_count - 1; i >= 0; i--)
     {
-        if (FAILED(get_stream_media_type(source->winedmo_demuxer, i, &major, NULL)))
+        if (FAILED(get_stream_media_type(source, i, &major, NULL)))
             continue;
         if (IsEqualGUID(&major, &MFMediaType_Video))
         {
@@ -1584,7 +1635,7 @@ static void media_source_init_stream_map(struct media_source *source, UINT strea
     }
     for (i = stream_count - 1; i >= 0; i--)
     {
-        if (FAILED(get_stream_media_type(source->winedmo_demuxer, i, &major, NULL)))
+        if (FAILED(get_stream_media_type(source, i, &major, NULL)))
             major = GUID_NULL;
         if (!IsEqualGUID(&major, &MFMediaType_Audio) && !IsEqualGUID(&major, &MFMediaType_Video))
         {
@@ -1649,15 +1700,15 @@ static void media_source_init_descriptors(struct media_source *source)
         NTSTATUS status;
         GUID major;
 
-        if ((status = winedmo_demuxer_stream_lang(source->winedmo_demuxer, source->stream_map[i], buffer, ARRAY_SIZE(buffer)))
+        if (FAILED(status = source->funcs->p_stream_lang(source->winedmo_demuxer, source->stream_map[i], buffer, ARRAY_SIZE(buffer)))
                 || (!wcscmp(source->mime_type, L"video/mp4") && FAILED(normalize_mp4_language_code(source, buffer)))
                 || FAILED(IMFStreamDescriptor_SetString(stream->descriptor, &MF_SD_LANGUAGE, buffer)))
             WARN("Failed to set stream descriptor language, status %#lx\n", status);
-        if ((status = winedmo_demuxer_stream_name(source->winedmo_demuxer, source->stream_map[i], buffer, ARRAY_SIZE(buffer)))
+        if (FAILED(status = source->funcs->p_stream_name(source->winedmo_demuxer, source->stream_map[i], buffer, ARRAY_SIZE(buffer)))
                 || FAILED(IMFStreamDescriptor_SetString(stream->descriptor, &MF_SD_STREAM_NAME, buffer)))
             WARN("Failed to set stream descriptor name, status %#lx\n", status);
 
-        if (FAILED(get_stream_media_type(source->winedmo_demuxer, source->stream_map[i], &major, NULL)))
+        if (FAILED(get_stream_media_type(source, source->stream_map[i], &major, NULL)))
             continue;
 
         if (IsEqualGUID(&major, &MFMediaType_Audio))
@@ -1767,7 +1818,7 @@ static HRESULT media_source_async_create(struct media_source *source, IMFAsyncRe
     source->winedmo_stream.p_seek = media_source_seek_cb;
     source->winedmo_stream.p_read = media_source_read_cb;
 
-    if ((status = winedmo_demuxer_create(source->url, &source->winedmo_stream, source->file_size, &source->duration,
+    if ((status = source->funcs->p_create(source->url, &source->winedmo_stream, source->file_size, &source->duration,
             &stream_count, source->mime_type, &source->winedmo_demuxer)))
     {
         WARN("Failed to create demuxer, status %#lx\n", status);
@@ -1790,7 +1841,7 @@ static HRESULT media_source_async_create(struct media_source *source, IMFAsyncRe
         IMFMediaType *media_type;
         GUID major;
 
-        if (FAILED(hr = get_stream_media_type(source->winedmo_demuxer, source->stream_map[i], &major, &media_type)))
+        if (FAILED(hr = get_stream_media_type(source, source->stream_map[i], &major, &media_type)))
             continue;
         if (SUCCEEDED(hr = stream_descriptor_create(i + 1, media_type, &descriptor)))
         {
@@ -1832,7 +1883,7 @@ static WCHAR *get_byte_stream_url(IMFByteStream *stream, const WCHAR *url)
     return url ? wcsdup(url) : NULL;
 }
 
-static HRESULT media_source_create(const WCHAR *url, IMFByteStream *stream, IMFMediaSource **out)
+static HRESULT media_source_create(const struct winedmo_demuxer_funcs *funcs, const WCHAR *url, IMFByteStream *stream, IMFMediaSource **out)
 {
     struct media_source *source;
     HRESULT hr;
@@ -1852,6 +1903,7 @@ static HRESULT media_source_create(const WCHAR *url, IMFByteStream *stream, IMFM
     source->async_read_iface.lpVtbl = &media_source_async_read_vtbl;
     source->async_set_rate_iface.lpVtbl = &media_source_async_set_rate_vtbl;
     source->refcount = 1;
+    source->funcs = funcs;
 
     if (FAILED(hr = MFCreateEventQueue(&source->queue)))
     {
@@ -1875,6 +1927,7 @@ struct byte_stream_handler
 {
     IMFByteStreamHandler IMFByteStreamHandler_iface;
     LONG refcount;
+    const struct winedmo_demuxer_funcs *funcs;
 };
 
 static struct byte_stream_handler *byte_stream_handler_from_IMFByteStreamHandler(IMFByteStreamHandler *iface)
@@ -1946,7 +1999,7 @@ static HRESULT WINAPI byte_stream_handler_BeginCreateObject(IMFByteStreamHandler
         return MF_E_BYTESTREAM_NOT_SEEKABLE;
     }
 
-    if (FAILED(hr = media_source_create(url, stream, &source)))
+    if (FAILED(hr = media_source_create(handler->funcs, url, stream, &source)))
         return hr;
     if (SUCCEEDED(hr = MFCreateAsyncResult((IUnknown *)source, callback, state, &result)))
     {
@@ -2004,7 +2057,7 @@ static const IMFByteStreamHandlerVtbl byte_stream_handler_vtbl =
     byte_stream_handler_GetMaxNumberOfBytesRequiredForResolution,
 };
 
-static HRESULT byte_stream_plugin_create(IUnknown *outer, REFIID riid, void **out)
+static HRESULT byte_stream_plugin_create(const struct winedmo_demuxer_funcs *funcs, IUnknown *outer, REFIID riid, void **out)
 {
     struct byte_stream_handler *handler;
     HRESULT hr;
@@ -2017,6 +2070,7 @@ static HRESULT byte_stream_plugin_create(IUnknown *outer, REFIID riid, void **ou
         return E_OUTOFMEMORY;
     handler->IMFByteStreamHandler_iface.lpVtbl = &byte_stream_handler_vtbl;
     handler->refcount = 1;
+    handler->funcs = funcs;
     TRACE("created %p\n", handler);
 
     hr = IMFByteStreamHandler_QueryInterface(&handler->IMFByteStreamHandler_iface, riid, out);
@@ -2024,32 +2078,18 @@ static HRESULT byte_stream_plugin_create(IUnknown *outer, REFIID riid, void **ou
     return hr;
 }
 
-static BOOL use_gst_byte_stream_handler(void)
-{
-    BOOL result;
-    DWORD size = sizeof(result);
-
-    /* @@ Wine registry key: HKCU\Software\Wine\MediaFoundation */
-    if (!RegGetValueW( HKEY_CURRENT_USER, L"Software\\Wine\\MediaFoundation", L"DisableGstByteStreamHandler",
-                       RRF_RT_REG_DWORD, NULL, &result, &size ))
-        return !result;
-
-    return TRUE;
-}
-
 static HRESULT WINAPI asf_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    NTSTATUS status;
+    const struct winedmo_demuxer_funcs *funcs;
 
-    if ((status = winedmo_demuxer_check("video/x-ms-asf")) || use_gst_byte_stream_handler())
+    if (!(funcs = get_winedmo_demuxer_funcs("video/x-ms-asf")) || use_gst_byte_stream_handler())
     {
         static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        if (status) WARN("Unsupported demuxer, status %#lx.\n", status);
         return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
     }
 
-    return byte_stream_plugin_create(outer, riid, out);
+    return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
 static const IClassFactoryVtbl asf_byte_stream_plugin_factory_vtbl =
@@ -2066,16 +2106,15 @@ IClassFactory asf_byte_stream_plugin_factory = {&asf_byte_stream_plugin_factory_
 static HRESULT WINAPI avi_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    NTSTATUS status;
+    const struct winedmo_demuxer_funcs *funcs;
 
-    if ((status = winedmo_demuxer_check("video/avi")) || use_gst_byte_stream_handler())
+    if (!(funcs = get_winedmo_demuxer_funcs("video/avi")) || use_gst_byte_stream_handler())
     {
         static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        if (status) WARN("Unsupported demuxer, status %#lx.\n", status);
         return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
     }
 
-    return byte_stream_plugin_create(outer, riid, out);
+    return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
 static const IClassFactoryVtbl avi_byte_stream_plugin_factory_vtbl =
@@ -2092,16 +2131,15 @@ IClassFactory avi_byte_stream_plugin_factory = {&avi_byte_stream_plugin_factory_
 static HRESULT WINAPI mpeg4_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    NTSTATUS status;
+    const struct winedmo_demuxer_funcs *funcs;
 
-    if ((status = winedmo_demuxer_check("video/mp4")) || use_gst_byte_stream_handler())
+    if (!(funcs = get_winedmo_demuxer_funcs("video/mp4")) || use_gst_byte_stream_handler())
     {
         static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        if (status) WARN("Unsupported demuxer, status %#lx.\n", status);
         return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
     }
 
-    return byte_stream_plugin_create(outer, riid, out);
+    return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
 static const IClassFactoryVtbl mpeg4_byte_stream_plugin_factory_vtbl =
@@ -2118,16 +2156,15 @@ IClassFactory mpeg4_byte_stream_plugin_factory = {&mpeg4_byte_stream_plugin_fact
 static HRESULT WINAPI wav_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    NTSTATUS status;
+    const struct winedmo_demuxer_funcs *funcs;
 
-    if ((status = winedmo_demuxer_check("audio/wav")) || use_gst_byte_stream_handler())
+    if (!(funcs = get_winedmo_demuxer_funcs("audio/wav")) || use_gst_byte_stream_handler())
     {
         static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        if (status) WARN("Unsupported demuxer, status %#lx.\n", status);
         return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
     }
 
-    return byte_stream_plugin_create(outer, riid, out);
+    return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
 static const IClassFactoryVtbl wav_byte_stream_plugin_factory_vtbl =
@@ -2144,16 +2181,15 @@ IClassFactory wav_byte_stream_plugin_factory = {&wav_byte_stream_plugin_factory_
 static HRESULT WINAPI mp3_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    NTSTATUS status;
+    const struct winedmo_demuxer_funcs *funcs;
 
-    if ((status = winedmo_demuxer_check("audio/mp3")) || use_gst_byte_stream_handler())
+    if (!(funcs = get_winedmo_demuxer_funcs("audio/mp3")) || use_gst_byte_stream_handler())
     {
         static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        if (status) WARN("Unsupported demuxer, status %#lx.\n", status);
         return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
     }
 
-    return byte_stream_plugin_create(outer, riid, out);
+    return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
 static const IClassFactoryVtbl mp3_byte_stream_plugin_factory_vtbl =
