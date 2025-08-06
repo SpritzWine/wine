@@ -52,6 +52,15 @@ static struct winedmo_demuxer_funcs winedmo_funcs =
     .p_stream_type = winedmo_demuxer_stream_type,
 };
 
+static struct { const WCHAR *name; struct winedmo_demuxer_funcs funcs; } modules[] =
+{
+    {L"winedmo4"},
+    {L"winedmo5"},
+    {L"winedmo6"},
+    {L"winedmo7"},
+    {L"winedmo8"},
+};
+
 static NTSTATUS winedmo_unsupported_check(const char *mime_type)
 {
     return STATUS_UNSUCCESSFUL;
@@ -87,6 +96,9 @@ static BOOL CALLBACK init_dynamic_funcs(INIT_ONCE *once, void *param, void **ctx
             RRF_RT_REG_DWORD, NULL, &result, &size ) || !result)
         load_winedmo_demuxer_funcs(L"winegstreamer", &winedmo_funcs);
 
+    for (int i = 0; i < ARRAY_SIZE(modules); i++)
+        load_winedmo_demuxer_funcs(modules[i].name, &modules[i].funcs);
+
     return TRUE;
 }
 
@@ -95,6 +107,10 @@ static const struct winedmo_demuxer_funcs *get_winedmo_demuxer_funcs(const char 
     static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
 
     InitOnceExecuteOnce(&once, init_dynamic_funcs, NULL, NULL);
+
+    for (int i = 0; i < ARRAY_SIZE(modules); i++)
+        if (!modules[i].funcs.p_check(mime_type))
+            return &modules[i].funcs;
 
     return &winedmo_funcs;
 }
