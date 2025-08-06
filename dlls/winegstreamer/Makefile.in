@@ -28,6 +28,7 @@ SOURCES = \
 	wg_parser.c \
 	wg_sample.c \
 	wg_transform.c \
+	winedmo.c \
 	winegstreamer_classes.idl \
 	wm_reader.c \
 	wma_decoder.c

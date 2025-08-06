@@ -40,7 +40,7 @@ struct winedmo_demuxer_funcs
                                      GUID *major, union winedmo_format **format);
 };
 
-static const struct winedmo_demuxer_funcs winedmo_funcs =
+static struct winedmo_demuxer_funcs winedmo_funcs =
 {
     .p_check = winedmo_demuxer_check,
     .p_create = winedmo_demuxer_create,
@@ -52,28 +52,51 @@ static const struct winedmo_demuxer_funcs winedmo_funcs =
     .p_stream_type = winedmo_demuxer_stream_type,
 };
 
-static BOOL use_gst_byte_stream_handler(void)
+static NTSTATUS winedmo_unsupported_check(const char *mime_type)
+{
+    return STATUS_UNSUCCESSFUL;
+}
+
+static BOOL load_winedmo_demuxer_funcs(const WCHAR *name, struct winedmo_demuxer_funcs *funcs)
+{
+    HMODULE module;
+
+    if (!(module = LoadLibraryW(name)))
+    {
+        funcs->p_check = winedmo_unsupported_check;
+        return FALSE;
+    }
+    funcs->p_check = (void *)GetProcAddress(module, "winedmo_demuxer_check");
+    funcs->p_create = (void *)GetProcAddress(module, "winedmo_demuxer_create");
+    funcs->p_destroy = (void *)GetProcAddress(module, "winedmo_demuxer_destroy");
+    funcs->p_read = (void *)GetProcAddress(module, "winedmo_demuxer_read");
+    funcs->p_seek = (void *)GetProcAddress(module, "winedmo_demuxer_seek");
+    funcs->p_stream_lang = (void *)GetProcAddress(module, "winedmo_demuxer_stream_lang");
+    funcs->p_stream_name = (void *)GetProcAddress(module, "winedmo_demuxer_stream_name");
+    funcs->p_stream_type = (void *)GetProcAddress(module, "winedmo_demuxer_stream_type");
+    return TRUE;
+}
+
+static BOOL CALLBACK init_dynamic_funcs(INIT_ONCE *once, void *param, void **ctx)
 {
     BOOL result;
     DWORD size = sizeof(result);
 
     /* @@ Wine registry key: HKCU\Software\Wine\MediaFoundation */
-    if (!RegGetValueW(HKEY_CURRENT_USER, L"Software\\Wine\\MediaFoundation", L"DisableGstByteStreamHandler",
-            RRF_RT_REG_DWORD, NULL, &result, &size))
-        return !result;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Wine\\MediaFoundation", L"DisableGstByteStreamHandler",
+            RRF_RT_REG_DWORD, NULL, &result, &size ) || !result)
+        load_winedmo_demuxer_funcs(L"winegstreamer", &winedmo_funcs);
 
     return TRUE;
 }
 
 static const struct winedmo_demuxer_funcs *get_winedmo_demuxer_funcs(const char *mime_type)
 {
-    if (use_gst_byte_stream_handler())
-        return NULL;
+    static INIT_ONCE once = INIT_ONCE_STATIC_INIT;
 
-    if (!winedmo_funcs.p_check(mime_type))
-        return &winedmo_funcs;
+    InitOnceExecuteOnce(&once, init_dynamic_funcs, NULL, NULL);
 
-    return NULL;
+    return &winedmo_funcs;
 }
 
 #define DEFINE_MF_ASYNC_PARAMS(type)                                                               \
@@ -2081,14 +2104,7 @@ static HRESULT byte_stream_plugin_create(const struct winedmo_demuxer_funcs *fun
 static HRESULT WINAPI asf_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    const struct winedmo_demuxer_funcs *funcs;
-
-    if (!(funcs = get_winedmo_demuxer_funcs("video/x-ms-asf")) || use_gst_byte_stream_handler())
-    {
-        static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
-    }
-
+    const struct winedmo_demuxer_funcs *funcs = get_winedmo_demuxer_funcs("video/x-ms-asf");
     return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
@@ -2106,14 +2122,7 @@ IClassFactory asf_byte_stream_plugin_factory = {&asf_byte_stream_plugin_factory_
 static HRESULT WINAPI avi_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    const struct winedmo_demuxer_funcs *funcs;
-
-    if (!(funcs = get_winedmo_demuxer_funcs("video/avi")) || use_gst_byte_stream_handler())
-    {
-        static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
-    }
-
+    const struct winedmo_demuxer_funcs *funcs = get_winedmo_demuxer_funcs("video/avi");
     return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
@@ -2131,14 +2140,7 @@ IClassFactory avi_byte_stream_plugin_factory = {&avi_byte_stream_plugin_factory_
 static HRESULT WINAPI mpeg4_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    const struct winedmo_demuxer_funcs *funcs;
-
-    if (!(funcs = get_winedmo_demuxer_funcs("video/mp4")) || use_gst_byte_stream_handler())
-    {
-        static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
-    }
-
+    const struct winedmo_demuxer_funcs *funcs = get_winedmo_demuxer_funcs("video/mp4");
     return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
@@ -2156,14 +2158,7 @@ IClassFactory mpeg4_byte_stream_plugin_factory = {&mpeg4_byte_stream_plugin_fact
 static HRESULT WINAPI wav_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    const struct winedmo_demuxer_funcs *funcs;
-
-    if (!(funcs = get_winedmo_demuxer_funcs("audio/wav")) || use_gst_byte_stream_handler())
-    {
-        static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
-    }
-
+    const struct winedmo_demuxer_funcs *funcs = get_winedmo_demuxer_funcs("audio/wav");
     return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 
@@ -2181,14 +2176,7 @@ IClassFactory wav_byte_stream_plugin_factory = {&wav_byte_stream_plugin_factory_
 static HRESULT WINAPI mp3_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
         IUnknown *outer, REFIID riid, void **out)
 {
-    const struct winedmo_demuxer_funcs *funcs;
-
-    if (!(funcs = get_winedmo_demuxer_funcs("audio/mp3")) || use_gst_byte_stream_handler())
-    {
-        static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618,0x5e5a,0x468a,{0x9f,0x15,0xd8,0x27,0xa9,0xa0,0x81,0x62}};
-        return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, outer, CLSCTX_INPROC_SERVER, riid, out);
-    }
-
+    const struct winedmo_demuxer_funcs *funcs = get_winedmo_demuxer_funcs("audio/mp3");
     return byte_stream_plugin_create(funcs, outer, riid, out);
 }
 

@@ -152,6 +152,7 @@ extern HRESULT mfplat_get_class_object(REFCLSID rclsid, REFIID riid, void **obj)
 
 IMFMediaType *mf_media_type_from_wg_format(const struct wg_format *format);
 void mf_media_type_to_wg_format(IMFMediaType *type, struct wg_format *format);
+HRESULT wg_media_type_from_mf(IMFMediaType *media_type, struct wg_media_type *wg_media_type);
 
 HRESULT wg_sample_create_mf(IMFSample *sample, struct wg_sample **out);
 HRESULT wg_sample_create_quartz(IMediaSample *sample, struct wg_sample **out);
