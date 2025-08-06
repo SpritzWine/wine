@@ -25,3 +25,4 @@ extern IClassFactory avi_byte_stream_plugin_factory;
 extern IClassFactory mpeg4_byte_stream_plugin_factory;
 extern IClassFactory wav_byte_stream_plugin_factory;
 extern IClassFactory mp3_byte_stream_plugin_factory;
+extern IClassFactory wine_byte_stream_plugin_factory;

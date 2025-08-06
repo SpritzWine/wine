@@ -2190,3 +2190,21 @@ static const IClassFactoryVtbl mp3_byte_stream_plugin_factory_vtbl =
 };
 
 IClassFactory mp3_byte_stream_plugin_factory = {&mp3_byte_stream_plugin_factory_vtbl};
+
+static HRESULT WINAPI wine_byte_stream_plugin_factory_CreateInstance(IClassFactory *iface,
+        IUnknown *outer, REFIID riid, void **out)
+{
+    const struct winedmo_demuxer_funcs *funcs = get_winedmo_demuxer_funcs("application/octet-stream");
+    return byte_stream_plugin_create(funcs, outer, riid, out);
+}
+
+static const IClassFactoryVtbl wine_byte_stream_plugin_factory_vtbl =
+{
+    class_factory_QueryInterface,
+    class_factory_AddRef,
+    class_factory_Release,
+    wine_byte_stream_plugin_factory_CreateInstance,
+    class_factory_LockServer,
+};
+
+IClassFactory wine_byte_stream_plugin_factory = {&wine_byte_stream_plugin_factory_vtbl};

@@ -27,6 +27,8 @@ WINE_DEFAULT_DEBUG_CHANNEL(mfplat);
  */
 HRESULT WINAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void **out)
 {
+    static const GUID CLSID_WineByteStreamPlugin = {0x3f6eb6c1,0xea89,0x4312,{0x85,0x04,0x8d,0x82,0x10,0xbb,0xf8,0x8c}};
+
     *out = NULL;
 
     if (IsEqualGUID(clsid, &CLSID_AVIByteStreamPlugin))
@@ -35,6 +37,8 @@ HRESULT WINAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void **out)
         return IClassFactory_QueryInterface(&wav_byte_stream_plugin_factory, riid, out);
     if (IsEqualGUID(clsid, &CLSID_MP3ByteStreamPlugin))
         return IClassFactory_QueryInterface(&mp3_byte_stream_plugin_factory, riid, out);
+    if (IsEqualGUID(clsid, &CLSID_WineByteStreamPlugin))
+        return IClassFactory_QueryInterface(&wine_byte_stream_plugin_factory, riid, out);
 
     if (IsEqualGUID(clsid, &CLSID_MFWAVESinkClassFactory))
         return IClassFactory_QueryInterface(wave_sink_class_factory, riid, out);
