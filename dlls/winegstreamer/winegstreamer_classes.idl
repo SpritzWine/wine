@@ -71,13 +71,6 @@ coclass decodebin_parser {}
 coclass wg_video_processor {}
 
 [
-    helpstring("Generic Decodebin Byte Stream Handler"),
-    threading(both),
-    uuid(317df618-5e5a-468a-9f15-d827a9a08162)
-]
-coclass GStreamerByteStreamHandler {}
-
-[
     threading(both),
     uuid(5b4d4e54-0620-4cf9-94ae-7823965c28b6)
 ]
