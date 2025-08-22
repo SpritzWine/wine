@@ -5070,7 +5070,6 @@ static void test_h264_decoder(void)
     ok(ref == 1, "Release returned %ld\n", ref);
 
     ret = check_mf_sample_collection(output_samples, &expect_output_sample_i420, L"i420frame.bmp");
-    todo_wine /* wg_transform_set_output_format() should convert already processed samples instead of dropping */
     ok(ret == 0, "got %lu%% diff\n", ret);
     IMFCollection_Release(output_samples);
 
