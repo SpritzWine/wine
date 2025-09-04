@@ -10264,6 +10264,7 @@ static void test_get_attributes(void)
     IXMLDOMDocument *doc, *doc2;
     IXMLDOMNode *node, *node2;
     IXMLDOMElement *elem;
+    DOMNodeType type;
     VARIANT_BOOL b;
     HRESULT hr;
     VARIANT v;
@@ -10303,7 +10304,6 @@ static void test_get_attributes(void)
     if (hr == S_OK && length == 1)
     {
         IXMLDOMAttribute *attr;
-        DOMNodeType type;
         VARIANT v;
 
         node2 = NULL;
@@ -10578,6 +10578,29 @@ static void test_get_attributes(void)
 
         IXMLDOMNode_Release(node2);
     }
+
+    hr = IXMLDOMNamedNodeMap_getNamedItem(map, _bstr_("xmlns:foaf"), &node2);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    if (hr == S_OK)
+    {
+        type = -1;
+        hr = IXMLDOMNode_get_nodeType(node2, &type);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        ok(type == NODE_ATTRIBUTE, "Unexpected type %d.\n", type);
+        IXMLDOMNode_Release(node2);
+    }
+
+    hr = IXMLDOMNamedNodeMap_getNamedItem(map, _bstr_("dcterms:created"), &node2);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    if (hr == S_OK)
+    {
+        type = -1;
+        hr = IXMLDOMNode_get_nodeType(node2, &type);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        ok(type == NODE_ATTRIBUTE, "Unexpected type %d.\n", type);
+        IXMLDOMNode_Release(node2);
+    }
+
 
     IXMLDOMNamedNodeMap_Release(map);
     IXMLDOMElement_Release(elem);
