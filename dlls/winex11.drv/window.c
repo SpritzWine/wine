@@ -407,6 +407,7 @@ static struct x11drv_win_data *alloc_win_data( Display *display, HWND hwnd )
 static BOOL is_window_managed( HWND hwnd, UINT swp_flags, BOOL fullscreen )
 {
     DWORD style, ex_style;
+    struct x11drv_win_data *data;
 
     if (!managed_mode) return FALSE;
 
@@ -432,6 +433,17 @@ static BOOL is_window_managed( HWND hwnd, UINT swp_flags, BOOL fullscreen )
     if (ex_style & WS_EX_APPWINDOW) return TRUE;
     /* windows that own popups are managed */
     if (has_owned_popups( hwnd )) return TRUE;
+    /* layered windows are managed */
+    if (ex_style & WS_EX_LAYERED)
+    {
+        data = get_win_data(hwnd);
+        if (data && data->layered)
+        {
+            release_win_data(data);
+            return TRUE;
+        }
+        release_win_data(data);
+    }
     /* default: not managed */
     return FALSE;
 }
