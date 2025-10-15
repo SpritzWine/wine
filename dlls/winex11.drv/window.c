@@ -3163,6 +3163,7 @@ void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, HWND owner_hint, UIN
                               const struct window_rects *new_rects, struct window_surface *surface )
 {
     struct x11drv_win_data *data;
+    struct x11drv_win_data *insert_after_data;
     UINT new_style = NtUserGetWindowLongW( hwnd, GWL_STYLE ), old_style;
     struct window_rects old_rects;
     BOOL was_fullscreen, activate = !(swp_flags & SWP_NOACTIVATE);
@@ -3224,7 +3225,7 @@ void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, HWND owner_hint, UIN
         }
 #endif
     }
-
+    insert_after_data = get_win_data(insert_after);
     if ((new_style & WS_VISIBLE) &&
         ((new_style & WS_MINIMIZE) || is_window_rect_mapped( &new_rects->window )))
     {
@@ -3236,9 +3237,13 @@ void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, HWND owner_hint, UIN
             /* layered windows are mapped only once their attributes are set */
             if (NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ) & WS_EX_LAYERED)
                 needs_map = data->layered || IsRectEmpty( &new_rects->window );
-            release_win_data( data );
+
             if (needs_icon) fetch_icon_data( hwnd, 0, 0 );
             if (needs_map) map_window( hwnd, new_style, activate );
+            if (insert_after_data && insert_after_data->desired_state.wm_state != WithdrawnState && hwnd != insert_after)
+                XSetTransientForHint( data->display, insert_after_data->whole_window, data->whole_window );
+            release_win_data( data );
+            release_win_data( insert_after_data );
             return;
         }
         else if ((swp_flags & SWP_STATECHANGED) && ((old_style ^ new_style) & WS_MINIMIZE))
@@ -3253,8 +3258,11 @@ void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, HWND owner_hint, UIN
         }
     }
 
+    if (insert_after_data && insert_after_data->desired_state.wm_state != WithdrawnState && hwnd != insert_after)
+        XSetTransientForHint( data->display, insert_after_data->whole_window, data->whole_window );
     XFlush( data->display );  /* make sure changes are done before we start painting again */
     release_win_data( data );
+    release_win_data( insert_after_data );
 }
 
 /* check if the window icon should be hidden (i.e. moved off-screen) */
