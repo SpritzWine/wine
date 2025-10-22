@@ -392,6 +392,41 @@ static BOOL format_supported(const D2D1_PIXEL_FORMAT *format)
     return FALSE;
 }
 
+static HRESULT d2d_get_resource_from_surface(IDXGISurface *surface, REFIID resource_iid, void **resource)
+{
+    D3D11_TEXTURE2D_DESC desc;
+    ID3D11Texture2D *texture;
+    IDXGISurface2 *surface2;
+    UINT index;
+    HRESULT hr;
+
+    if (SUCCEEDED(IDXGISurface_QueryInterface(surface, resource_iid, resource)))
+        return S_OK;
+
+    /* Try getting the parent resource if the surface is a subresource surface */
+    if (FAILED(hr = IDXGISurface_QueryInterface(surface, &IID_IDXGISurface2, (void **)&surface2)))
+        return hr;
+
+    if (FAILED(hr = IDXGISurface2_GetResource(surface2, &IID_ID3D11Texture2D, (void **)&texture, &index)))
+    {
+        IDXGISurface2_Release(surface2);
+        return hr;
+    }
+
+    ID3D11Texture2D_GetDesc(texture, &desc);
+    ID3D11Texture2D_Release(texture);
+    /* Parent resource with more than one subresource is currently unsupported */
+    if (desc.ArraySize * desc.MipLevels != 1)
+    {
+        IDXGISurface2_Release(surface2);
+        return E_NOTIMPL;
+    }
+
+    hr = IDXGISurface2_GetResource(surface2, resource_iid, resource, &index);
+    IDXGISurface2_Release(surface2);
+    return hr;
+}
+
 static void d2d_bitmap_init(struct d2d_bitmap *bitmap, struct d2d_device_context *context,
         ID3D11Resource *resource, D2D1_SIZE_U size, const D2D1_BITMAP_PROPERTIES1 *desc)
 {
@@ -530,7 +565,7 @@ unsigned int d2d_get_bitmap_options_for_surface(IDXGISurface *surface)
     unsigned int options = 0;
     ID3D11Texture2D *texture;
 
-    if (FAILED(IDXGISurface_QueryInterface(surface, &IID_ID3D11Texture2D, (void **)&texture)))
+    if (FAILED(d2d_get_resource_from_surface(surface, &IID_ID3D11Texture2D, (void **)&texture)))
         return 0;
 
     ID3D11Texture2D_GetDesc(texture, &desc);
@@ -612,7 +647,8 @@ HRESULT d2d_bitmap_create_shared(struct d2d_device_context *context, REFIID iid,
         return hr;
     }
 
-    if (IsEqualGUID(iid, &IID_IDXGISurface) || IsEqualGUID(iid, &IID_IDXGISurface1))
+    if (IsEqualGUID(iid, &IID_IDXGISurface) || IsEqualGUID(iid, &IID_IDXGISurface1)
+            || IsEqualGUID(iid, &IID_IDXGISurface2))
     {
         DXGI_SURFACE_DESC surface_desc;
         IDXGISurface *surface = data;
@@ -621,7 +657,7 @@ HRESULT d2d_bitmap_create_shared(struct d2d_device_context *context, REFIID iid,
         ID3D11Device *device;
         HRESULT hr;
 
-        if (FAILED(IDXGISurface_QueryInterface(surface, &IID_ID3D11Resource, (void **)&resource)))
+        if (FAILED(d2d_get_resource_from_surface(surface, &IID_ID3D11Resource, (void **)&resource)))
         {
             WARN("Failed to get d3d resource from dxgi surface.\n");
             return E_FAIL;

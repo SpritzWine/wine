@@ -25,6 +25,7 @@
 #include "d2d1_3.h"
 #include "d2d1effectauthor.h"
 #include "d3d11.h"
+#include "dxgi1_2.h"
 #include "wincrypt.h"
 #include "wine/test.h"
 #include "initguid.h"
@@ -645,12 +646,21 @@ static void get_d3d10_surface_readback(IDXGISurface *surface, struct resource_re
     D3D10_MAPPED_TEXTURE2D map_desc;
     DXGI_SURFACE_DESC surface_desc;
     ID3D10Resource *src_resource;
+    UINT subresource_idx = 0;
+    IDXGISurface2 *surface2;
     ID3D10Device *device;
     HRESULT hr;
 
     hr = IDXGISurface_GetDevice(surface, &IID_ID3D10Device, (void **)&device);
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
     hr = IDXGISurface_QueryInterface(surface, &IID_ID3D10Resource, (void **)&src_resource);
+    if (hr == E_NOINTERFACE)
+    {
+        hr = IDXGISurface_QueryInterface(surface, &IID_IDXGISurface2, (void **)&surface2);
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+        hr = IDXGISurface2_GetResource(surface2, &IID_ID3D10Resource, (void **)&src_resource, &subresource_idx);
+        IDXGISurface2_Release(surface2);
+    }
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
 
     hr = IDXGISurface_GetDesc(surface, &surface_desc);
@@ -671,7 +681,8 @@ static void get_d3d10_surface_readback(IDXGISurface *surface, struct resource_re
     rb->width = texture_desc.Width;
     rb->height = texture_desc.Height;
 
-    ID3D10Device_CopyResource(device, rb->u.d3d10_resource, src_resource);
+    ID3D10Device_CopySubresourceRegion(device, rb->u.d3d10_resource, 0, 0, 0, 0, src_resource,
+            subresource_idx, NULL);
     ID3D10Resource_Release(src_resource);
     ID3D10Device_Release(device);
 
@@ -689,12 +700,21 @@ static void get_d3d11_surface_readback(IDXGISurface *surface, struct resource_re
     DXGI_SURFACE_DESC surface_desc;
     ID3D11Resource *src_resource;
     ID3D11DeviceContext *context;
+    UINT subresource_idx = 0;
+    IDXGISurface2 *surface2;
     ID3D11Device *device;
     HRESULT hr;
 
     hr = IDXGISurface_GetDevice(surface, &IID_ID3D11Device, (void **)&device);
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
     hr = IDXGISurface_QueryInterface(surface, &IID_ID3D11Resource, (void **)&src_resource);
+    if (hr == E_NOINTERFACE)
+    {
+        hr = IDXGISurface_QueryInterface(surface, &IID_IDXGISurface2, (void **)&surface2);
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+        hr = IDXGISurface2_GetResource(surface2, &IID_ID3D11Resource, (void **)&src_resource, &subresource_idx);
+        IDXGISurface2_Release(surface2);
+    }
     ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
 
     hr = IDXGISurface_GetDesc(surface, &surface_desc);
@@ -716,7 +736,8 @@ static void get_d3d11_surface_readback(IDXGISurface *surface, struct resource_re
     rb->height = texture_desc.Height;
 
     ID3D11Device_GetImmediateContext(device, &context);
-    ID3D11DeviceContext_CopyResource(context, rb->u.d3d11_resource, src_resource);
+    ID3D11DeviceContext_CopySubresourceRegion(context, rb->u.d3d11_resource, 0, 0, 0, 0,
+            src_resource, subresource_idx, NULL);
     ID3D11Resource_Release(src_resource);
     ID3D11Device_Release(device);
 
@@ -941,7 +962,7 @@ static void serialize_figure(struct figure *figure)
                 p += 4;
                 if (++k == 19)
                 {
-                    trace("%.76s\n", output);
+                    if (winetest_debug > 1) trace("%.76s\n", output);
                     p = output;
                     k = 0;
                 }
@@ -959,7 +980,7 @@ static void serialize_figure(struct figure *figure)
         p[3] = lookup[t[2] & 0x3f];
         ++k;
     }
-    if (k)
+    if (winetest_debug > 1 && k)
         trace("%.*s\n", k * 4, output);
 }
 
@@ -1096,7 +1117,7 @@ static BOOL compare_figure(struct d2d1_test_context *ctx, unsigned int x, unsign
     }
     if (diff > max_diff)
     {
-        trace("diff %u > max_diff %u.\n", diff, max_diff);
+        if (winetest_debug > 1) trace("diff %u > max_diff %u.\n", diff, max_diff);
         read_figure(&figure, rb.data, rb.pitch, x, y, w, h, prev);
         serialize_figure(&figure);
     }
@@ -1415,6 +1436,185 @@ static void check_bitmap_surface_(unsigned int line, ID2D1Bitmap *bitmap, BOOL h
         ok_(__FILE__, line)(!surface, "Unexpected surface instance.\n");
     }
 
+    ID2D1Bitmap1_Release(bitmap1);
+}
+
+#define check_bitmap_subresource_surface(a, b, c, d, e, f, g) _check_bitmap_subresource_surface(__LINE__, a, b, c, d, e, f, g)
+static void _check_bitmap_subresource_surface(unsigned int line, struct d2d1_test_context *ctx,
+        ID2D1Bitmap *bitmap, IDXGIResource1 *parent_resource, IDXGISurface *subresource_surface,
+        BOOL expect_parent_surface, DWORD expect_options, BOOL succeed_draw)
+{
+    static const D2D1_COLOR_F test_colours_f[] =
+    {
+        {1.0f, 0.0f, 0.0f, 1.0f},
+        {0.0f, 1.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f, 1.0f},
+        {1.0f, 0.0f, 1.0f, 1.0f},
+    };
+    static const DWORD test_colours[] =
+    {
+        0xffff0000,
+        0xff00ff00,
+        0xff0000ff,
+        0xffff00ff,
+    };
+    unsigned int usage = 0, bind_flags = 0, cpu_access_flags = 0, misc_flags = 0;
+    IDXGISurface *surface, *target_surface;
+    D2D1_BITMAP_PROPERTIES1 bitmap_desc;
+    D3D10_TEXTURE2D_DESC texture_desc;
+    IDXGIResource1 *parent_resource2;
+    ID3D10Texture2D *parent_texture;
+    DXGI_SURFACE_DESC surface_desc;
+    DWORD colour, expected_colour;
+    D2D1_BITMAP_OPTIONS options;
+    ID2D1Bitmap1 *target_bitmap;
+    struct resource_readback rb;
+    IDXGISurface2 *surface2;
+    D2D1_SIZE_U pixel_size;
+    UINT subresource_index;
+    ID2D1Bitmap1 *bitmap1;
+    IDXGIObject *object;
+    D2D1_SIZE_U size;
+    HRESULT hr;
+
+    hr = ID2D1Bitmap_QueryInterface(bitmap, &IID_ID2D1Bitmap1, (void **)&bitmap1);
+    ok_(__FILE__, line)(hr == S_OK, "Failed to get bitmap, hr %#lx.\n", hr);
+
+    options = ID2D1Bitmap1_GetOptions(bitmap1);
+    ok_(__FILE__, line)(options == expect_options, "Got unexpected bitmap options %#x, expected %#lx.\n",
+            options, expect_options);
+
+    surface = (void *)0xdeadbeef;
+    hr = ID2D1Bitmap1_GetSurface(bitmap1, &surface);
+    ok_(__FILE__, line)(hr == S_OK, "Failed to get bitmap surface, hr %#lx.\n", hr);
+    ok_(__FILE__, line)(!!surface, "Expected surface instance.\n");
+    hr = IDXGISurface_QueryInterface(surface, &IID_IDXGISurface2, (void **)&surface2);
+    ok_(__FILE__, line)(hr == S_OK, "Failed to get surface pointer, hr %#lx.\n", hr);
+    if (expect_parent_surface)
+    {
+        hr = IDXGISurface_QueryInterface(surface, &IID_IDXGIObject, (void **)&object);
+        ok_(__FILE__, line)(hr == S_OK, "Failed to get object pointer, hr %#lx.\n", hr);
+        ok_(__FILE__, line)(object == (IDXGIObject *)parent_resource,
+                "Expected the parent surface being used as the bitmap surface.\n");
+        IDXGIObject_Release(object);
+        check_interface_(line, surface, &IID_ID3D10Texture2D, TRUE);
+        check_interface_(line, surface, &IID_ID3D11Texture2D, TRUE);
+    }
+    else
+    {
+        hr = IDXGISurface2_GetResource(surface2, &IID_IDXGIResource1, (void **)&parent_resource2,
+                &subresource_index);
+        ok_(__FILE__, line)(hr == S_OK, "Failed to get parent texture pointer, hr %#lx.\n", hr);
+        ok_(__FILE__, line)(surface != subresource_surface,
+                "Expected the surface is not the same one used for creating the bitmap.\n");
+        ok_(__FILE__, line)(parent_resource2 == parent_resource,
+                "Expected the bitmap surface is subresource surface of the parent surface.\n");
+        IDXGIResource1_Release(parent_resource2);
+        check_interface_(line, surface, &IID_ID3D10Texture2D, FALSE);
+        check_interface_(line, surface, &IID_ID3D11Texture2D, FALSE);
+    }
+
+    hr = IDXGISurface2_GetResource(surface2, &IID_ID3D10Texture2D, (void **)&parent_texture,
+            &subresource_index);
+    ok_(__FILE__, line)(hr == S_OK, "Failed to get parent texture pointer, hr %#lx.\n", hr);
+    ID3D10Texture2D_GetDesc(parent_texture, &texture_desc);
+
+    if (options & D2D1_BITMAP_OPTIONS_TARGET)
+        bind_flags |= D3D10_BIND_RENDER_TARGET;
+    if (!(options & D2D1_BITMAP_OPTIONS_CANNOT_DRAW))
+        bind_flags |= D3D10_BIND_SHADER_RESOURCE;
+    if (options & D2D1_BITMAP_OPTIONS_GDI_COMPATIBLE)
+        misc_flags |= D3D10_RESOURCE_MISC_GDI_COMPATIBLE;
+    if (options & D2D1_BITMAP_OPTIONS_CPU_READ)
+    {
+        usage |= D3D11_USAGE_STAGING;
+        cpu_access_flags |= D3D11_CPU_ACCESS_READ;
+    }
+
+    ok_(__FILE__, line)(texture_desc.Usage == usage, "Unexpected usage %#x for bitmap options %#x.\n",
+            texture_desc.Usage, options);
+    ok_(__FILE__, line)(texture_desc.BindFlags == bind_flags,
+            "Unexpected bind flags %#x for bitmap options %#x.\n", texture_desc.BindFlags, options);
+    ok_(__FILE__, line)(texture_desc.CPUAccessFlags == cpu_access_flags,
+            "Unexpected cpu access flags %#x for bitmap options %#x.\n",
+            texture_desc.CPUAccessFlags, options);
+    ok_(__FILE__, line)(texture_desc.MiscFlags == misc_flags,
+            "Unexpected misc flags %#x for bitmap options %#x.\n", texture_desc.MiscFlags, options);
+
+    pixel_size = ID2D1Bitmap_GetPixelSize(bitmap);
+    if (!pixel_size.width || !pixel_size.height)
+        pixel_size.width = pixel_size.height = 1;
+
+    hr = IDXGISurface2_GetDesc(surface2, &surface_desc);
+    ok_(__FILE__, line)(hr == S_OK, "Failed to get surface description, hr %#lx.\n", hr);
+    ok_(__FILE__, line)(surface_desc.Width == pixel_size.width, "Got width %u, expected %u.\n",
+            surface_desc.Width, pixel_size.width);
+    ok_(__FILE__, line)(surface_desc.Height == pixel_size.height, "Got height %u, expected %u.\n",
+            surface_desc.Height, pixel_size.height);
+
+    /* Test drawing with the bitmap created from subresource surface */
+    if (options & D2D1_BITMAP_OPTIONS_TARGET)
+    {
+        /* Test bitmap as rendering destination */
+        ID2D1DeviceContext_BeginDraw(ctx->context);
+        ID2D1DeviceContext_SetTarget(ctx->context, (ID2D1Image *)bitmap);
+        ID2D1DeviceContext_Clear(ctx->context, &test_colours_f[subresource_index]);
+        ID2D1DeviceContext_SetTarget(ctx->context, NULL);
+        hr = ID2D1DeviceContext_EndDraw(ctx->context, NULL, NULL);
+        ok_(__FILE__, line)(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+        if ((rb.d3d11 = ctx->d3d11))
+            get_d3d11_surface_readback(surface, &rb);
+        else
+            get_d3d10_surface_readback(surface, &rb);
+        colour = get_readback_colour(&rb, 0, 0);
+
+        ok_(__FILE__, line)(compare_colour(colour, test_colours[subresource_index], 1),
+                "Got unexpected colour %#lx, expected %#lx.\n", colour, test_colours[subresource_index]);
+        release_resource_readback(&rb);
+
+        /* Test bitmap as rendering source */
+        if (!(options & D2D1_BITMAP_OPTIONS_CANNOT_DRAW))
+        {
+            set_size_u(&size, pixel_size.width, pixel_size.height);
+            bitmap_desc.dpiX = 96.0f;
+            bitmap_desc.dpiY = 96.0f;
+            bitmap_desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            bitmap_desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_IGNORE;
+            bitmap_desc.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET;
+            bitmap_desc.colorContext = NULL;
+            hr = ID2D1DeviceContext_CreateBitmap(ctx->context, size, NULL, 0, &bitmap_desc, &target_bitmap);
+            ok_(__FILE__, line)(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+            hr = ID2D1Bitmap1_GetSurface(target_bitmap, &target_surface);
+            ok_(__FILE__, line)(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+            ID2D1DeviceContext_BeginDraw(ctx->context);
+            ID2D1DeviceContext_SetTarget(ctx->context, (ID2D1Image *)target_bitmap);
+            ID2D1DeviceContext_DrawBitmap(ctx->context, bitmap, NULL, 1.0f,
+                    D2D1_INTERPOLATION_MODE_LINEAR, NULL, NULL);
+            hr = ID2D1DeviceContext_EndDraw(ctx->context, NULL, NULL);
+            ok_(__FILE__, line)(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+            if ((rb.d3d11 = ctx->d3d11))
+                get_d3d11_surface_readback(target_surface, &rb);
+            else
+                get_d3d10_surface_readback(target_surface, &rb);
+            colour = get_readback_colour(&rb, 0, 0);
+
+            expected_colour = succeed_draw ? test_colours[subresource_index] : 0;
+            todo_wine_if(!succeed_draw)
+            ok_(__FILE__, line)(compare_colour(colour, expected_colour, 1),
+                    "Got unexpected colour %#lx, expected %#lx.\n", colour, expected_colour);
+            release_resource_readback(&rb);
+
+            IDXGISurface_Release(target_surface);
+            ID2D1Bitmap1_Release(target_bitmap);
+        }
+    }
+
+    ID3D10Texture2D_Release(parent_texture);
+    IDXGISurface2_Release(surface2);
+    IDXGISurface_Release(surface);
     ID2D1Bitmap1_Release(bitmap1);
 }
 
@@ -14406,11 +14606,38 @@ static void test_bitmap_create(BOOL d3d11)
         { D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_GDI_COMPATIBLE },
         { D2D1_BITMAP_OPTIONS_CANNOT_DRAW | D2D1_BITMAP_OPTIONS_CPU_READ },
     };
+    static const struct
+    {
+        unsigned int mip_levels;
+        unsigned int array_size;
+        unsigned int bind_flags;
+        unsigned int misc_flags;
+        unsigned int usage;
+        unsigned int cpu_access_flags;
+        unsigned int options;
+    } subresource_tests[] =
+    {
+        {1, 1, D3D10_BIND_RENDER_TARGET, 0, D3D10_USAGE_DEFAULT, 0, D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW},
+        {2, 2, D3D10_BIND_RENDER_TARGET, 0, D3D10_USAGE_DEFAULT, 0, D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW},
+        {1, 1, D3D10_BIND_RENDER_TARGET | D3D10_BIND_SHADER_RESOURCE, 0, D3D10_USAGE_DEFAULT, 0, D2D1_BITMAP_OPTIONS_TARGET},
+        {2, 2, D3D10_BIND_RENDER_TARGET | D3D10_BIND_SHADER_RESOURCE, 0, D3D10_USAGE_DEFAULT, 0, D2D1_BITMAP_OPTIONS_TARGET},
+        {1, 1, D3D10_BIND_RENDER_TARGET, D3D10_RESOURCE_MISC_GDI_COMPATIBLE, D3D10_USAGE_DEFAULT, 0 , D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW | D2D1_BITMAP_OPTIONS_GDI_COMPATIBLE},
+        {1, 2, D3D10_BIND_RENDER_TARGET, D3D10_RESOURCE_MISC_GDI_COMPATIBLE, D3D10_USAGE_DEFAULT, 0 , D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW | D2D1_BITMAP_OPTIONS_GDI_COMPATIBLE},
+        {1, 1, 0, 0, D3D10_USAGE_STAGING, D3D10_CPU_ACCESS_READ, D2D1_BITMAP_OPTIONS_CANNOT_DRAW | D2D1_BITMAP_OPTIONS_CPU_READ},
+        {2, 2, 0, 0, D3D10_USAGE_STAGING, D3D10_CPU_ACCESS_READ, D2D1_BITMAP_OPTIONS_CANNOT_DRAW | D2D1_BITMAP_OPTIONS_CPU_READ},
+    };
+    unsigned int i, j, subresource_count;
     D2D1_BITMAP_PROPERTIES1 bitmap_desc;
+    D3D10_TEXTURE2D_DESC texture_desc;
     struct d2d1_test_context ctx;
+    BOOL expect_parent_surface;
+    ID3D10Device *d3d_device;
+    ID3D10Texture2D *texture;
+    IDXGIResource1 *resource;
+    IDXGISurface2 *surface2;
+    ID2D1Bitmap *bitmap2;
     ID2D1Bitmap1 *bitmap;
     D2D1_SIZE_U size;
-    unsigned int i;
     HRESULT hr;
 
     if (!init_test_context(&ctx, d3d11))
@@ -14451,6 +14678,73 @@ static void test_bitmap_create(BOOL d3d11)
         winetest_pop_context();
     }
 
+    /* Subresource surface */
+    hr = IDXGIDevice_QueryInterface(ctx.device, &IID_ID3D10Device, (void **)&d3d_device);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    for (i = 0; i < ARRAY_SIZE(subresource_tests); i++)
+    {
+        winetest_push_context("Test %u", i);
+
+        texture_desc.Width = 512;
+        texture_desc.Height = 512;
+        texture_desc.MipLevels = subresource_tests[i].mip_levels;
+        texture_desc.ArraySize = subresource_tests[i].array_size;
+        texture_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        texture_desc.SampleDesc.Count = 1;
+        texture_desc.SampleDesc.Quality = 0;
+        texture_desc.Usage = subresource_tests[i].usage;
+        texture_desc.BindFlags = subresource_tests[i].bind_flags;
+        texture_desc.CPUAccessFlags = subresource_tests[i].cpu_access_flags;
+        texture_desc.MiscFlags = subresource_tests[i].misc_flags;
+        hr = ID3D10Device_CreateTexture2D(d3d_device, &texture_desc, NULL, &texture);
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+        hr = ID3D10Texture2D_QueryInterface(texture, &IID_IDXGIResource1, (void **)&resource);
+        ID3D10Texture2D_Release(texture);
+
+        subresource_count = subresource_tests[i].mip_levels * subresource_tests[i].array_size;
+        expect_parent_surface = subresource_count == 1;
+        for (j = 0; j < subresource_count; j++)
+        {
+            winetest_push_context("Subtest %u", j);
+
+            hr = IDXGIResource1_CreateSubresourceSurface(resource, j, &surface2);
+            ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+            memset(&bitmap_desc, 0, sizeof(bitmap_desc));
+            bitmap_desc.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            bitmap_desc.pixelFormat.alphaMode = D2D1_ALPHA_MODE_IGNORE;
+            bitmap_desc.bitmapOptions = subresource_tests[i].options;
+            hr = ID2D1DeviceContext_CreateSharedBitmap(ctx.context, &IID_IDXGISurface2, surface2,
+                    (const D2D1_BITMAP_PROPERTIES *)&bitmap_desc, &bitmap2);
+            todo_wine_if(subresource_count != 1)
+            ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+            if (hr == S_OK)
+            {
+                check_bitmap_subresource_surface(&ctx, bitmap2, resource, (IDXGISurface *)surface2,
+                        expect_parent_surface, subresource_tests[i].options, TRUE);
+                ID2D1Bitmap_Release(bitmap2);
+            }
+
+            hr = ID2D1DeviceContext_CreateBitmapFromDxgiSurface(ctx.context,
+                    (IDXGISurface *)surface2, &bitmap_desc, &bitmap);
+            todo_wine_if(subresource_count != 1)
+            ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+            if (hr == S_OK)
+            {
+                check_bitmap_subresource_surface(&ctx, (ID2D1Bitmap *)bitmap, resource,
+                        (IDXGISurface *)surface2, expect_parent_surface, subresource_tests[i].options, FALSE);
+                ID2D1Bitmap1_Release(bitmap);
+            }
+
+            IDXGISurface2_Release(surface2);
+            winetest_pop_context();
+        }
+        IDXGIResource1_Release(resource);
+        winetest_pop_context();
+    }
+
+    ID3D10Device_Release(d3d_device);
     release_test_context(&ctx);
 }
 
