@@ -1501,17 +1501,9 @@ static HRESULT WINAPI domelem_removeAttributeNode(
     if (This->node.node != attr_node->node->parent)
         return E_INVALIDARG;
 
-    if (attributeNode)
-    {
-        xmlUnlinkNode(attr_node->node );
-        xmldoc_add_orphan(attr_node->node->doc, attr_node->node);
-        *attributeNode = (IXMLDOMAttribute*)create_node(attr_node->node);
-    }
-    else
-    {
-        if (xmlRemoveProp((xmlAttrPtr)attr_node->node) == -1)
-            return E_INVALIDARG;
-    }
+    xmlUnlinkNode(attr_node->node);
+    xmldoc_add_orphan(attr_node->node->doc, attr_node->node);
+    if (attributeNode) *attributeNode = (IXMLDOMAttribute*)create_node(attr_node->node);
     return S_OK;
 }
 
