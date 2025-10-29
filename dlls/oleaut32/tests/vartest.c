@@ -6824,17 +6824,32 @@ static HRESULT (WINAPI *pVarAnd)(LPVARIANT,LPVARIANT,LPVARIANT);
 
 static void test_VarAnd(void)
 {
-    static const WCHAR szFalse[] = { '#','F','A','L','S','E','#','\0' };
-    static const WCHAR szTrue[] = { '#','T','R','U','E','#','\0' };
     VARIANT left, right, exp, result;
-    BSTR false_str, true_str;
     VARTYPE i;
     HRESULT hres;
+    BSTR bstrtrue, bstrfalse, bstrmaxi2, bstrmini2, bstrmaxi4, bstrmini4, bstrmaxi8, bstrmini8, bstr1, bstr0;
+    BSTR bstrminus1, bstrminus42, bstrspaced1, bstrleading0, bstrfloat1p99, bstrfloatminus1p99, bstrsci1e2, bstrvbhex16;
+
+    bstrtrue = SysAllocString(L"#TRUE#");
+    bstrfalse = SysAllocString(L"#FALSE#");
+    bstrmaxi2 = SysAllocString(L"32767");
+    bstrmini2 = SysAllocString(L"-32768");
+    bstrmaxi4 = SysAllocString(L"2147483647");
+    bstrmini4 = SysAllocString(L"-2147483648");
+    bstrmaxi8 = SysAllocString(L"9223372036854775807");
+    bstrmini8 = SysAllocString(L"-9223372036854775807");
+    bstr1 = SysAllocString(L"1");
+    bstr0 = SysAllocString(L"0");
+    bstrminus1 = SysAllocString(L"-1");
+    bstrminus42 = SysAllocString(L"-42");
+    bstrspaced1 = SysAllocString(L" 1 ");
+    bstrleading0 = SysAllocString(L"0000123");
+    bstrfloat1p99 = SysAllocString(L"1.99");
+    bstrfloatminus1p99 = SysAllocString(L"-1.99");
+    bstrsci1e2 = SysAllocString(L"1e2");
+    bstrvbhex16 = SysAllocString(L"&H10");
 
     CHECKPTR(VarAnd);
-
-    true_str = SysAllocString(szTrue);
-    false_str = SysAllocString(szFalse);
 
     /* Test all possible flag/vt combinations & the resulting vt type */
     for (i = 0; i < ARRAY_SIZE(ExtraFlags); i++)
@@ -6865,9 +6880,9 @@ static void test_VarAnd(void)
                 V_VT(&result) = VT_EMPTY;
                 resvt = VT_EMPTY;
                 if ((leftvt | ExtraFlags[i]) == VT_BSTR)
-                    V_BSTR(&left) = true_str;
+                    V_BSTR(&left) = bstrtrue;
                 if ((rightvt | ExtraFlags[i]) == VT_BSTR)
-                    V_BSTR(&right) = true_str;
+                    V_BSTR(&right) = bstrtrue;
 
                 /* Native VarAnd always returns an error when using extra
                  * flags or if the variant combination is I8 and INT.
@@ -6982,8 +6997,8 @@ static void test_VarAnd(void)
     VARAND(EMPTY,0,R8,0,I4,0);
     VARAND(EMPTY,0,R8,1,I4,0);
     VARAND(EMPTY,1,R8,1,I4,0);
-    VARAND(EMPTY,0,BSTR,false_str,I2,0);
-    VARAND(EMPTY,0,BSTR,true_str,I2,0);
+    VARAND(EMPTY,0,BSTR,bstrfalse,I2,0);
+    VARAND(EMPTY,0,BSTR,bstrtrue,I2,0);
     VARANDCY(EMPTY,0,10000,I4,0);
 
     /* NULL OR 0 = NULL. NULL OR n = n */
@@ -7018,8 +7033,8 @@ static void test_VarAnd(void)
     VARAND_TODOCOMM(NULL,0,R4,1,NULL,0);
     VARAND(NULL,0,R8,0,I4,0);
     VARAND_TODOCOMM(NULL,0,R8,1,NULL,0);
-    VARAND_TODOCOMM(NULL,0,BSTR,false_str,BOOL,0);
-    VARAND(NULL,0,BSTR,true_str,NULL,VARIANT_FALSE);
+    VARAND_TODOCOMM(NULL,0,BSTR,bstrfalse,BOOL,0);
+    VARAND(NULL,0,BSTR,bstrtrue,NULL,VARIANT_FALSE);
     VARANDCY(NULL,0,10000,NULL,0);
     VARANDCY(NULL,0,0,I4,0);
     VARAND(BOOL,VARIANT_TRUE,BOOL,VARIANT_TRUE,BOOL,VARIANT_TRUE);
@@ -7069,10 +7084,10 @@ static void test_VarAnd(void)
     VARAND(BOOL,VARIANT_TRUE,UINT,0xffffffff,I4,-1);
     VARAND(BOOL,VARIANT_TRUE,UINT,0,I4,0);
     VARAND(BOOL,VARIANT_FALSE,UINT,0,I4,0);
-    VARAND(BOOL,VARIANT_FALSE,BSTR,false_str,BOOL,VARIANT_FALSE);
-    VARAND(BOOL,VARIANT_TRUE,BSTR,false_str,BOOL,VARIANT_FALSE);
-    VARAND(BOOL,VARIANT_FALSE,BSTR,true_str,BOOL,VARIANT_FALSE);
-    VARAND(BOOL,VARIANT_TRUE,BSTR,true_str,BOOL,VARIANT_TRUE);
+    VARAND(BOOL,VARIANT_FALSE,BSTR,bstrfalse,BOOL,VARIANT_FALSE);
+    VARAND(BOOL,VARIANT_TRUE,BSTR,bstrfalse,BOOL,VARIANT_FALSE);
+    VARAND(BOOL,VARIANT_FALSE,BSTR,bstrtrue,BOOL,VARIANT_FALSE);
+    VARAND(BOOL,VARIANT_TRUE,BSTR,bstrtrue,BOOL,VARIANT_TRUE);
     VARANDCY(BOOL,VARIANT_TRUE,10000,I4,1);
     VARANDCY(BOOL,VARIANT_TRUE,0,I4,0);
     VARANDCY(BOOL,VARIANT_FALSE,0,I4,0);
@@ -7117,10 +7132,12 @@ static void test_VarAnd(void)
     VARAND(I1,-1,UINT,0xffffffff,I4,-1);
     VARAND(I1,-1,UINT,0,I4,0);
     VARAND(I1,0,UINT,0,I4,0);
-    VARAND(I1,0,BSTR,false_str,I4,0);
-    VARAND(I1,-1,BSTR,false_str,I4,0);
-    VARAND(I1,0,BSTR,true_str,I4,0);
-    VARAND(I1,-1,BSTR,true_str,I4,-1);
+    VARAND(I1,0,BSTR,bstrfalse,I4,0);
+    VARAND(I1,-1,BSTR,bstrfalse,I4,0);
+    VARAND(I1,0,BSTR,bstrtrue,I4,0);
+    VARAND(I1,-1,BSTR,bstrtrue,I4,-1);
+    VARAND(I1, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(I1, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(I1,-1,10000,I4,1);
     VARANDCY(I1,-1,0,I4,0);
     VARANDCY(I1,0,0,I4,0);
@@ -7163,10 +7180,12 @@ static void test_VarAnd(void)
     VARAND(UI1,255,UINT,0xffffffff,I4,255);
     VARAND(UI1,255,UINT,0,I4,0);
     VARAND(UI1,0,UINT,0,I4,0);
-    VARAND(UI1,0,BSTR,false_str,I2,0);
-    VARAND(UI1,255,BSTR,false_str,I2,0);
-    VARAND(UI1,0,BSTR,true_str,I2,0);
-    VARAND(UI1,255,BSTR,true_str,I2,255);
+    VARAND(UI1,0,BSTR,bstrfalse,I2,0);
+    VARAND(UI1,255,BSTR,bstrfalse,I2,0);
+    VARAND(UI1,0,BSTR,bstrtrue,I2,0);
+    VARAND(UI1,255,BSTR,bstrtrue,I2,255);
+    VARAND(UI1, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(UI1, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(UI1,255,10000,I4,1);
     VARANDCY(UI1,255,0,I4,0);
     VARANDCY(UI1,0,0,I4,0);
@@ -7206,10 +7225,12 @@ static void test_VarAnd(void)
     VARAND(I2,-1,UINT,0xffffffff,I4,-1);
     VARAND(I2,-1,UINT,0,I4,0);
     VARAND(I2,0,UINT,0,I4,0);
-    VARAND(I2,0,BSTR,false_str,I2,0);
-    VARAND(I2,-1,BSTR,false_str,I2,0);
-    VARAND(I2,0,BSTR,true_str,I2,0);
-    VARAND(I2,-1,BSTR,true_str,I2,-1);
+    VARAND(I2,0,BSTR,bstrfalse,I2,0);
+    VARAND(I2,-1,BSTR,bstrfalse,I2,0);
+    VARAND(I2,0,BSTR,bstrtrue,I2,0);
+    VARAND(I2,-1,BSTR,bstrtrue,I2,-1);
+    VARAND(I2, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(I2, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(I2,-1,10000,I4,1);
     VARANDCY(I2,-1,0,I4,0);
     VARANDCY(I2,0,0,I4,0);
@@ -7246,10 +7267,12 @@ static void test_VarAnd(void)
     VARAND(UI2,65535,UINT,0xffffffff,I4,65535);
     VARAND(UI2,65535,UINT,0,I4,0);
     VARAND(UI2,0,UINT,0,I4,0);
-    VARAND(UI2,0,BSTR,false_str,I4,0);
-    VARAND(UI2,65535,BSTR,false_str,I4,0);
-    VARAND(UI2,0,BSTR,true_str,I4,0);
-    VARAND(UI2,65535,BSTR,true_str,I4,65535);
+    VARAND(UI2,0,BSTR,bstrfalse,I4,0);
+    VARAND(UI2,65535,BSTR,bstrfalse,I4,0);
+    VARAND(UI2,0,BSTR,bstrtrue,I4,0);
+    VARAND(UI2,65535,BSTR,bstrtrue,I4,65535);
+    VARAND(UI2, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(UI2, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(UI2,65535,10000,I4,1);
     VARANDCY(UI2,65535,0,I4,0);
     VARANDCY(UI2,0,0,I4,0);
@@ -7283,10 +7306,20 @@ static void test_VarAnd(void)
     VARAND(I4,-1,UINT,0xffffffff,I4,-1);
     VARAND(I4,-1,UINT,0,I4,0);
     VARAND(I4,0,UINT,0,I4,0);
-    VARAND(I4,0,BSTR,false_str,I4,0);
-    VARAND(I4,-1,BSTR,false_str,I4,0);
-    VARAND(I4,0,BSTR,true_str,I4,0);
-    VARAND(I4,-1,BSTR,true_str,I4,-1);
+    VARAND(I4,0,BSTR,bstrfalse,I4,0);
+    VARAND(I4,-1,BSTR,bstrfalse,I4,0);
+    VARAND(I4,0,BSTR,bstrtrue,I4,0);
+    VARAND(I4,-1,BSTR,bstrtrue,I4,-1);
+    VARAND(I4, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(I4, 1, BSTR, bstrmini4, I4, 0);
+    VARAND(I4, 1, BSTR, bstrleading0, I4, (1 &123));
+    VARAND(I4, 1, BSTR, bstrspaced1, I4, (1 & 1));
+    VARAND(I4, 1, BSTR, bstrminus1, I4, (1 & -1));
+    VARAND(I4, 1, BSTR, bstr0, I4, (1 & 0));
+    VARAND(I4, 1, BSTR, bstrminus42, I4, ( 1 & -42));
+    VARAND(I4, 1, BSTR, bstrsci1e2, I4, (1 & 100));
+    VARAND(I4, 1, BSTR, bstrfloat1p99, I4, 0);
+    VARAND(I4, 1, BSTR, bstrvbhex16, I4, (1 & 0x10));
     VARANDCY(I4,-1,10000,I4,1);
     VARANDCY(I4,-1,0,I4,0);
     VARANDCY(I4,0,0,I4,0);
@@ -7316,10 +7349,12 @@ static void test_VarAnd(void)
     VARAND(UI4,0xffffffff,UINT,0xffffffff,I4,-1);
     VARAND(UI4,0xffffffff,UINT,0,I4,0);
     VARAND(UI4,0,UINT,0,I4,0);
-    VARAND(UI4,0,BSTR,false_str,I4,0);
-    VARAND(UI4,0xffffffff,BSTR,false_str,I4,0);
-    VARAND(UI4,0,BSTR,true_str,I4,0);
-    VARAND(UI4,0xffffffff,BSTR,true_str,I4,-1);
+    VARAND(UI4,0,BSTR,bstrfalse,I4,0);
+    VARAND(UI4,0xffffffff,BSTR,bstrfalse,I4,0);
+    VARAND(UI4,0,BSTR,bstrtrue,I4,0);
+    VARAND(UI4,0xffffffff,BSTR,bstrtrue,I4,-1);
+    VARAND(UI4, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(UI4, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(UI4,0xffffffff,10000,I4,1);
     VARANDCY(UI4,0xffffffff,0,I4,0);
     VARANDCY(UI4,0,0,I4,0);
@@ -7347,10 +7382,12 @@ static void test_VarAnd(void)
     VARAND(R4,-1,UINT,0xffffffff,I4,-1);
     VARAND(R4,-1,UINT,0,I4,0);
     VARAND(R4,0,UINT,0,I4,0);
-    VARAND(R4,0,BSTR,false_str,I4,0);
-    VARAND(R4,-1,BSTR,false_str,I4,0);
-    VARAND(R4,0,BSTR,true_str,I4,0);
-    VARAND(R4,-1,BSTR,true_str,I4,-1);
+    VARAND(R4,0,BSTR,bstrfalse,I4,0);
+    VARAND(R4,-1,BSTR,bstrfalse,I4,0);
+    VARAND(R4,0,BSTR,bstrtrue,I4,0);
+    VARAND(R4,-1,BSTR,bstrtrue,I4,-1);
+    VARAND(R4, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(R4, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(R4,-1,10000,I4,1);
     VARANDCY(R4,-1,0,I4,0);
     VARANDCY(R4,0,0,I4,0);
@@ -7375,10 +7412,12 @@ static void test_VarAnd(void)
     VARAND(R8,-1,UINT,0xffffffff,I4,-1);
     VARAND(R8,-1,UINT,0,I4,0);
     VARAND(R8,0,UINT,0,I4,0);
-    VARAND(R8,0,BSTR,false_str,I4,0);
-    VARAND(R8,-1,BSTR,false_str,I4,0);
-    VARAND(R8,0,BSTR,true_str,I4,0);
-    VARAND(R8,-1,BSTR,true_str,I4,-1);
+    VARAND(R8,0,BSTR,bstrfalse,I4,0);
+    VARAND(R8,-1,BSTR,bstrfalse,I4,0);
+    VARAND(R8,0,BSTR,bstrtrue,I4,0);
+    VARAND(R8,-1,BSTR,bstrtrue,I4,-1);
+    VARAND(R8, 1, BSTR, bstrmaxi4, I4, 1);
+    VARAND(R8, 1, BSTR, bstrmini4, I4, 0);
     VARANDCY(R8,-1,10000,I4,1);
     VARANDCY(R8,-1,0,I4,0);
     VARANDCY(R8,0,0,I4,0);
@@ -7400,10 +7439,10 @@ static void test_VarAnd(void)
     VARAND(DATE,-1,UINT,0xffffffff,I4,-1);
     VARAND(DATE,-1,UINT,0,I4,0);
     VARAND(DATE,0,UINT,0,I4,0);
-    VARAND(DATE,0,BSTR,false_str,I4,0);
-    VARAND(DATE,-1,BSTR,false_str,I4,0);
-    VARAND(DATE,0,BSTR,true_str,I4,0);
-    VARAND(DATE,-1,BSTR,true_str,I4,-1);
+    VARAND(DATE,0,BSTR,bstrfalse,I4,0);
+    VARAND(DATE,-1,BSTR,bstrfalse,I4,0);
+    VARAND(DATE,0,BSTR,bstrtrue,I4,0);
+    VARAND(DATE,-1,BSTR,bstrtrue,I4,-1);
     VARANDCY(DATE,-1,10000,I4,1);
     VARANDCY(DATE,-1,0,I4,0);
     VARANDCY(DATE,0,0,I4,0);
@@ -7417,10 +7456,12 @@ static void test_VarAnd(void)
         VARAND(I8,0,UI8,0,I8,0);
         VARAND(I8,-1,UINT,0,I8,0);
         VARAND(I8,0,UINT,0,I8,0);
-        VARAND(I8,0,BSTR,false_str,I8,0);
-        VARAND(I8,-1,BSTR,false_str,I8,0);
-        VARAND(I8,0,BSTR,true_str,I8,0);
-        VARAND(I8,-1,BSTR,true_str,I8,-1);
+        VARAND(I8,0,BSTR,bstrfalse,I8,0);
+        VARAND(I8,-1,BSTR,bstrfalse,I8,0);
+        VARAND(I8,0,BSTR,bstrtrue,I8,0);
+        VARAND(I8,-1,BSTR,bstrtrue,I8,-1);
+        VARAND(I8, 1, BSTR, bstrmaxi8, I8, 1);
+        VARAND(I8, 1, BSTR, bstrmini8, I8, 1);
         VARANDCY(I8,-1,10000,I8,1);
         VARANDCY(I8,-1,0,I8,0);
         VARANDCY(I8,0,0,I8,0);
@@ -7434,10 +7475,10 @@ static void test_VarAnd(void)
         VARAND(UI8,0xffff,UINT,0xffff,I4,0xffff);
         VARAND(UI8,0xffff,UINT,0,I4,0);
         VARAND(UI8,0,UINT,0,I4,0);
-        VARAND(UI8,0,BSTR,false_str,I4,0);
-        VARAND(UI8,0xffff,BSTR,false_str,I4,0);
-        VARAND(UI8,0,BSTR,true_str,I4,0);
-        VARAND(UI8,0xffff,BSTR,true_str,I4,65535);
+        VARAND(UI8,0,BSTR,bstrfalse,I4,0);
+        VARAND(UI8,0xffff,BSTR,bstrfalse,I4,0);
+        VARAND(UI8,0,BSTR,bstrtrue,I4,0);
+        VARAND(UI8,0xffff,BSTR,bstrtrue,I4,65535);
         VARANDCY(UI8,0xffff,10000,I4,1);
         VARANDCY(UI8,0xffff,0,I4,0);
         VARANDCY(UI8,0,0,I4,0);
@@ -7449,10 +7490,10 @@ static void test_VarAnd(void)
     VARAND(INT,-1,UINT,0xffff,I4,65535);
     VARAND(INT,-1,UINT,0,I4,0);
     VARAND(INT,0,UINT,0,I4,0);
-    VARAND(INT,0,BSTR,false_str,I4,0);
-    VARAND(INT,-1,BSTR,false_str,I4,0);
-    VARAND(INT,0,BSTR,true_str,I4,0);
-    VARAND(INT,-1,BSTR,true_str,I4,-1);
+    VARAND(INT,0,BSTR,bstrfalse,I4,0);
+    VARAND(INT,-1,BSTR,bstrfalse,I4,0);
+    VARAND(INT,0,BSTR,bstrtrue,I4,0);
+    VARAND(INT,-1,BSTR,bstrtrue,I4,-1);
     VARANDCY(INT,-1,10000,I4,1);
     VARANDCY(INT,-1,0,I4,0);
     VARANDCY(INT,0,0,I4,0);
@@ -7460,22 +7501,67 @@ static void test_VarAnd(void)
     VARAND(UINT,0xffff,UINT,0xffff,I4,0xffff);
     VARAND(UINT,0xffff,UINT,0,I4,0);
     VARAND(UINT,0,UINT,0,I4,0);
-    VARAND(UINT,0,BSTR,false_str,I4,0);
-    VARAND(UINT,0xffff,BSTR, false_str,I4,0);
-    VARAND(UINT,0,BSTR,true_str,I4,0);
-    VARAND(UINT,0xffff,BSTR,true_str,I4,65535);
+    VARAND(UINT,0,BSTR,bstrfalse,I4,0);
+    VARAND(UINT,0xffff,BSTR, bstrfalse,I4,0);
+    VARAND(UINT,0,BSTR,bstrtrue,I4,0);
+    VARAND(UINT,0xffff,BSTR,bstrtrue,I4,65535);
     VARANDCY(UINT,0xffff,10000,I4,1);
     VARANDCY(UINT,0xffff,0,I4,0);
     VARANDCY(UINT,0,0,I4,0);
 
-    VARAND(BSTR,false_str,BSTR,false_str,BOOL,0);
-    VARAND(BSTR,true_str,BSTR,false_str,BOOL,VARIANT_FALSE);
-    VARAND(BSTR,true_str,BSTR,true_str,BOOL,VARIANT_TRUE);
-    VARANDCY(BSTR,true_str,10000,I4,1);
-    VARANDCY(BSTR,false_str,10000,I4,0);
+    VARAND(BSTR,bstrfalse,BSTR,bstrfalse,BOOL,0);
+    VARAND(BSTR,bstrtrue,BSTR,bstrfalse,BOOL,VARIANT_FALSE);
+    VARAND(BSTR,bstrtrue,BSTR,bstrtrue,BOOL,VARIANT_TRUE);
+    VARANDCY(BSTR,bstrtrue,10000,I4,1);
+    VARANDCY(BSTR,bstrfalse,10000,I4,0);
 
-    SysFreeString(true_str);
-    SysFreeString(false_str);
+    if (has_i8)
+    {
+        VARAND(BSTR, bstrmaxi8, I8, 1, I8, 1);
+        VARAND(BSTR, bstrmini8, I8, 1, I8, 1);
+    }
+
+    VARAND(BSTR, bstrleading0, I4, 1, I4, (123 & 1));
+    VARAND(BSTR, bstrspaced1, I4, 1, I4, (1 & 1));
+    VARAND(BSTR, bstrminus1, I4, 1, I4, (-1 & 1));
+    VARAND(BSTR, bstr0, I4, 1, I4, (0 & 1));
+    VARAND(BSTR, bstrminus42, I4, 1, I4, (-42 & 1));
+    VARAND(BSTR, bstrsci1e2, I4, 1, I4, (100 & 1));
+    VARAND(BSTR, bstrfloat1p99, I4, 1, I4, 0);
+    VARAND(BSTR, bstrvbhex16, I4, 1, I4, (0x10 & 1));
+
+    VARANDCY(BSTR, bstrtrue, 10000, I4, 1);
+    VARANDCY(BSTR, bstrfalse, 10000, I4, 0);
+    VARANDCY(BSTR, bstr1, 10000, I4, 1);
+    VARANDCY(BSTR, bstr0, 10000, I4, 0);
+    VARANDCY(BSTR, bstrminus1, 10000, I4, 1);
+    VARANDCY(BSTR, bstrmaxi2, 10000, I4, 1);
+    VARANDCY(BSTR, bstrmaxi4, 10000, I4, 1);
+    VARANDCY(BSTR, bstrmini2, 10000, I4, 0);
+    VARANDCY(BSTR, bstrspaced1, 10000, I4, 1);
+    VARANDCY(BSTR, bstrfloat1p99, 10000, I4, 0);
+    VARANDCY(BSTR, bstrfloatminus1p99, 10000, I4, 0);
+    VARANDCY(BSTR, bstrsci1e2, 10000, I4, 0);
+    VARANDCY(BSTR, bstrmaxi2, 0, I4, 0);
+
+    SysFreeString(bstrtrue);
+    SysFreeString(bstrfalse);
+    SysFreeString(bstrmaxi2);
+    SysFreeString(bstrmini2);
+    SysFreeString(bstrmaxi4);
+    SysFreeString(bstrmini4);
+    SysFreeString(bstrmaxi8);
+    SysFreeString(bstrmini8);
+    SysFreeString(bstr1);
+    SysFreeString(bstr0);
+    SysFreeString(bstrminus1);
+    SysFreeString(bstrminus42);
+    SysFreeString(bstrspaced1);
+    SysFreeString(bstrleading0);
+    SysFreeString(bstrfloat1p99);
+    SysFreeString(bstrfloatminus1p99);
+    SysFreeString(bstrsci1e2);
+    SysFreeString(bstrvbhex16);
 }
 
 static void test_cmp( int line, LCID lcid, UINT flags, VARIANT *left, VARIANT *right, HRESULT result )
