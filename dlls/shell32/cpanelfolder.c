@@ -131,7 +131,8 @@ HRESULT WINAPI IControlPanel_Constructor(IUnknown* pUnkOuter, REFIID riid, LPVOI
     sf->pUnkOuter = pUnkOuter ? pUnkOuter : (IUnknown *)&sf->IShellFolder2_iface;
 
     if (FAILED(IShellFolder2_QueryInterface(&sf->IShellFolder2_iface, riid, ppv))) {
-        IShellFolder2_Release(&sf->IShellFolder2_iface);
+        SHFree(sf->pidlRoot);
+        LocalFree(sf);
 	return E_NOINTERFACE;
     }
     IShellFolder2_Release(&sf->IShellFolder2_iface);
