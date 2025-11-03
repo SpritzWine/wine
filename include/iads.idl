@@ -152,6 +152,20 @@ typedef enum
     ADS_PASSWORD_ENCODE_CLEAR
 } ADS_PASSWORD_ENCODING_ENUM;
 
+typedef enum
+{
+    ADS_OPTION_SERVERNAME,
+    ADS_OPTION_REFERRALS,
+    ADS_OPTION_PAGE_SIZE,
+    ADS_OPTION_SECURITY_MASK,
+    ADS_OPTION_MUTUAL_AUTH_STATUS,
+    ADS_OPTION_QUOTA,
+    ADS_OPTION_PASSWORD_PORTNUMBER,
+    ADS_OPTION_PASSWORD_METHOD,
+    ADS_OPTION_ACCUMULATIVE_MODIFICATION,
+    ADS_OPTION_SKIP_SID_LOOKUP
+} ADS_OPTION_ENUM;
+
 typedef struct _ADS_CASEIGNORE_LIST
 {
     struct _ADS_CASEIGNORE_LIST *Next;
@@ -484,6 +498,23 @@ interface IADs : IDispatch
 
     [id(0x0000000e)]
     HRESULT GetInfoEx( [in] VARIANT vProperties, [in] long lnReserved);
+}
+
+/*****************************************************************************
+ *    IADsObjectOptions interface
+ */
+[
+    odl,
+    uuid(46F14FDA-232B-11D1-A808-00C04FD8D5A8),
+    dual,
+    oleautomation
+]
+interface IADsObjectOptions : IDispatch
+{
+    [id(0x00000002)]
+    HRESULT GetOption([in] long option, [out, retval] VARIANT *var);
+    [id(0x00000003)]
+    HRESULT SetOption([in] long option, [in] VARIANT var);
 }
 
 /*****************************************************************************

@@ -112,6 +112,7 @@ struct macdrv_thread_data
     HKL                         active_keyboard_layout;
     WORD                        keyc2vkey[128];
     WORD                        keyc2scan[128];
+    HANDLE                      ime_done_event;
 };
 
 extern struct macdrv_thread_data *macdrv_init_thread_data(void);
@@ -188,6 +189,7 @@ struct macdrv_win_data
     unsigned int        ulw_layered : 1;        /* has UpdateLayeredWindow() been called for window? */
     unsigned int        per_pixel_alpha : 1;    /* is window using per-pixel alpha? */
     unsigned int        minimized : 1;          /* is window minimized? */
+    unsigned int        fullscreen : 1;         /* is the window visible rect fullscreen? (unrelated to native AppKit/Cocoa fullscreen) */
 };
 
 struct macdrv_client_surface

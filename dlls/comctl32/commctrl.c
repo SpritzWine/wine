@@ -68,7 +68,6 @@
 #include "winerror.h"
 #include "winreg.h"
 #include "comctl32.h"
-#include "uxtheme.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(commctrl);
@@ -92,6 +91,7 @@ static const WORD wPattern55AA[] =
 
 static const WCHAR strCC32SubclassInfo[] = L"CC32SubclassInfo";
 
+#if __WINE_COMCTL32_VERSION == 6
 static void unregister_versioned_classes(void)
 {
 #define VERSION "6.0.2600.2982!"
@@ -111,9 +111,11 @@ static void unregister_versioned_classes(void)
 
 #undef VERSION
 }
+#endif /* __WINE_COMCTL32_VERSION == 6 */
 
 BOOL WINAPI RegisterClassNameW(const WCHAR *class)
 {
+#if __WINE_COMCTL32_VERSION == 6
     static const struct
     {
         const WCHAR nameW[16];
@@ -142,6 +144,7 @@ BOOL WINAPI RegisterClassNameW(const WCHAR *class)
         if (res < 0) max = pos - 1;
         else min = pos + 1;
     }
+#endif /* __WINE_COMCTL32_VERSION == 6 */
 
     return FALSE;
 }
@@ -197,7 +200,9 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
             PROGRESS_Register ();
             REBAR_Register ();
             STATUS_Register ();
+#if __WINE_COMCTL32_VERSION == 6
             SYSLINK_Register ();
+#endif
             TAB_Register ();
             TOOLBAR_Register ();
             TOOLTIPS_Register ();
@@ -224,7 +229,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
             PROGRESS_Unregister ();
             REBAR_Unregister ();
             STATUS_Unregister ();
-            SYSLINK_Unregister ();
             TAB_Unregister ();
             TOOLBAR_Unregister ();
             TOOLTIPS_Unregister ();
@@ -232,7 +236,11 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
             TREEVIEW_Unregister ();
             UPDOWN_Unregister ();
 
+#if __WINE_COMCTL32_VERSION == 6
+            SYSLINK_Unregister ();
+
             unregister_versioned_classes ();
+#endif /* __WINE_COMCTL32_VERSION == 6 */
 
             /* delete local pattern brush */
             DeleteObject (COMCTL32_hPattern55AABrush);
@@ -943,6 +951,7 @@ CreateToolbar (HWND hwnd, DWORD style, UINT wID, INT nBitmaps,
 }
 
 
+#if __WINE_COMCTL32_VERSION == 6
 /***********************************************************************
  *		DllInstall (COMCTL32.@)
  *
@@ -957,6 +966,7 @@ HRESULT WINAPI DllInstall(BOOL bInstall, LPCWSTR cmdline)
     TRACE("(%u, %s): stub\n", bInstall, debugstr_w(cmdline));
     return S_OK;
 }
+#endif /* __WINE_COMCTL32_VERSION == 6 */
 
 /***********************************************************************
  * _TrackMouseEvent [COMCTL32.@]
@@ -1616,6 +1626,7 @@ LRESULT WINAPI SetPathWordBreakProc(HWND hwnd, BOOL bSet)
         (LPARAM)(bSet ? PathWordBreakProc : NULL));
 }
 
+#if __WINE_COMCTL32_VERSION == 6
 /***********************************************************************
  * DrawShadowText [COMCTL32.@]
  *
@@ -1697,6 +1708,7 @@ HRESULT WINAPI LoadIconMetric(HINSTANCE hinst, const WCHAR *name, int size, HICO
 
     return LoadIconWithScaleDown(hinst, name, cx, cy, icon);
 }
+#endif /* __WINE_COMCTL32_VERSION == 6 */
 
 static const WCHAR strMRUList[] = L"MRUList";
 
@@ -3091,4 +3103,111 @@ LRESULT COMCTL32_forward_notify_to_ansi_window(HWND hwnd_notify, NMHDR *hdr, WCH
     }
     /* Other notifications, no need to convert */
     return SendMessageW(hwnd_notify, WM_NOTIFY, hdr->idFrom, (LPARAM)hdr);
+}
+
+void COMCTL32_OpenThemeForWindow(HWND hwnd, const WCHAR *theme_class)
+{
+#if __WINE_COMCTL32_VERSION == 6
+    OpenThemeData(hwnd, theme_class);
+#endif
+}
+
+void COMCTL32_CloseThemeForWindow(HWND hwnd)
+{
+#if __WINE_COMCTL32_VERSION == 6
+    CloseThemeData(GetWindowTheme(hwnd));
+#endif
+}
+
+/* A helper to handle CCM_SETVERSION messages */
+LRESULT COMCTL32_SetVersion(INT *current_version, INT new_version)
+{
+#if __WINE_COMCTL32_VERSION == 6
+    return *current_version;
+#else
+    INT old_version;
+
+    if (new_version > 5)
+        return -1;
+
+    old_version = *current_version;
+    *current_version = new_version;
+    return old_version;
+#endif
+}
+
+/* A helper to handle WM_THEMECHANGED messages */
+LRESULT COMCTL32_ThemeChanged(HWND hwnd, const WCHAR *theme_class, BOOL invalidate, BOOL erase)
+{
+#if __WINE_COMCTL32_VERSION == 6
+    if (theme_class)
+    {
+        COMCTL32_CloseThemeForWindow(hwnd);
+        COMCTL32_OpenThemeForWindow(hwnd, theme_class);
+    }
+
+    if (invalidate)
+        InvalidateRect(hwnd, NULL, erase);
+    return 0;
+#else
+    return DefWindowProcW(hwnd, WM_THEMECHANGED, 0, 0);
+#endif
+}
+
+/* A helper to handle WM_NCPAINT messages
+ *
+ * If theme_class is specified, open the specified theme class. Otherwise, get the theme class from
+ * the window.
+ */
+LRESULT COMCTL32_NCPaint(HWND hwnd, WPARAM wp, LPARAM lp, const WCHAR *theme_class)
+{
+#if __WINE_COMCTL32_VERSION == 6
+    HRGN region = (HRGN)wp, clipRgn;
+    INT cxEdge, cyEdge;
+    HTHEME theme;
+    LONG exStyle;
+    HDC dc;
+    RECT r;
+
+    exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+    if (!(exStyle & WS_EX_CLIENTEDGE))
+        return DefWindowProcW(hwnd, WM_NCPAINT, wp, lp);
+
+    if (theme_class)
+        theme = OpenThemeDataForDpi(NULL, theme_class, GetDpiForWindow(hwnd));
+    else
+        theme = GetWindowTheme(hwnd);
+    if (!theme)
+        return DefWindowProcW(hwnd, WM_NCPAINT, wp, lp);
+
+    cxEdge = GetSystemMetrics(SM_CXEDGE);
+    cyEdge = GetSystemMetrics(SM_CYEDGE);
+    GetWindowRect(hwnd, &r);
+
+    /* New clipping region passed to default proc to exclude border */
+    clipRgn = CreateRectRgn(r.left + cxEdge, r.top + cyEdge, r.right - cxEdge, r.bottom - cyEdge);
+    if (region != (HRGN)1)
+        CombineRgn(clipRgn, clipRgn, region, RGN_AND);
+    OffsetRect(&r, -r.left, -r.top);
+
+    dc = GetDCEx(hwnd, region, DCX_WINDOW | DCX_INTERSECTRGN);
+    if (IsThemeBackgroundPartiallyTransparent(theme, 0, 0))
+        DrawThemeParentBackground(hwnd, dc, &r);
+    DrawThemeBackground(theme, dc, 0, 0, &r, 0);
+    ReleaseDC(hwnd, dc);
+    if (theme_class)
+        CloseThemeData(theme);
+
+    /* Call default proc to get the scrollbars etc. also painted */
+    DefWindowProcW(hwnd, WM_NCPAINT, (WPARAM)clipRgn, 0);
+    DeleteObject(clipRgn);
+    return 0;
+#else
+    return DefWindowProcW(hwnd, WM_NCPAINT, wp, lp);
+#endif
+}
+
+BOOL COMCTL32_IsThemed(HWND hwnd)
+{
+    return !!GetWindowTheme(hwnd);
 }

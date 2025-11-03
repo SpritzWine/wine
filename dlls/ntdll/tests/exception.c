@@ -1548,13 +1548,7 @@ static void test_debugger(DWORD cont_status, BOOL with_WaitForDebugEventEx)
 
     } while (de.dwDebugEventCode != EXIT_PROCESS_DEBUG_EVENT);
 
-    wait_child_process( pi.hProcess );
-    ret = CloseHandle(pi.hThread);
-    ok(ret, "error %lu\n", GetLastError());
-    ret = CloseHandle(pi.hProcess);
-    ok(ret, "error %lu\n", GetLastError());
-
-    return;
+    wait_child_process( &pi );
 }
 
 static DWORD simd_fault_handler( EXCEPTION_RECORD *rec, EXCEPTION_REGISTRATION_RECORD *frame,
@@ -4136,11 +4130,7 @@ static void test_debugger(DWORD cont_status, BOOL with_WaitForDebugEventEx)
 
     } while (de.dwDebugEventCode != EXIT_PROCESS_DEBUG_EVENT);
 
-    wait_child_process( pi.hProcess );
-    ret = CloseHandle(pi.hThread);
-    ok(ret, "error %lu\n", GetLastError());
-    ret = CloseHandle(pi.hProcess);
-    ok(ret, "error %lu\n", GetLastError());
+    wait_child_process( &pi );
 }
 
 static void test_thread_context(void)
@@ -5482,22 +5472,29 @@ static void test_KiUserCallbackDispatcher(void)
 
 static BOOL got_nested_exception, got_prev_frame_exception;
 static void *nested_exception_initial_frame;
+static void *nested_exception_crash_frame;
 
 static DWORD nested_exception_handler(EXCEPTION_RECORD *rec, EXCEPTION_REGISTRATION_RECORD *frame,
         CONTEXT *context, EXCEPTION_REGISTRATION_RECORD **dispatcher)
 {
-    trace("nested_exception_handler Rip %p, Rsp %p, code %#lx, flags %#lx, ExceptionAddress %p.\n",
-            (void *)context->Rip, (void *)context->Rsp, rec->ExceptionCode, rec->ExceptionFlags, rec->ExceptionAddress);
+    trace("nested_exception_handler Rip %p, Rsp %p, code %#lx, flags %#lx, ExceptionAddress %p, frame %p.\n",
+            (void *)context->Rip, (void *)context->Rsp, rec->ExceptionCode, rec->ExceptionFlags,
+            rec->ExceptionAddress, frame);
+
+    if (!nested_exception_initial_frame)
+        nested_exception_initial_frame = frame;
+    if (frame == nested_exception_initial_frame)
+        return ExceptionContinueSearch;
 
     if (rec->ExceptionCode == 0x80000003
             && !(rec->ExceptionFlags & EXCEPTION_NESTED_CALL))
     {
         ok(rec->NumberParameters == 1, "Got unexpected rec->NumberParameters %lu.\n", rec->NumberParameters);
-        ok((void *)context->Rsp == frame, "Got unexpected frame %p.\n", frame);
+        ok((char *)context->Rsp + 8 == (char *)frame, "Got unexpected frame %p.\n", frame);
         ok(*(void **)frame == (char *)code_mem + 5, "Got unexpected *frame %p.\n", *(void **)frame);
-        ok(context->Rip == (ULONG_PTR)((char *)code_mem + 7), "Got unexpected Rip %#Ix.\n", context->Rip);
+        ok(context->Rip == (ULONG_PTR)((char *)code_mem + 14), "Got unexpected Rip %#Ix.\n", context->Rip);
 
-        nested_exception_initial_frame = frame;
+        nested_exception_crash_frame = frame;
         RaiseException(0xdeadbeef, 0, 0, 0);
         ++context->Rip;
         return ExceptionContinueExecution;
@@ -5508,16 +5505,44 @@ static DWORD nested_exception_handler(EXCEPTION_RECORD *rec, EXCEPTION_REGISTRAT
     {
         ok(!rec->NumberParameters, "Got unexpected rec->NumberParameters %lu.\n", rec->NumberParameters);
         got_nested_exception = TRUE;
-        ok(frame == nested_exception_initial_frame, "Got unexpected frame %p.\n", frame);
+        ok(frame == nested_exception_crash_frame, "Got unexpected frame %p.\n", frame);
         return ExceptionContinueSearch;
     }
 
     ok(rec->ExceptionCode == 0xdeadbeef && (!rec->ExceptionFlags || rec->ExceptionFlags == EXCEPTION_SOFTWARE_ORIGINATE),
             "Got unexpected exception code %#lx, flags %#lx.\n", rec->ExceptionCode, rec->ExceptionFlags);
     ok(!rec->NumberParameters, "Got unexpected rec->NumberParameters %lu.\n", rec->NumberParameters);
-    ok(frame == (void *)((BYTE *)nested_exception_initial_frame + 8),
+    ok(frame == (void *)((BYTE *)nested_exception_crash_frame + 8),
             "Got unexpected frame %p.\n", frame);
     got_prev_frame_exception = TRUE;
+    return ExceptionContinueExecution;
+}
+
+static DWORD nested_exception_handler2(EXCEPTION_RECORD *rec, EXCEPTION_REGISTRATION_RECORD *frame,
+        CONTEXT *context, EXCEPTION_REGISTRATION_RECORD **dispatcher)
+{
+    trace("nested_exception_handler2 Rip %p, Rsp %p, code %#lx, flags %#lx, ExceptionAddress %p, frame %p.\n",
+            (void *)context->Rip, (void *)context->Rsp, rec->ExceptionCode, rec->ExceptionFlags,
+            rec->ExceptionAddress, frame);
+
+    ok(rec->ExceptionCode == 0x80000003, "got %#lx.\n", rec->ExceptionCode);
+    if (!nested_exception_initial_frame)
+        nested_exception_initial_frame = frame;
+    if (nested_exception_initial_frame == frame)
+    {
+        ((DISPATCHER_CONTEXT *)dispatcher)->EstablisherFrame = (ULONG_PTR)nested_exception_initial_frame + 0x10;
+        ok(!(rec->ExceptionFlags & EXCEPTION_NESTED_CALL), "got %#lx.\n", rec->ExceptionFlags);
+        return ExceptionNestedException;
+    }
+    if ((char *)frame == (char *)nested_exception_initial_frame + 0x8)
+    {
+        ok((rec->ExceptionFlags & EXCEPTION_NESTED_CALL), "got %#lx.\n", rec->ExceptionFlags);
+        return ExceptionContinueSearch;
+    }
+    ok((char *)frame == (char *)nested_exception_initial_frame + 0x10, "got frame %p, nested_exception_initial_frame %p.\n",
+            frame, nested_exception_initial_frame);
+    ok((rec->ExceptionFlags & EXCEPTION_NESTED_CALL), "got %#lx.\n", rec->ExceptionFlags);
+    ++context->Rip;
     return ExceptionContinueExecution;
 }
 
@@ -5527,6 +5552,10 @@ static const BYTE nested_except_code[] =
     0x90,                         /* nop */
     0xc3,                         /* ret */
     /* nest: */
+    0xe8, 0x02, 0x00, 0x00, 0x00, /* call nest2 */
+    0x90,                         /* nop */
+    0xc3,                         /* ret */
+    /* nest2: */
     0xcc,                         /* int3 */
     0x90,                         /* nop */
     0xc3,                         /* ret  */
@@ -5535,9 +5564,13 @@ static const BYTE nested_except_code[] =
 static void test_nested_exception(void)
 {
     got_nested_exception = got_prev_frame_exception = FALSE;
+    nested_exception_initial_frame = NULL;
     run_exception_test(nested_exception_handler, NULL, nested_except_code, sizeof(nested_except_code), PAGE_EXECUTE_READ);
     ok(got_nested_exception, "Did not get nested exception.\n");
     ok(got_prev_frame_exception, "Did not get nested exception in the previous frame.\n");
+
+    nested_exception_initial_frame = NULL;
+    run_exception_test(nested_exception_handler2, NULL, nested_except_code, sizeof(nested_except_code), PAGE_EXECUTE_READ);
 }
 
 static unsigned int collided_unwind_exception_count;
@@ -5563,7 +5596,7 @@ static DWORD collided_exception_handler(EXCEPTION_RECORD *rec, EXCEPTION_REGISTR
         case 1:
             ok(rec->ExceptionCode == STATUS_UNWIND, "got %#lx.\n", rec->ExceptionCode);
             ok(rec->ExceptionFlags == EXCEPTION_UNWINDING, "got %#lx.\n", rec->ExceptionFlags);
-            ok((char *)context->Rip == (char *)code_mem + 7, "got %p.\n", rec->ExceptionAddress);
+            ok((char *)context->Rip == (char *)code_mem + 14, "got %p, expected %p.\n", (char *)context->Rip, (char *)code_mem + 14);
             /* generate exception in unwind handler. */
             RaiseException(0xdeadbeef, 0, 0, 0);
             ok(0, "shouldn't be reached\n");
@@ -6300,6 +6333,37 @@ static void test_user_callback_context(void)
     UnregisterClassA(cls.lpszClassName, GetModuleHandleA(0));
 }
 
+static void test_base_init_thunk_unwind(void)
+{
+    static const BYTE thread_proc_code[] =
+    {
+        /* buffer offset 2 */
+        0x49, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0,         /* movabs imm64,%r8 */
+        0x48, 0x31, 0xc9,                           /* xor %rcx,%rcx */
+        0x48, 0xc7, 0xc2, 0x00, 0x01, 0x00, 0x00,   /* mov $256,%rdx */
+        0x4d, 0x31, 0xc9,                           /* xor %r9,%r9 */
+        0x48, 0x31, 0xed,                           /* xor %rbp,%rbp */
+        /* RtlCaptureStackBackTrace offset 28  */
+        0x48, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0,         /* movabs RtlCaptureStackBackTrace, %rax */
+        0xff, 0xe0,                                 /* jmpq *%rax */
+    };
+    static void *addrs[256];
+    HANDLE thread;
+    BOOL bret;
+    DWORD count;
+
+    memset( addrs, 0xcc, sizeof(addrs) );
+    memcpy( code_mem, thread_proc_code, sizeof(thread_proc_code) );
+    *(void **)((char *)code_mem + 2) = addrs;
+    *(void **)((char *)code_mem + 28) = RtlCaptureStackBackTrace;
+    thread = CreateThread( NULL, 0, code_mem, NULL, 0, NULL );
+    WaitForSingleObject( thread, INFINITE );
+    bret = GetExitCodeThread( thread, &count );
+    CloseHandle( thread );
+    ok( bret, "got error %lu.\n", GetLastError() );
+    ok( count == 2, "got count %lu.\n", count );
+}
+
 #elif defined(__arm__)
 
 static void test_thread_context(void)
@@ -6643,11 +6707,7 @@ static void test_debugger(DWORD cont_status, BOOL with_WaitForDebugEventEx)
 
     } while (de.dwDebugEventCode != EXIT_PROCESS_DEBUG_EVENT);
 
-    wait_child_process( pi.hProcess );
-    ret = CloseHandle(pi.hThread);
-    ok(ret, "error %lu\n", GetLastError());
-    ret = CloseHandle(pi.hProcess);
-    ok(ret, "error %lu\n", GetLastError());
+    wait_child_process( &pi );
 }
 
 static void test_debug_service(DWORD numexc)
@@ -7810,11 +7870,7 @@ static void test_debugger(DWORD cont_status, BOOL with_WaitForDebugEventEx)
 
     } while (de.dwDebugEventCode != EXIT_PROCESS_DEBUG_EVENT);
 
-    wait_child_process( pi.hProcess );
-    ret = CloseHandle(pi.hThread);
-    ok(ret, "error %lu\n", GetLastError());
-    ret = CloseHandle(pi.hProcess);
-    ok(ret, "error %lu\n", GetLastError());
+    wait_child_process( &pi );
 }
 
 static void test_debug_service(DWORD numexc)
@@ -9494,11 +9550,7 @@ static void subtest_fastfail(unsigned int code)
 
     ok(had_ff || broken(had_se) /* Win7 */, "fast fail did not occur\n");
 
-    wait_child_process( pi.hProcess );
-    ret = CloseHandle(pi.hThread);
-    ok(ret, "error %lu\n", GetLastError());
-    ret = CloseHandle(pi.hProcess);
-    ok(ret, "error %lu\n", GetLastError());
+    wait_child_process( &pi );
 
     return;
 }
@@ -10105,10 +10157,7 @@ static void test_suspend_process(void)
 
     SetEvent(event);
 
-    wait_child_process(info.hProcess);
-
-    CloseHandle(info.hProcess);
-    CloseHandle(info.hThread);
+    wait_child_process( &info );
 
     CloseHandle(event);
     CloseHandle(event2);
@@ -12544,6 +12593,7 @@ START_TEST(exception)
     test_instrumentation_callback();
     test_direct_syscalls();
     test_single_step_address();
+    test_base_init_thunk_unwind();
 
 #elif defined(__aarch64__)
 

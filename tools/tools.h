@@ -52,6 +52,9 @@
 # ifndef S_ISREG
 #  define S_ISREG(mod) (((mod) & _S_IFMT) == _S_IFREG)
 # endif
+# ifndef S_ISDIR
+#  define S_ISDIR(mod) (((mod) & _S_IFMT) == _S_IFDIR)
+# endif
 # ifdef _MSC_VER
 #  define popen _popen
 #  define pclose _pclose
@@ -111,6 +114,20 @@ struct target
         PLATFORM_CYGWIN
     } platform;
 };
+
+static void fatal_perror( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2), noreturn));
+static inline void fatal_perror( const char *msg, ... )
+{
+    va_list valist;
+
+    va_start( valist, msg );
+    fprintf( stderr, "error: " );
+    vfprintf( stderr, msg, valist );
+    perror( " " );
+    va_end( valist );
+    exit(1);
+}
+
 
 static inline void *xmalloc( size_t size )
 {
@@ -402,12 +419,11 @@ static inline char *build_relative_path( const char *base, const char *from, con
 extern const char *temp_dir;
 extern struct strarray temp_files;
 
-static inline char *make_temp_dir(void)
+static inline char *make_temp_dir( const char *tmpdir )
 {
     unsigned int value = time(NULL) + getpid();
     int count;
     char *name;
-    const char *tmpdir = NULL;
 
     for (count = 0; count < 0x8000; count++)
     {
@@ -421,6 +437,7 @@ static inline char *make_temp_dir(void)
         {
             if (!(tmpdir = getenv("TMPDIR"))) tmpdir = "/tmp";
         }
+        else if (errno != EEXIST) fatal_perror( "cannot create directory in %s", tmpdir ? tmpdir : "." );
         free( name );
     }
     fprintf( stderr, "failed to create directory for temp files\n" );
@@ -433,7 +450,7 @@ static inline char *make_temp_file( const char *prefix, const char *suffix )
     int fd, count;
     char *name;
 
-    if (!temp_dir) temp_dir = make_temp_dir();
+    if (!temp_dir) temp_dir = make_temp_dir( NULL );
     if (!suffix) suffix = "";
     if (!prefix) prefix = "tmp";
     else prefix = get_basename_noext( prefix );
@@ -480,6 +497,29 @@ static inline void init_signals( void (*cleanup)(int) )
 #ifdef SIGHUP
     signal( SIGHUP, cleanup );
 #endif
+}
+
+
+static inline void mkdir_p( const char *dir )
+{
+    char *p, *path;
+
+    if (!dir[0]) return;
+
+    path = xstrdup( dir );
+    for (p = path + 1; (p = strchr( p, '/' )); p++)
+    {
+        *p = 0;
+        if (mkdir( path, 0755 ) == -1 && errno != EEXIST) fatal_perror( "mkdir %s", path );
+        *p = '/';
+    }
+    if (mkdir( path, 0755 ) == -1)
+    {
+        struct stat st;
+        if (errno != EEXIST || stat( path, &st ) || !S_ISDIR( st.st_mode ))
+            fatal_perror( "cannot create %s", path );
+    }
+    free( path );
 }
 
 

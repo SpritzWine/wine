@@ -401,7 +401,9 @@ extern "C" {
 
 /* Compile time assertion */
 
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 202311L)
+#define C_ASSERT(e) static_assert(e, #e)
+#elif defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
 #define C_ASSERT(e) _Static_assert(e, #e)
 #else
 #define C_ASSERT(e) extern void __C_ASSERT__(int [(e)?1:-1])
@@ -2560,14 +2562,20 @@ static FORCEINLINE struct _TEB * WINAPI NtCurrentTeb(void)
 #define IO_REPARSE_TAG_CLOUD_F          __MSABI_LONG(0x9000F01A)
 #define IO_REPARSE_TAG_CLOUD_MASK       __MSABI_LONG(0x0000F000)
 #define IO_REPARSE_TAG_APPEXECLINK      __MSABI_LONG(0x8000001B)
-#define IO_REPARSE_TAG_GVFS             __MSABI_LONG(0x9000001C)
+#define IO_REPARSE_TAG_PROJFS           __MSABI_LONG(0x9000001C)
 #define IO_REPARSE_TAG_STORAGE_SYNC     __MSABI_LONG(0x8000001E)
 #define IO_REPARSE_TAG_WCI_TOMBSTONE    __MSABI_LONG(0xA000001F)
 #define IO_REPARSE_TAG_UNHANDLED        __MSABI_LONG(0x80000020)
 #define IO_REPARSE_TAG_ONEDRIVE         __MSABI_LONG(0x80000021)
-#define IO_REPARSE_TAG_GVFS_TOMBSTONE   __MSABI_LONG(0xA0000022)
+#define IO_REPARSE_TAG_PROJFS_TOMBSTONE __MSABI_LONG(0xA0000022)
+#define IO_REPARSE_TAG_AF_UNIX          __MSABI_LONG(0x80000023)
+#define IO_REPARSE_TAG_WCI_LINK         __MSABI_LONG(0xA0000027)
+#define IO_REPARSE_TAG_WCI_LINK_1       __MSABI_LONG(0xA0001027)
+#define IO_REPARSE_TAG_DATALESS_CIM     __MSABI_LONG(0xA0000028)
 
+#define IsReparseTagDirectory(x)        ((x) & 0x10000000)
 #define IsReparseTagNameSurrogate(x)    ((x) & 0x20000000)
+#define IsReparseTagMicrosoft(x)        ((x) & 0x80000000)
 
 /*
  * File formats definitions
@@ -4334,7 +4342,7 @@ typedef struct _ACL {
 
 typedef enum _ACL_INFORMATION_CLASS
 {
-  AclRevisionInformation = 1, 
+  AclRevisionInformation = 1,
   AclSizeInformation
 } ACL_INFORMATION_CLASS;
 
@@ -6235,6 +6243,14 @@ NTSYSAPI DWORD WINAPI RtlRunOnceBeginInitialize(PRTL_RUN_ONCE, DWORD, PVOID*);
 NTSYSAPI DWORD WINAPI RtlRunOnceComplete(PRTL_RUN_ONCE, DWORD, PVOID);
 NTSYSAPI WORD WINAPI RtlCaptureStackBackTrace(DWORD,DWORD,void**,DWORD*);
 
+typedef struct _RTL_BARRIER {
+    DWORD Reserved1;
+    DWORD Reserved2;
+    ULONG_PTR Reserved3[2];
+    DWORD Reserved4;
+    DWORD Reserved5;
+} RTL_BARRIER, *PRTL_BARRIER;
+
 #pragma pack(push,8)
 typedef struct _IO_COUNTERS {
     ULONGLONG ReadOperationCount;
@@ -7195,6 +7211,11 @@ static FORCEINLINE void WriteNoFence( LONG volatile *dest, LONG value )
     __WINE_STORE32_NO_FENCE( (int volatile *)dest, value );
 }
 
+static FORCEINLINE void WriteNoFence64( LONG64 volatile *dest, LONG64 value )
+{
+    __WINE_STORE64_NO_FENCE( (__int64 volatile *)dest, value );
+}
+
 #elif defined(__GNUC__)
 
 static FORCEINLINE BOOLEAN WINAPI BitScanForward(DWORD *index, DWORD mask)
@@ -7411,6 +7432,15 @@ static FORCEINLINE void WriteNoFence( LONG volatile *dest, LONG value )
     __WINE_ATOMIC_STORE_RELAXED( dest, &value );
 }
 
+static FORCEINLINE void WriteNoFence64( LONG64 volatile *dest, LONG64 value )
+{
+#ifdef __i386__
+    __asm__ __volatile__( "fildq %1\n\tfistpq %0" : "=m" (*dest) : "m" (value) : "memory", "st" );
+#else
+    __WINE_ATOMIC_STORE_RELAXED( dest, &value );
+#endif
+}
+
 static FORCEINLINE DECLSPEC_NORETURN void __fastfail(unsigned int code)
 {
 #if defined(__x86_64__) || defined(__i386__)
@@ -7457,12 +7487,68 @@ static FORCEINLINE unsigned char InterlockedCompareExchange128( volatile __int64
 #define InterlockedDecrementSizeT(a) InterlockedDecrement64((LONGLONG *)(a))
 #define InterlockedExchangeAddSizeT(a, b) InterlockedExchangeAdd64((LONGLONG *)(a), (b))
 #define InterlockedIncrementSizeT(a) InterlockedIncrement64((LONGLONG *)(a))
+#define ReadLongPtrAcquire   ReadAcquire64
+#define ReadLongPtrNoFence   ReadNoFence64
+#define ReadULongPtrAcquire  ReadULong64Acquire
+#define ReadULongPtrNoFence  ReadULong64NoFence
+#define WriteLongPtrRelease  WriteRelease64
+#define WriteLongPtrNoFence  WriteNoFence64
+#define WriteULongPtrRelease WriteULong64Release
+#define WriteULongPtrNoFence WriteULong64NoFence
+
+static FORCEINLINE void *ReadPointerAcquire( void* const volatile *src )
+{
+    return (void *)ReadAcquire64( (const volatile LONG64 *)src );
+}
+
+static FORCEINLINE void *ReadPointerNoFence( void* const volatile *src )
+{
+    return (void *)ReadNoFence64( (const volatile LONG64 *)src );
+}
+
+static FORCEINLINE void WritePointerRelease( void* volatile *dest, void* value )
+{
+    WriteRelease64( (volatile LONG64 *)dest, (LONG64)value );
+}
+
+static FORCEINLINE void WritePointerNoFence( void* volatile *dest, void* value )
+{
+    WriteNoFence64( (volatile LONG64 *)dest, (LONG64)value );
+}
 
 #else /* _WIN64 */
 
 #define InterlockedDecrementSizeT(a) InterlockedDecrement((LONG *)(a))
 #define InterlockedExchangeAddSizeT(a, b) InterlockedExchangeAdd((LONG *)(a), (b))
 #define InterlockedIncrementSizeT(a) InterlockedIncrement((LONG *)(a))
+#define ReadLongPtrAcquire   ReadAcquire
+#define ReadLongPtrNoFence   ReadNoFence
+#define ReadULongPtrAcquire  ReadULongAcquire
+#define ReadULongPtrNoFence  ReadULongNoFence
+#define WriteLongPtrRelease  WriteRelease
+#define WriteLongPtrNoFence  WriteNoFence
+#define WriteULongPtrRelease WriteULongRelease
+#define WriteULongPtrNoFence WriteULongNoFence
+
+static FORCEINLINE void *ReadPointerAcquire( void* const volatile *src )
+{
+    return (void *)ReadAcquire( (const volatile LONG *)src );
+}
+
+static FORCEINLINE void *ReadPointerNoFence( void* const volatile *src )
+{
+    return (void *)ReadNoFence( (const volatile LONG *)src );
+}
+
+static FORCEINLINE void WritePointerRelease( void* volatile *dest, void* value )
+{
+    WriteRelease( (volatile LONG *)dest, (LONG)value );
+}
+
+static FORCEINLINE void WritePointerNoFence( void* volatile *dest, void* value )
+{
+    WriteNoFence( (volatile LONG *)dest, (LONG)value );
+}
 
 #endif /* _WIN64 */
 

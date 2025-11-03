@@ -802,8 +802,7 @@ static inline int get_hardware_msg_bit( unsigned int message )
     if (message == WM_INPUT_DEVICE_CHANGE || message == WM_INPUT) return QS_RAWINPUT;
     if (message == WM_MOUSEMOVE || message == WM_NCMOUSEMOVE) return QS_MOUSEMOVE;
     if (message >= WM_KEYFIRST && message <= WM_KEYLAST) return QS_KEY;
-    if (message == WM_WINE_CLIPCURSOR) return QS_RAWINPUT;
-    if (message == WM_WINE_SETCURSOR) return QS_RAWINPUT;
+    if (message >= WM_WINE_FIRST_DRIVER_MSG && message <= WM_WINE_LAST_DRIVER_MSG) return QS_HARDWARE;
     return QS_MOUSEBUTTON;
 }
 
@@ -1416,16 +1415,6 @@ static int check_queue_input_window( struct msg_queue *queue, user_handle_t wind
     return ret;
 }
 
-/* check if the thread queue is idle and set the process idle event if so */
-void check_thread_queue_idle( struct thread *thread )
-{
-    struct msg_queue *queue = thread->queue;
-    queue_shm_t *queue_shm = queue->shared;
-
-    if ((queue_shm->wake_mask & QS_SMRESULT)) return;
-    if (thread->process->idle_event) set_event( thread->process->idle_event );
-}
-
 /* make sure the specified thread has a queue */
 int init_thread_queue( struct thread *thread )
 {
@@ -1769,7 +1758,6 @@ static void release_hardware_message( struct msg_queue *queue, unsigned int hw_i
         }
     }
     if (clr_bit) clear_queue_bits( queue, clr_bit );
-    if (list_empty( &input->msg_list )) clear_queue_bits( queue, QS_HARDWARE );
 
     update_thread_input_key_state( input, msg->msg, msg->wparam );
     list_remove( &msg->entry );
@@ -1828,6 +1816,7 @@ static user_handle_t find_hardware_message_window( struct desktop *desktop, stru
     {
     case QS_POINTER:
     case QS_RAWINPUT:
+    case QS_HARDWARE:
         if (!(win = msg->win) && input) win = input_shm->focus;
         break;
     case QS_KEY:
@@ -1954,7 +1943,7 @@ static void queue_hardware_message( struct desktop *desktop, struct message *msg
     {
         msg->unique_id = 0;  /* will be set once we return it to the app */
         list_add_tail( &input->msg_list, &msg->entry );
-        set_queue_bits( thread->queue, QS_HARDWARE | msg_bit );
+        set_queue_bits( thread->queue, msg_bit );
     }
     release_object( thread );
 }
@@ -2692,12 +2681,6 @@ static int check_hw_message_filter( user_handle_t win, unsigned int msg_code,
     }
 }
 
-/* is this message an internal driver notification message */
-static inline BOOL is_internal_hardware_message( unsigned int message )
-{
-    return (message >= WM_WINE_FIRST_DRIVER_MSG && message <= WM_WINE_LAST_DRIVER_MSG);
-}
-
 /* find a hardware message for the given queue */
 static int get_hardware_message( struct thread *thread, unsigned int hw_id, user_handle_t filter_win,
                                  unsigned int first, unsigned int last, unsigned int flags,
@@ -2728,7 +2711,7 @@ static int get_hardware_message( struct thread *thread, unsigned int hw_id, user
     }
 
     if (ptr == list_head( &input->msg_list ))
-        clear_bits = QS_INPUT;
+        clear_bits = QS_INPUT | QS_HARDWARE;
     else
         clear_bits = 0;  /* don't clear bits if we don't go through the whole list */
 
@@ -2759,7 +2742,7 @@ static int get_hardware_message( struct thread *thread, unsigned int hw_id, user
             if (win_thread->queue->input == input)
             {
                 /* wake the other thread */
-                set_queue_bits( win_thread->queue, QS_HARDWARE | msg_bit );
+                set_queue_bits( win_thread->queue, msg_bit );
                 got_one = 1;
             }
             else
@@ -2802,13 +2785,14 @@ static int get_hardware_message( struct thread *thread, unsigned int hw_id, user
 
         data->hw_id = msg->unique_id;
         set_reply_data( msg->data, msg->data_size );
-        if ((get_hardware_msg_bit( msg->msg ) & (QS_RAWINPUT | QS_POINTER) && (flags & PM_REMOVE)) ||
-            is_internal_hardware_message( msg->msg ))
-            release_hardware_message( current->queue, data->hw_id );
+
+        if (msg_bit == QS_HARDWARE) flags |= PM_REMOVE; /* always remove internal hardware messages right away */
+        else if (!(msg_bit & (QS_RAWINPUT | QS_POINTER))) flags &= ~PM_REMOVE; /* wait for accept_hardware_message request */
+        if (flags & PM_REMOVE) release_hardware_message( current->queue, data->hw_id );
         return 1;
     }
     /* nothing found, clear the hardware queue bits */
-    clear_queue_bits( thread->queue, QS_HARDWARE | clear_bits );
+    if (clear_bits) clear_queue_bits( thread->queue, clear_bits );
     return 0;
 }
 
@@ -3057,9 +3041,12 @@ DECL_HANDLER(is_window_hung)
 DECL_HANDLER(get_msg_queue_handle)
 {
     struct msg_queue *queue = get_current_queue();
+    struct process *process = current->process;
+    struct event *event;
 
     reply->handle = 0;
-    if (queue) reply->handle = alloc_handle( current->process, queue, SYNCHRONIZE, 0 );
+    if (queue) reply->handle = alloc_handle( process, queue, SYNCHRONIZE, 0 );
+    if ((event = process->idle_event)) reply->idle_event = alloc_handle( process, event, GENERIC_ALL, 0 );
 }
 
 
@@ -3113,7 +3100,6 @@ DECL_HANDLER(set_queue_mask)
         if (!queue->fd) return;
         clear_queue_bits( queue, QS_DRIVER );
         set_fd_events( queue->fd, POLLIN );
-        return;
     }
 
     SHARED_WRITE_BEGIN( queue_shm, queue_shm_t )
@@ -3395,12 +3381,8 @@ DECL_HANDLER(get_message)
         reply->wparam = timer->id;
         reply->lparam = timer->lparam;
         get_message_defaults( queue, &reply->x, &reply->y, &reply->time );
-        if (!(req->flags & PM_NOYIELD) && current->process->idle_event)
-            set_event( current->process->idle_event );
         return;
     }
-
-    if (get_win == -1 && current->process->idle_event) set_event( current->process->idle_event );
 
     SHARED_WRITE_BEGIN( queue_shm, queue_shm_t )
     {
@@ -4070,7 +4052,7 @@ DECL_HANDLER(get_rawinput_buffer)
 {
     const size_t align = is_machine_64bit( current->process->machine ) ? 7 : 3;
     data_size_t buffer_size = get_reply_max_size() & ~align;
-    struct thread_input *input = current->queue->input;
+    struct msg_queue *queue = current->queue;
     struct message *msg, *next_msg;
     int count = 0;
     char *buffer;
@@ -4083,7 +4065,7 @@ DECL_HANDLER(get_rawinput_buffer)
 
     if (!req->read_data)
     {
-        LIST_FOR_EACH_ENTRY( msg, &input->msg_list, struct message, entry )
+        LIST_FOR_EACH_ENTRY( msg, &queue->input->msg_list, struct message, entry )
         {
             if (msg->msg == WM_INPUT)
             {
@@ -4101,7 +4083,7 @@ DECL_HANDLER(get_rawinput_buffer)
 
         reply->next_size = get_reply_max_size();
 
-        LIST_FOR_EACH_ENTRY_SAFE( msg, next_msg, &input->msg_list, struct message, entry )
+        LIST_FOR_EACH_ENTRY_SAFE( msg, next_msg, &queue->input->msg_list, struct message, entry )
         {
             if (msg->msg == WM_INPUT)
             {
@@ -4131,6 +4113,7 @@ DECL_HANDLER(get_rawinput_buffer)
 
         if (!next_size)
         {
+            clear_queue_bits( queue, QS_RAWINPUT );
             if (count) next_size = sizeof(RAWINPUT);
             else reply->next_size = 0;
         }

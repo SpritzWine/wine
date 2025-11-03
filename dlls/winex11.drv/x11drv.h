@@ -231,7 +231,7 @@ extern void X11DRV_SetDesktopWindow( HWND hwnd );
 extern void X11DRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha,
                                                DWORD flags );
 extern void X11DRV_SetParent( HWND hwnd, HWND parent, HWND old_parent );
-extern void X11DRV_SetWindowIcon( HWND hwnd, UINT type, HICON icon );
+extern void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON icon_small, const ICONINFO *ii_small );
 extern void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw );
 extern void X11DRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style );
 extern void X11DRV_SetWindowText( HWND hwnd, LPCWSTR text );
@@ -243,7 +243,7 @@ extern void X11DRV_UpdateLayeredWindow( HWND hwnd, BYTE alpha, UINT flags );
 extern LRESULT X11DRV_WindowMessage( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp );
 extern BOOL X11DRV_WindowPosChanging( HWND hwnd, UINT swp_flags, BOOL shaped, const struct window_rects *rects );
 extern BOOL X11DRV_GetWindowStyleMasks( HWND hwnd, UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask );
-extern BOOL X11DRV_GetWindowStateUpdates( HWND hwnd, UINT *state_cmd, UINT *config_cmd, RECT *rect, HWND *foreground );
+extern BOOL X11DRV_GetWindowStateUpdates( HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground );
 extern BOOL X11DRV_CreateWindowSurface( HWND hwnd, BOOL layered, const RECT *surface_rect, struct window_surface **surface );
 extern void X11DRV_MoveWindowBits( HWND hwnd, const struct window_rects *old_rects,
                                    const struct window_rects *new_rects, const RECT *valid_rects );

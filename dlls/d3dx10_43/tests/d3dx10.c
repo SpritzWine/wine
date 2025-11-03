@@ -1042,7 +1042,7 @@ static const struct test_image_load_info
                 (D3D10_BIND_SHADER_RESOURCE | D3D10_BIND_RENDER_TARGET), 0,
                 (D3D10_RESOURCE_MISC_GENERATE_MIPS | D3D10_RESOURCE_MISC_TEXTURECUBE)
             }
-        }, .todo_resource_desc = TRUE,
+        }
     },
     /*
      * Pass in different dimensions and texture format than the source image.
@@ -1096,7 +1096,7 @@ static const struct test_invalid_image_load_info
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, (D3D10_USAGE)D3DX10_DEFAULT,
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, 7,              D3DX10_DEFAULT
         },
-        D3DERR_INVALIDCALL, D3DERR_INVALIDCALL, .todo_hr = TRUE, .todo_process_hr = TRUE
+        D3DERR_INVALIDCALL, D3DERR_INVALIDCALL
     },
     /* Invalid mipfilter value, only validated if mips are generated. */
     {
@@ -1114,7 +1114,7 @@ static const struct test_invalid_image_load_info
             2,              2,              D3DX10_DEFAULT, D3DX10_DEFAULT, 2,              (D3D10_USAGE)D3DX10_DEFAULT,
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, 7
         },
-        D3DERR_INVALIDCALL, D3DERR_INVALIDCALL, .todo_hr = TRUE, .todo_process_hr = TRUE
+        D3DERR_INVALIDCALL, D3DERR_INVALIDCALL
     },
     /*
      * Usage/BindFlags/CpuAccessFlags are validated in the call to
@@ -1126,7 +1126,7 @@ static const struct test_invalid_image_load_info
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3D10_CPU_ACCESS_READ, D3D10_USAGE_DYNAMIC,
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT
         },
-        E_INVALIDARG, S_OK, E_INVALIDARG, .todo_hr = TRUE, .todo_create_device_object_hr = TRUE,
+        E_INVALIDARG, S_OK, E_INVALIDARG
     },
     /* 5. */
     {
@@ -1135,7 +1135,7 @@ static const struct test_invalid_image_load_info
             D3DX10_DEFAULT,           D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3D10_USAGE_DEFAULT,
             D3D10_BIND_DEPTH_STENCIL, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT
         },
-        E_INVALIDARG, S_OK, E_INVALIDARG, .todo_hr = TRUE, .todo_create_device_object_hr = TRUE,
+        E_INVALIDARG, S_OK, E_INVALIDARG
     },
     /*
      * D3D10_RESOURCE_MISC_GENERATE_MIPS requires binding as a shader resource
@@ -1147,7 +1147,7 @@ static const struct test_invalid_image_load_info
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT,    D3DX10_DEFAULT, D3D10_USAGE_DEFAULT,
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3D10_RESOURCE_MISC_GENERATE_MIPS, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT
         },
-        E_INVALIDARG, S_OK, E_INVALIDARG, .todo_hr = TRUE, .todo_create_device_object_hr = TRUE,
+        E_INVALIDARG, S_OK, E_INVALIDARG
     },
     /* Can't set the cube texture flag if the image isn't a cube texture. */
     {
@@ -1156,7 +1156,7 @@ static const struct test_invalid_image_load_info
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT,  D3DX10_DEFAULT, D3D10_USAGE_DEFAULT,
             D3DX10_DEFAULT, D3DX10_DEFAULT, D3D10_RESOURCE_MISC_TEXTURECUBE, D3DX10_DEFAULT, D3DX10_DEFAULT, D3DX10_DEFAULT
         },
-        E_INVALIDARG, S_OK, E_INVALIDARG, .todo_hr = TRUE, .todo_create_device_object_hr = TRUE,
+        E_INVALIDARG, S_OK, E_INVALIDARG
     },
 };
 
@@ -1978,7 +1978,6 @@ static void check_resource_info(ID3D10Resource *resource, const struct test_imag
             ok_(__FILE__, line)(desc_2d.Height == expected_height,
                     "Got unexpected Height %u, expected %u.\n",
                      desc_2d.Height, expected_height);
-            todo_wine_if(expected_mip_levels != image->expected_info.MipLevels)
             ok_(__FILE__, line)(desc_2d.MipLevels == expected_mip_levels,
                     "Got unexpected MipLevels %u, expected %u.\n",
                      desc_2d.MipLevels, expected_mip_levels);
@@ -4293,7 +4292,7 @@ static void test_create_texture(void)
         for (mip_level = 0; mip_level < 4; ++mip_level)
         {
             winetest_push_context("MipLevel %u", mip_level);
-            todo_wine_if(i && mip_level != 3) check_texture_sub_resource_u32(tex_2d, mip_level, NULL,
+            check_texture_sub_resource_u32(tex_2d, mip_level, NULL,
                     dds_24bit_8_8_mip_level_expected[min(3, mip_level + i)]);
             winetest_pop_context();
         }

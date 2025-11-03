@@ -128,6 +128,7 @@
 @ stdcall CoInitializeWOW(long long)
 @ stub CoInvalidateRemoteMachineBindings
 @ stdcall CoIsHandlerConnected(ptr)
+@ stdcall CoIsOle1Class(ptr)
 @ stdcall CoLockObjectExternal(ptr long long)
 @ stdcall CoMarshalHresult(ptr long)
 @ stdcall CoMarshalInterThreadInterfaceInStream(ptr ptr ptr)
@@ -164,6 +165,7 @@
 @ stdcall CoTaskMemFree(ptr)
 @ stdcall CoTaskMemRealloc(ptr long)
 @ stub CoTestCancel
+@ stdcall CoTreatAsClass(ptr ptr)
 @ stdcall CoUninitialize()
 @ stub CoUnloadingWOW
 @ stdcall CoUnmarshalHresult(ptr ptr)

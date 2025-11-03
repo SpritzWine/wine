@@ -79,8 +79,6 @@
 #include "winnls.h"
 #include "commctrl.h"
 #include "comctl32.h"
-#include "uxtheme.h"
-#include "vssym32.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(toolbar);
@@ -5117,14 +5115,7 @@ TOOLBAR_SetColorScheme (TOOLBAR_INFO *infoPtr, const COLORSCHEME *lParam)
 static LRESULT
 TOOLBAR_SetVersion (TOOLBAR_INFO *infoPtr, INT iVersion)
 {
-    INT iOldVersion = infoPtr->iVersion;
-
-    infoPtr->iVersion = iVersion;
-
-    if (infoPtr->iVersion >= 5)
-        TOOLBAR_SetUnicodeFormat(infoPtr, TRUE);
-
-    return iOldVersion;
+    return COMCTL32_SetVersion(&infoPtr->iVersion, iVersion);
 }
 
 
@@ -6060,7 +6051,11 @@ TOOLBAR_NCCreate (HWND hwnd, WPARAM wParam, const CREATESTRUCTW *lpcs)
     infoPtr->dwDTFlags = (lpcs->style & TBSTYLE_LIST) ? DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS: DT_CENTER | DT_END_ELLIPSIS;
     infoPtr->bAnchor = FALSE; /* no anchor highlighting */
     infoPtr->bDragOutSent = FALSE;
+#if __WINE_COMCTL32_VERSION == 6
+    infoPtr->iVersion = 6;
+#else
     infoPtr->iVersion = 0;
+#endif
     infoPtr->hwndSelf = hwnd;
     infoPtr->bDoRedraw = TRUE;
     infoPtr->clrBtnHighlight = CLR_DEFAULT;

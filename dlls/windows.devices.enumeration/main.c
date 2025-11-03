@@ -510,6 +510,8 @@ static HRESULT WINAPI devpropcompkeys_append_names( DEVPROPCOMPKEY **ret_keys, U
 
     if (FAILED(hr = count_iterable( names_iterable, &count ))) return hr;
     if (!(keys = realloc( *ret_keys, (keys_len + count) * sizeof( *keys ) ))) return E_OUTOFMEMORY;
+    *ret_keys = NULL;
+    *ret_keys_len = 0;
 
     if (FAILED(hr = IIterable_HSTRING_First( names_iterable, &names ))) return hr;
     for (hr = IIterator_HSTRING_get_HasCurrent( names, &valid ); SUCCEEDED( hr ) && valid; hr = IIterator_HSTRING_MoveNext( names, &valid ))
@@ -527,7 +529,7 @@ static HRESULT WINAPI devpropcompkeys_append_names( DEVPROPCOMPKEY **ret_keys, U
         WindowsDeleteString( name );
         if (FAILED(hr)) break;
         /* DevGetObjects(Ex) will not de-duplicate properties, so we need to do it ourselves. */
-        if (!devpropcompkey_buf_find_devpropkey( *ret_keys, keys_len, key.Key ))
+        if (!devpropcompkey_buf_find_devpropkey( keys, keys_len, key.Key ))
             keys[keys_len++] = key;
     }
 

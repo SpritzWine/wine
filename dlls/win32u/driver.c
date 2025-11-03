@@ -834,7 +834,7 @@ static void nulldrv_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
 {
 }
 
-static void nulldrv_SetWindowIcon( HWND hwnd, UINT type, HICON icon )
+static void nulldrv_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON icon_small, const ICONINFO *ii_small )
 {
 }
 
@@ -875,7 +875,7 @@ static BOOL nulldrv_GetWindowStyleMasks( HWND hwnd, UINT style, UINT ex_style, U
     return FALSE;
 }
 
-static BOOL nulldrv_GetWindowStateUpdates( HWND hwnd, UINT *state_cmd, UINT *config_cmd, RECT *rect, HWND *foreground )
+static BOOL nulldrv_GetWindowStateUpdates( HWND hwnd, UINT *state_cmd, UINT *swp_flags, RECT *rect, HWND *foreground )
 {
     return FALSE;
 }
@@ -1278,7 +1278,7 @@ static const struct user_driver_funcs lazy_load_driver =
     loaderdrv_SetLayeredWindowAttributes,
     nulldrv_SetParent,
     loaderdrv_SetWindowRgn,
-    nulldrv_SetWindowIcon,
+    nulldrv_SetWindowIcons,
     nulldrv_SetWindowStyle,
     nulldrv_SetWindowText,
     nulldrv_ShowWindow,
@@ -1375,7 +1375,7 @@ void __wine_set_user_driver( const struct user_driver_funcs *funcs, UINT version
     SET_USER_FUNC(SetLayeredWindowAttributes);
     SET_USER_FUNC(SetParent);
     SET_USER_FUNC(SetWindowRgn);
-    SET_USER_FUNC(SetWindowIcon);
+    SET_USER_FUNC(SetWindowIcons);
     SET_USER_FUNC(SetWindowStyle);
     SET_USER_FUNC(SetWindowText);
     SET_USER_FUNC(ShowWindow);

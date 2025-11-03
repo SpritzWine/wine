@@ -18,9 +18,13 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+#include "winstring.h"
+
 #include "wine/test.h"
 
 HRESULT WINAPI GetFontFallbackLanguageList(const WCHAR *, size_t, WCHAR *, size_t *);
+DWORD WINAPI GetUserLanguages(WCHAR, HSTRING *);
 
 static void test_GetFontFallbackLanguageList(void)
 {
@@ -63,7 +67,28 @@ static void test_GetFontFallbackLanguageList(void)
     ok(required_size >= (wcslen(L"en-US") + 1), "Got unexpected size %Iu.\n", required_size);
 }
 
+static void test_GetUserLanguages(void)
+{
+    HSTRING usrlangs = NULL;
+    const WCHAR *langs;
+    int count = 0;
+    HRESULT hr;
+
+    hr = GetUserLanguages(';', &usrlangs);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    todo_wine
+    ok(!!usrlangs, "Unexpected pointer.\n");
+    if (!usrlangs) return;
+
+    langs = WindowsGetStringRawBuffer(usrlangs, NULL);
+
+    for (WCHAR *p = wcstok(wcsdup(langs), L";"); p; p = wcstok(NULL, L";")) count++;
+    todo_wine ok(count > 0, "Got count=%d.\n", count);
+    WindowsDeleteString(usrlangs);
+}
+
 START_TEST(bcp47langs)
 {
     test_GetFontFallbackLanguageList();
+    test_GetUserLanguages();
 }

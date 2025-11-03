@@ -193,12 +193,13 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
     struct wayland_surface *surface;
     enum wayland_surface_role role;
     BOOL visible;
+    DWORD exstyle = NtUserGetWindowLongW(data->hwnd, GWL_EXSTYLE);
+    struct wl_region *input_region;
 
     TRACE("hwnd=%p\n", data->hwnd);
 
     visible = ((NtUserGetWindowLongW(data->hwnd, GWL_STYLE) & WS_VISIBLE) == WS_VISIBLE) &&
-               (!(NtUserGetWindowLongW(data->hwnd, GWL_EXSTYLE) & WS_EX_LAYERED) ||
-                data->layered_attribs_set);
+               (!(exstyle & WS_EX_LAYERED) || data->layered_attribs_set);
 
     if (!visible) role = WAYLAND_SURFACE_ROLE_NONE;
     else if (toplevel_surface) role = WAYLAND_SURFACE_ROLE_SUBSURFACE;
@@ -213,6 +214,14 @@ static BOOL wayland_win_data_create_wayland_surface(struct wayland_win_data *dat
     }
 
     if (!(surface = data->wayland_surface) && !(surface = wayland_surface_create(data->hwnd))) return FALSE;
+
+    /* Pass through mouse events for layered, transparent windows, to match
+     * Windows behavior. */
+    input_region = ((exstyle & WS_EX_TRANSPARENT) && (exstyle & WS_EX_LAYERED)) ?
+                   wl_compositor_create_region(process_wayland.wl_compositor) :
+                   NULL;
+    wl_surface_set_input_region(surface->wl_surface, input_region);
+    if (input_region) wl_region_destroy(input_region);
 
     /* If the window is a visible toplevel make it a wayland
      * xdg_toplevel. Otherwise keep it role-less to avoid polluting the
@@ -424,29 +433,6 @@ BOOL WAYLAND_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const str
     return TRUE;
 }
 
-static HICON get_icon_info(HICON icon, ICONINFO *ii)
-{
-    return icon && NtUserGetIconInfo(icon, ii, NULL, NULL, NULL, 0) ? icon : NULL;
-}
-
-static HICON get_window_icon(HWND hwnd, UINT type, HICON icon, ICONINFO *ret)
-{
-    icon = get_icon_info(icon, ret);
-    if (!icon)
-    {
-        icon = get_icon_info((HICON)send_message(hwnd, WM_GETICON, type, 0), ret);
-        if (!icon)
-            icon = get_icon_info((HICON)NtUserGetClassLongPtrW(hwnd, GCLP_HICON), ret);
-        if (!icon && type == ICON_BIG)
-        {
-            icon = LoadImageW(0, (const WCHAR *)IDI_WINLOGO, IMAGE_ICON, 0, 0,
-                              LR_SHARED | LR_DEFAULTSIZE);
-            icon = get_icon_info(icon, ret);
-        }
-    }
-    return icon;
-}
-
 /***********************************************************************
  *           WAYLAND_WindowPosChanged
  */
@@ -457,7 +443,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
     struct wayland_surface *toplevel_surface;
     struct wayland_client_surface *client;
     struct wayland_win_data *data, *toplevel_data;
-    BOOL managed, needs_icon;
+    BOOL managed;
 
     TRACE("hwnd %p new_rects %s after %p flags %08x\n", hwnd, debugstr_window_rects(new_rects), insert_after, swp_flags);
 
@@ -495,27 +481,7 @@ void WAYLAND_WindowPosChanged(HWND hwnd, HWND insert_after, HWND owner_hint, UIN
         wayland_win_data_update_wayland_state(data);
     }
 
-    needs_icon = data->wayland_surface && !data->wayland_surface->big_icon_buffer &&
-                 wayland_surface_is_toplevel(data->wayland_surface) &&
-                 process_wayland.xdg_toplevel_icon_manager_v1;
-
     wayland_win_data_release(data);
-
-    if (needs_icon)
-    {
-        HICON big, small;
-        ICONINFO ii, ii_small;
-        big = get_window_icon(hwnd, ICON_BIG, 0, &ii);
-        small = get_window_icon(hwnd, ICON_SMALL, 0, &ii_small);
-
-        if((data = wayland_win_data_get(hwnd)))
-        {
-            if (big) wayland_surface_set_icon(data->wayland_surface, ICON_BIG, &ii);
-            if (small) wayland_surface_set_icon(data->wayland_surface, ICON_SMALL, &ii_small);
-
-            wayland_win_data_release(data);
-        }
-    }
 }
 
 static void wayland_configure_window(HWND hwnd)
@@ -699,22 +665,23 @@ static enum xdg_toplevel_resize_edge hittest_to_resize_edge(WPARAM hittest)
 }
 
 /*****************************************************************
- *		WAYLAND_SetWindowIcon
+ *		WAYLAND_SetWindowIcons
  */
-void WAYLAND_SetWindowIcon(HWND hwnd, UINT type, HICON icon)
+void WAYLAND_SetWindowIcons(HWND hwnd, HICON icon, const ICONINFO *ii, HICON icon_small, const ICONINFO *ii_small)
 {
     struct wayland_win_data *data;
-    ICONINFO ii;
 
-    TRACE("hwnd=%p type=%u icon=%p\n", hwnd, type, icon);
+    TRACE("hwnd=%p icon=%p ii=%p icon_small=%p ii_small=%p\n", hwnd, icon, ii, icon_small, ii_small);
 
     if (process_wayland.xdg_toplevel_icon_manager_v1)
     {
-        icon = get_window_icon(hwnd, type, icon, &ii);
-        if (icon && (data = wayland_win_data_get(hwnd)))
+        if ((data = wayland_win_data_get(hwnd)))
         {
             if (data->wayland_surface && wayland_surface_is_toplevel(data->wayland_surface))
-                wayland_surface_set_icon(data->wayland_surface, type, &ii);
+            {
+                wayland_surface_set_icon(data->wayland_surface, ICON_BIG, ii);
+                wayland_surface_set_icon(data->wayland_surface, ICON_SMALL, ii_small);
+            }
             wayland_win_data_release(data);
         }
     }

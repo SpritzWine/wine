@@ -53,6 +53,7 @@
 @ stdcall EtwEventSetInformation(int64 long ptr long)
 @ stdcall EtwEventUnregister(int64)
 @ stdcall EtwEventWrite(int64 ptr long ptr)
+@ stdcall EtwEventWriteEx(int64 ptr int64 long ptr ptr long ptr)
 @ stdcall EtwEventWriteString(int64 long int64 wstr)
 @ stdcall EtwEventWriteTransfer(int64 ptr ptr ptr long ptr)
 @ stdcall EtwGetTraceEnableFlags(int64)
@@ -524,6 +525,7 @@
 @ stdcall RtlAreBitsSet(ptr long long)
 # @ stub RtlAssert2
 @ stdcall RtlAssert(ptr ptr long str)
+@ stdcall RtlBarrier(ptr long)
 # @ stub RtlCancelTimer
 @ stdcall -norelay RtlCaptureContext(ptr)
 @ stdcall RtlCaptureStackBackTrace(long long ptr ptr)
@@ -610,6 +612,7 @@
 @ stdcall RtlDelete(ptr)
 @ stdcall RtlDeleteAce(ptr long)
 @ stdcall RtlDeleteAtomFromAtomTable(ptr long)
+@ stdcall RtlDeleteBarrier(ptr)
 @ stdcall RtlDeleteCriticalSection(ptr)
 @ stdcall -arch=!i386 RtlDeleteGrowableFunctionTable(ptr)
 @ stdcall RtlDeleteElementGenericTable(ptr ptr)
@@ -791,6 +794,7 @@
 @ stdcall RtlImpersonateSelf(long)
 @ stdcall RtlInitAnsiString(ptr str)
 @ stdcall RtlInitAnsiStringEx(ptr str)
+@ stdcall RtlInitBarrier(ptr long long)
 @ stdcall RtlInitCodePageTable(ptr ptr)
 # @ stub RtlInitMemoryStream
 @ stdcall RtlInitNlsTables(ptr ptr ptr ptr)
