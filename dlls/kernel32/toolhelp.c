@@ -85,6 +85,11 @@ static BOOL fetch_module( DWORD process, DWORD flags, LDR_DATA_TABLE_ENTRY **ldr
     {
         hProcess = OpenProcess( PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, process );
         if (!hProcess) return FALSE;
+        if (RtlIsCurrentProcess( hProcess ))
+        {
+            CloseHandle( hProcess );
+            hProcess = GetCurrentProcess();
+        }
     }
     else
         hProcess = GetCurrentProcess();
@@ -134,7 +139,7 @@ static BOOL fetch_module( DWORD process, DWORD flags, LDR_DATA_TABLE_ENTRY **ldr
     }
 
 out:
-    if (process) CloseHandle( hProcess );
+    if (hProcess != GetCurrentProcess()) CloseHandle( hProcess );
     return ret;
 }
 
