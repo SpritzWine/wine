@@ -700,6 +700,15 @@ static void test_PathCombineA(void)
     ok(!lstrcmpA(str, "C:\\"), "Expected C:\\, got %s\n", str);
     ok(GetLastError() == 0xdeadbeef, "Expected 0xdeadbeef, got %ld\n", GetLastError());
 
+    /* try ...xx as file */
+    /* try forward slashes */
+    SetLastError(0xdeadbeef);
+    lstrcpyA(dest, "control");
+    str = PathCombineA(dest, "C:\\", "...xx");
+    ok(str == dest, "Expected str == dest, got %p\n", str);
+    ok(!lstrcmpA(str, "C:\\...xx"), "Expected C:\\...xx, got %s\n", str);
+    ok(GetLastError() == 0xdeadbeef, "Expected 0xdeadbeef, got %ld\n", GetLastError());
+
     /* try relative paths */
     /* try forward slashes */
     SetLastError(0xdeadbeef);
@@ -1076,6 +1085,42 @@ static void test_PathCanonicalizeA(void)
         "Expected 0xdeadbeef or ERROR_FILENAME_EXCED_RANGE, got %ld\n", GetLastError());
     }
     ok(lstrlenA(too_long) == LONG_LEN - 1, "Expected length LONG_LEN - 1, got %i\n", lstrlenA(too_long));
+
+    /* try C:\.. */
+    memset(dest, 0, LONG_LEN + MAX_PATH);
+    lstrcpyA(dest, "test");
+    SetLastError(0xdeadbeef);
+    res = PathCanonicalizeA(dest, "C:\\..");
+    ok(res, "Expected success\n");
+    ok(GetLastError() == 0xdeadbeef, "Expected 0xdeadbeef, got %ld\n", GetLastError());
+    ok(!lstrcmpA(dest, "C:\\"), "C:\\, got %s\n", dest);
+
+    /* try C:\...x */
+    memset(dest, 0, LONG_LEN + MAX_PATH);
+    lstrcpyA(dest, "test");
+    SetLastError(0xdeadbeef);
+    res = PathCanonicalizeA(dest, "C:\\...x");
+    ok(res, "Expected success\n");
+    ok(GetLastError() == 0xdeadbeef, "Expected 0xdeadbeef, got %ld\n", GetLastError());
+    ok(!lstrcmpA(dest, "C:\\...x"), "C:\\...x, got %s\n", dest);
+
+    /* try C:\test\...x */
+    memset(dest, 0, LONG_LEN + MAX_PATH);
+    lstrcpyA(dest, "test");
+    SetLastError(0xdeadbeef);
+    res = PathCanonicalizeA(dest, "C:\\test\\...x");
+    ok(res, "Expected success\n");
+    ok(GetLastError() == 0xdeadbeef, "Expected 0xdeadbeef, got %ld\n", GetLastError());
+    ok(!lstrcmpA(dest, "C:\\test\\...x"), "C:\\test\\...x, got %s\n", dest);
+
+    /* try C:\test\...\x */
+    memset(dest, 0, LONG_LEN + MAX_PATH);
+    lstrcpyA(dest, "test");
+    SetLastError(0xdeadbeef);
+    res = PathCanonicalizeA(dest, "C:\\test\\...\\x");
+    ok(res, "Expected success\n");
+    ok(GetLastError() == 0xdeadbeef, "Expected 0xdeadbeef, got %ld\n", GetLastError());
+    ok(!lstrcmpA(dest, "C:\\test\\...\\x"), "C:\\test\\...\\x, got %s\n", dest);
 }
 
 static void test_PathFindExtensionA(void)

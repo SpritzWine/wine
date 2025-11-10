@@ -1313,50 +1313,40 @@ BOOL WINAPI PathCanonicalizeW(WCHAR *buffer, const WCHAR *path)
     /* Canonicalize the rest of the path */
     while (*src)
     {
-        if (*src == '.')
+        if (*src == '\\')
         {
-            if (src[1] == '\\' && (src == path || src[-1] == '\\' || src[-1] == ':'))
+            if ((dst > buffer + 2) && dst[-2] == '\\' && dst[-1] == '.')
             {
-                src += 2; /* Skip .\ */
+                dst -= 1; /* Skip .\ */
+                src++;
             }
-            else if (src[1] == '.' && dst != buffer && dst[-1] == '\\')
+            else if ((dst > buffer + 4) && dst[-3] == '\\' && dst[-2] == '.' && dst[-1] == '.')
             {
-                /* \.. backs up a directory, over the root if it has no \ following X:.
-                 * .. is ignored if it would remove a UNC server name or initial \\
-                 */
-                if (dst != buffer)
+                /* \.. backs up a directory */
+                dst -= 4;
+                while (dst > buffer && *dst != '\\')
                 {
-                    *dst = '\0'; /* Allow PathIsUNCServerShareA test on lpszBuf */
-                    if (dst > buffer + 1 && dst[-1] == '\\' && (dst[-2] != '\\' || dst > buffer + 2))
-                    {
-                        if (dst[-2] == ':' && (dst > buffer + 3 || dst[-3] == ':'))
-                        {
-                            dst -= 2;
-                            while (dst > buffer && *dst != '\\')
-                                dst--;
-                            if (*dst == '\\')
-                                dst++; /* Reset to last '\' */
-                            else
-                                dst = buffer; /* Start path again from new root */
-                        }
-                        else if (dst[-2] != ':' && !PathIsUNCServerShareW(buffer))
-                            dst -= 2;
-                    }
-                    while (dst > buffer && *dst != '\\')
-                        dst--;
-                    if (dst == buffer)
-                    {
-                        *dst++ = '\\';
-                        src++;
-                    }
+                    dst--;
                 }
-                src += 2; /* Skip .. in src path */
             }
             else
                 *dst++ = *src++;
         }
         else
             *dst++ = *src++;
+    }
+
+    /* Remove trailing \.. and back up if possible and keep X: */
+    if ((dst > buffer + 4) && dst[-3] == '\\' && dst[-2] == '.' && dst[-1] == '.' )
+    {
+        dst -= 4;
+        if (*dst != ':')
+        {
+            while (dst > buffer && *dst != '\\')
+                dst--;
+        }
+        else
+            dst++;
     }
 
     /* Append \ to naked drive specs */
