@@ -26,6 +26,13 @@
 #include <stdarg.h>
 #include <math.h>	/* Insomnia - pow() function */
 
+#ifdef __SSE2__
+
+#include <xmmintrin.h>
+#include <emmintrin.h>
+
+#endif
+
 #define COBJMACROS
 
 #include "windef.h"
@@ -391,6 +398,155 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
  * Or go to http://www.gnu.org/copyleft/lgpl.html
  */
 
+#ifdef __SSE2__
+
+static BOOL sse2_available;
+
+static BOOL WINAPI check_sse2_availability_once(INIT_ONCE *once, void *param, void **context)
+{
+    sse2_available = IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE);
+    TRACE("SSE2 is %savailable - %susing optimized resampler.\n",
+          sse2_available ? "" : "not ", sse2_available ? "" : "not ");
+    return TRUE;
+}
+
+static int is_sse2_available(void)
+{
+    static INIT_ONCE init_once = INIT_ONCE_STATIC_INIT;
+
+    InitOnceExecuteOnce(&init_once, check_sse2_availability_once, NULL, NULL);
+    return sse2_available;
+}
+
+static __m128 vmadd(const __m128 x, const __m128 y, const __m128 z)
+{
+    return _mm_add_ps(x, _mm_mul_ps(y, z));
+}
+
+static void cubic_resample_sse2(IDirectSoundBufferImpl *dsb, UINT count, LONG64 freqAcc_start, float *intermediate, float *out_buffer)
+{
+    struct cubic_coefficients table_copy[CUBIC_PHASE_COUNT];
+    struct cubic_coefficients *filter;
+    unsigned int inc = (dsb->freqAdjustNum << POS_FRAC_SHIFT) / dsb->freqAdjustDen;
+    __m128i inc4 = _mm_set1_epi32(inc * 4);
+    __m128i frac_mask4 = _mm_set1_epi32(POS_FRAC_MASK);
+    __m128 frac_diff_one4 = _mm_set1_ps(1.0f / CUBIC_PHASE_DIFF_ONE);
+    __m128i frac_diff_mask4 = _mm_set1_epi32(CUBIC_PHASE_DIFF_MASK);
+    __m128 *vecout = (__m128 *)out_buffer;
+    unsigned int ipos_[4], frac_[4];
+    unsigned int i, j, remaining;
+    float *src = intermediate;
+    __m128i ipos4, frac4;
+    unsigned int phase;
+
+    memcpy(table_copy, dsb->device->cubic_table, sizeof(table_copy));
+    filter = table_copy;
+
+    phase = (freqAcc_start << POS_FRAC_SHIFT) / dsb->freqAdjustDen;
+    ipos_[0] = phase >> POS_FRAC_SHIFT;
+    frac_[0] = phase & POS_FRAC_MASK;
+    for(i = 1; i < ARRAY_SIZE(ipos_); ++i)
+    {
+        unsigned int phase_frac = frac_[i - 1] + inc;
+        ipos_[i] = ipos_[i - 1] + (phase_frac >> POS_FRAC_SHIFT);
+        frac_[i] = phase_frac & POS_FRAC_MASK;
+    }
+
+    ipos4 = _mm_setr_epi32(ipos_[0], ipos_[1], ipos_[2], ipos_[3]);
+    frac4 = _mm_setr_epi32(frac_[0], frac_[1], frac_[2], frac_[3]);
+
+    for (i = 0; i < count / 4; ++i)
+    {
+        __m128 val0, val1, val2, val3, pf4, r0, r1, r2, r3, o;
+        unsigned int ipos0, ipos1, ipos2, ipos3;
+        unsigned int pi0, pi1, pi2, pi3;
+        __m128i pi4;
+
+        ipos0 = _mm_cvtsi128_si32(ipos4);
+        ipos1 = _mm_cvtsi128_si32(_mm_srli_si128(ipos4, 4));
+        ipos2 = _mm_cvtsi128_si32(_mm_srli_si128(ipos4, 8));
+        ipos3 = _mm_cvtsi128_si32(_mm_srli_si128(ipos4, 12));
+        val0 = _mm_loadu_ps(&src[ipos0]);
+        val1 = _mm_loadu_ps(&src[ipos1]);
+        val2 = _mm_loadu_ps(&src[ipos2]);
+        val3 = _mm_loadu_ps(&src[ipos3]);
+
+        pi4 = _mm_srli_epi32(frac4, CUBIC_PHASE_DIFF_SHIFT);
+        pi0 = _mm_cvtsi128_si32(pi4);
+        pi1 = _mm_cvtsi128_si32(_mm_srli_si128(pi4, 4));
+        pi2 = _mm_cvtsi128_si32(_mm_srli_si128(pi4, 8));
+        pi3 = _mm_cvtsi128_si32(_mm_srli_si128(pi4, 12));
+
+        pf4 = _mm_mul_ps(_mm_cvtepi32_ps(_mm_and_si128(frac4, frac_diff_mask4)), frac_diff_one4);
+
+        r0 = _mm_mul_ps(val0,
+            vmadd(_mm_load_ps(filter[pi0].coeffs),
+                _mm_shuffle_ps(pf4, pf4, _MM_SHUFFLE(0, 0, 0, 0)),
+                _mm_load_ps(filter[pi0].deltas)));
+        r1 = _mm_mul_ps(val1,
+            vmadd(_mm_load_ps(filter[pi1].coeffs),
+                _mm_shuffle_ps(pf4, pf4, _MM_SHUFFLE(1, 1, 1, 1)),
+                _mm_load_ps(filter[pi1].deltas)));
+        r2 = _mm_mul_ps(val2,
+            vmadd(_mm_load_ps(filter[pi2].coeffs),
+                _mm_shuffle_ps(pf4, pf4, _MM_SHUFFLE(2, 2, 2, 2)),
+                _mm_load_ps(filter[pi2].deltas)));
+        r3 = _mm_mul_ps(val3,
+            vmadd(_mm_load_ps(filter[pi3].coeffs),
+                _mm_shuffle_ps(pf4, pf4, _MM_SHUFFLE(3, 3, 3, 3)),
+                _mm_load_ps(filter[pi3].deltas)));
+
+        _MM_TRANSPOSE4_PS(r0, r1, r2, r3);
+        o = _mm_add_ps(_mm_add_ps(r0, r1), _mm_add_ps(r2, r3));
+        vecout[i] = o;
+
+        frac4 = _mm_add_epi32(frac4, inc4);
+        ipos4 = _mm_add_epi32(ipos4, _mm_srli_epi32(frac4, POS_FRAC_SHIFT));
+        frac4 = _mm_and_si128(frac4, frac_mask4);
+    }
+
+    if ((remaining = count & 3))
+    {
+        unsigned int ipos = _mm_cvtsi128_si32(ipos4);
+        unsigned int frac = _mm_cvtsi128_si32(frac4);
+        float *out = &out_buffer[i];
+
+        for (j = 0; j < remaining; ++j)
+        {
+            unsigned int pi = frac >> CUBIC_PHASE_DIFF_SHIFT;
+            const float pf = (frac & CUBIC_PHASE_DIFF_MASK) * (1.0f / CUBIC_PHASE_DIFF_ONE);
+            const __m128 pf4 = _mm_set1_ps(pf);
+            __m128 f4, r4;
+
+            f4 = vmadd(_mm_load_ps(filter[pi].coeffs), pf4,
+                _mm_load_ps(filter[pi].deltas));
+            r4 = _mm_mul_ps(f4, _mm_loadu_ps(&src[ipos]));
+
+            r4 = _mm_add_ps(r4, _mm_shuffle_ps(r4, r4, _MM_SHUFFLE(0, 1, 2, 3)));
+            r4 = _mm_add_ps(r4, _mm_movehl_ps(r4, r4));
+            out[j] = _mm_cvtss_f32(r4);
+
+            frac += inc;
+            ipos += frac >> POS_FRAC_SHIFT;
+            frac &= POS_FRAC_SHIFT;
+        }
+    }
+}
+
+#else
+
+static int is_sse2_available(void)
+{
+    return 0;
+}
+
+static void cubic_resample_sse2(IDirectSoundBufferImpl *dsb, UINT count, LONG64 freqAcc_start, float *intermediate, float *out_buffer)
+{
+    ERR("Attempted to call function without compile-time SSE2 support\n");
+}
+
+#endif
+
 static void cubic_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 freqAcc_start, float *intermediate, float *out_buffer)
 {
     unsigned int i;
@@ -420,6 +576,7 @@ static void cubic_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 freqA
 
 static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
 {
+    int use_sse2 = is_sse2_available();
     UINT i, channel;
     UINT istride = dsb->pwfx->nBlockAlign;
     UINT ostride = dsb->device->pwfx->nChannels * sizeof(float);
@@ -430,8 +587,8 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
     UINT channels = dsb->mix_channels;
     UINT max_ipos = (freqAcc_start + count * dsb->freqAdjustNum) / dsb->freqAdjustDen;
     unsigned int required_input = max_ipos + CUBIC_LEN - 1;
-    DWORD in_size = required_input * channels * sizeof(float);
-    DWORD out_size = count * channels * sizeof(float);
+    DWORD in_size = required_input * channels * sizeof(float) + 15;
+    DWORD out_size = count * channels * sizeof(float) + 15;
     float *intermediate, *out_buffer, *itmp;
     unsigned int state_count;
 
@@ -450,7 +607,7 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
         dsb->device->cp_buffer = realloc(dsb->device->cp_buffer, in_size);
         dsb->device->cp_buffer_len = in_size;
     }
-    intermediate = dsb->device->cp_buffer;
+    intermediate = (float *)(((UINT_PTR)dsb->device->cp_buffer + 15) & ~15u);
 
     if (!dsb->device->out_buffer)
     {
@@ -462,7 +619,7 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
         dsb->device->out_buffer = realloc(dsb->device->out_buffer, out_size);
         dsb->device->out_buffer_len = out_size;
     }
-    out_buffer = dsb->device->out_buffer;
+    out_buffer = (float *)(((UINT_PTR)dsb->device->out_buffer + 15) & ~15u);
 
     state_count = CUBIC_STATE_LEN;
 
@@ -499,7 +656,10 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
 
     for (channel = 0; channel < channels; channel++)
     {
-        cubic_resample(dsb, count, freqAcc_start, &intermediate[channel * required_input], &out_buffer[channel * count]);
+        if (use_sse2)
+            cubic_resample_sse2(dsb, count, freqAcc_start, &intermediate[channel * required_input], &out_buffer[channel * count]);
+        else
+            cubic_resample(dsb, count, freqAcc_start, &intermediate[channel * required_input], &out_buffer[channel * count]);
     }
 
     for (i = 0; i < count; ++i)
