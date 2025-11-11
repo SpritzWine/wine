@@ -238,6 +238,7 @@ static ULONG DirectSoundDevice_Release(DirectSoundDevice * device)
         CloseHandle(device->sleepev);
         free(device->tmp_buffer);
         free(device->cp_buffer);
+        free(device->out_buffer);
         free(device->buffer);
         device->mixlock.DebugInfo->Spare[0] = 0;
         DeleteCriticalSection(&device->mixlock);

@@ -38,7 +38,6 @@
 #include "ks.h"
 #include "ksmedia.h"
 #include "dsound_private.h"
-#include "fir.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(dsound);
 
@@ -93,6 +92,73 @@ void DSOUND_AmpFactorToVolPan(PDSVOLUMEPAN volpan)
     TRACE("Vol=%ld Pan=%ld\n", volpan->lVolume, volpan->lPan);
 }
 
+/* How many bits to reserve for the fractional part of position cursors in fixed point. */
+#define POS_FRAC_SHIFT 16
+#define POS_FRAC_MASK ((1u << POS_FRAC_SHIFT) - 1)
+
+/* Length of the resampler filter. */
+#define CUBIC_LEN 4
+/* How many samples to save from one run of the resampler to the next. */
+#define CUBIC_STATE_LEN 1
+
+/* The number of distinct phase intervals within the cubic filter tables. */
+#define CUBIC_PHASE_SHIFT 5
+#define CUBIC_PHASE_COUNT (1u << CUBIC_PHASE_SHIFT)
+#define CUBIC_PHASE_MASK (CUBIC_PHASE_COUNT - 1)
+
+#define CUBIC_PHASE_DIFF_SHIFT (POS_FRAC_SHIFT - CUBIC_PHASE_SHIFT)
+#define CUBIC_PHASE_DIFF_ONE  (1u << CUBIC_PHASE_DIFF_SHIFT)
+#define CUBIC_PHASE_DIFF_MASK ((1u << CUBIC_PHASE_DIFF_SHIFT) - 1)
+
+struct cubic_coefficients
+{
+    float coeffs[4];
+    float deltas[4];
+};
+
+static BOOL cubic_spline_table_init(struct cubic_coefficients **cubic_table)
+{
+    const double third = 1.0 / 3.0;
+    const double sixth = 1.0 / 6.0;
+    struct cubic_coefficients *table;
+    unsigned int pi;
+
+    /* This filter table is based on a Catmull-Rom spline. It retains more of
+     * the original high-frequency content, at the cost of increased harmonics.
+     */
+    if (!*cubic_table)
+        *cubic_table = malloc(sizeof(**cubic_table) * CUBIC_PHASE_COUNT);
+    if (!*cubic_table)
+        return FALSE;
+    table = *cubic_table;
+    for (pi = 0; pi < CUBIC_PHASE_COUNT; ++pi)
+    {
+        double mu = (double)pi / CUBIC_PHASE_COUNT;
+        double mu2 = mu * mu;
+        double mu3 = mu * mu2;
+
+        table[pi].coeffs[0] =       -third*mu + 0.5*mu2  - sixth*mu3;
+        table[pi].coeffs[1] = 1.0 -    0.5*mu -     mu2  +   0.5*mu3;
+        table[pi].coeffs[2] =              mu + 0.5*mu2  -   0.5*mu3;
+        table[pi].coeffs[3] =       -sixth*mu            + sixth*mu3;
+    }
+
+    for (pi = 0; pi < CUBIC_PHASE_COUNT - 1; ++pi)
+    {
+        table[pi].deltas[0] = table[pi + 1].coeffs[0] - table[pi].coeffs[0];
+        table[pi].deltas[1] = table[pi + 1].coeffs[1] - table[pi].coeffs[1];
+        table[pi].deltas[2] = table[pi + 1].coeffs[2] - table[pi].coeffs[2];
+        table[pi].deltas[3] = table[pi + 1].coeffs[3] - table[pi].coeffs[3];
+    }
+
+    pi = CUBIC_PHASE_COUNT - 1;
+    table[pi].deltas[0] =               0.0f - table[pi].coeffs[0];
+    table[pi].deltas[1] = table[0].coeffs[0] - table[pi].coeffs[1];
+    table[pi].deltas[2] = table[0].coeffs[1] - table[pi].coeffs[2];
+    table[pi].deltas[3] = table[0].coeffs[2] - table[pi].coeffs[3];
+    return TRUE;
+}
+
 /**
  * Recalculate the size for temporary buffer, and new writelead
  * Should be called when one of the following things occur:
@@ -117,18 +183,8 @@ void DSOUND_RecalcFormat(IDirectSoundBufferImpl *dsb)
 	    && (IsEqualGUID(&pwfxe->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT))))
 		ieee = TRUE;
 
-	/**
-	 * Recalculate FIR step and gain.
-	 *
-	 * firstep says how many points of the FIR exist per one
-	 * sample in the secondary buffer. firgain specifies what
-	 * to multiply the FIR output by in order to attenuate it correctly.
-	 */
-        if (dsb->freqAdjustNum > dsb->freqAdjustDen)
-		dsb->firstep = fir_step * dsb->freqAdjustDen / dsb->freqAdjustNum;
-        else
-		dsb->firstep = fir_step;
-	dsb->firgain = (float)dsb->firstep / fir_step;
+        if (!dsb->device->cubic_table && !cubic_spline_table_init(&dsb->device->cubic_table))
+            ERR("Cubic spline resampler initialization failed!\n");
 
 	/* calculate the 10ms write lead */
 	dsb->writelead = (dsb->freq / 100) * dsb->pwfx->nBlockAlign;
@@ -315,6 +371,53 @@ static UINT cp_fields_noresample(IDirectSoundBufferImpl *dsb, UINT count)
     return count;
 }
 
+/**
+ * OpenAL cross platform audio library
+ * Copyright (C) 2014 by Timothy Arceri <t_arceri@yahoo.com.au>.
+ * This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Library General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public
+ *  License along with this library; if not, write to the
+ *  Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Or go to http://www.gnu.org/copyleft/lgpl.html
+ */
+
+static void cubic_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 freqAcc_start, float *intermediate, float *out_buffer)
+{
+    unsigned int i;
+
+    for (i = 0; i < count; ++i)
+    {
+        unsigned int phase = ((freqAcc_start + i * dsb->freqAdjustNum) << POS_FRAC_SHIFT) / dsb->freqAdjustDen;
+        unsigned int ipos = phase >> POS_FRAC_SHIFT;
+        float *vals = &intermediate[ipos];
+        float *fil, *phd;
+        unsigned int pi;
+        float pf, o;
+
+        pi = (phase - (ipos << POS_FRAC_SHIFT)) >> CUBIC_PHASE_DIFF_SHIFT;
+        pf = (phase & CUBIC_PHASE_DIFF_MASK) * (1.0f / CUBIC_PHASE_DIFF_ONE);
+
+        fil = dsb->device->cubic_table[pi].coeffs;
+        phd = dsb->device->cubic_table[pi].deltas;
+
+        o = (fil[0] + pf * phd[0]) * vals[0] +
+            (fil[1] + pf * phd[1]) * vals[1] +
+            (fil[2] + pf * phd[2]) * vals[2] +
+            (fil[3] + pf * phd[3]) * vals[3];
+        out_buffer[i] = o;
+    }
+}
+
 static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *freqAccNum)
 {
     UINT i, channel;
@@ -324,79 +427,84 @@ static UINT cp_fields_resample(IDirectSoundBufferImpl *dsb, UINT count, LONG64 *
 
     LONG64 freqAcc_start = *freqAccNum;
     LONG64 freqAcc_end = freqAcc_start + count * dsb->freqAdjustNum;
-    UINT dsbfirstep = dsb->firstep;
     UINT channels = dsb->mix_channels;
     UINT max_ipos = (freqAcc_start + count * dsb->freqAdjustNum) / dsb->freqAdjustDen;
-
-    UINT fir_cachesize = (fir_len + dsbfirstep - 2) / dsbfirstep;
-    UINT required_input = max_ipos + fir_cachesize;
-    float *intermediate, *fir_copy, *itmp;
-
-    DWORD len = required_input * channels;
-    len += fir_cachesize;
-    len *= sizeof(float);
+    unsigned int required_input = max_ipos + CUBIC_LEN - 1;
+    DWORD in_size = required_input * channels * sizeof(float);
+    DWORD out_size = count * channels * sizeof(float);
+    float *intermediate, *out_buffer, *itmp;
+    unsigned int state_count;
 
     *freqAccNum = freqAcc_end % dsb->freqAdjustDen;
 
     if (!secondarybuffer_is_audible(dsb))
         return max_ipos;
 
-    if (!dsb->device->cp_buffer) {
-        dsb->device->cp_buffer = malloc(len);
-        dsb->device->cp_buffer_len = len;
-    } else if (len > dsb->device->cp_buffer_len) {
-        dsb->device->cp_buffer = realloc(dsb->device->cp_buffer, len);
-        dsb->device->cp_buffer_len = len;
+    if (!dsb->device->cp_buffer)
+    {
+        dsb->device->cp_buffer = malloc(in_size);
+        dsb->device->cp_buffer_len = in_size;
     }
+    else if (in_size > dsb->device->cp_buffer_len)
+    {
+        dsb->device->cp_buffer = realloc(dsb->device->cp_buffer, in_size);
+        dsb->device->cp_buffer_len = in_size;
+    }
+    intermediate = dsb->device->cp_buffer;
 
-    fir_copy = dsb->device->cp_buffer;
-    intermediate = fir_copy + fir_cachesize;
+    if (!dsb->device->out_buffer)
+    {
+        dsb->device->out_buffer = malloc(out_size);
+        dsb->device->out_buffer_len = out_size;
+    }
+    else if (out_size > dsb->device->out_buffer_len)
+    {
+        dsb->device->out_buffer = realloc(dsb->device->out_buffer, out_size);
+        dsb->device->out_buffer_len = out_size;
+    }
+    out_buffer = dsb->device->out_buffer;
 
-    if(dsb->use_committed) {
+    state_count = CUBIC_STATE_LEN;
+
+    if (dsb->use_committed)
+    {
         committed_samples = (dsb->writelead - dsb->committed_mixpos) / istride;
-        committed_samples = committed_samples <= required_input ? committed_samples : required_input;
+        committed_samples = committed_samples <= required_input - state_count ? committed_samples : required_input - state_count;
     }
 
-    /* Important: this buffer MUST be non-interleaved
-     * if you want -msse3 to have any effect.
-     * This is good for CPU cache effects, too.
-     */
     itmp = intermediate;
-    for (channel = 0; channel < channels; channel++) {
+    for (channel = 0; channel < channels; channel++)
+    {
+        if (dsb->first_resample)
+        {
+            for (i = 0; i < state_count; i++)
+                *(itmp++) = 0.0f;
+        }
+        else
+        {
+            for (i = 0; i < state_count; i++)
+                *(itmp++) = dsb->resampler_state[channel * RESAMPLER_MAX_STATE + i];
+        }
         for (i = 0; i < committed_samples; i++)
             *(itmp++) = get_current_sample(dsb, dsb->committedbuff,
                 dsb->writelead, dsb->committed_mixpos + i * istride, channel);
-        for (; i < required_input; i++)
+        for (; i < required_input - state_count; i++)
             *(itmp++) = get_current_sample(dsb, dsb->buffer->memory,
                     dsb->buflen, dsb->sec_mixpos + i * istride, channel);
+
+        memcpy(dsb->resampler_state + channel * RESAMPLER_MAX_STATE,
+               &intermediate[channel * required_input + max_ipos + 1 - CUBIC_STATE_LEN],
+               CUBIC_STATE_LEN * sizeof(float));
     }
 
-    for(i = 0; i < count; ++i) {
-        UINT int_fir_steps = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep / dsb->freqAdjustDen;
-        float total_fir_steps = (freqAcc_start + i * dsb->freqAdjustNum) * dsbfirstep / (float)dsb->freqAdjustDen;
-        UINT ipos = int_fir_steps / dsbfirstep;
-
-        UINT idx = (ipos + 1) * dsbfirstep - int_fir_steps - 1;
-        float rem = int_fir_steps + 1.0 - total_fir_steps;
-
-        int fir_used = 0;
-        while (idx < fir_len - 1) {
-            fir_copy[fir_used++] = fir[idx] * (1.0 - rem) + fir[idx + 1] * rem;
-            idx += dsb->firstep;
-        }
-
-        assert(fir_used <= fir_cachesize);
-        assert(ipos + fir_used <= required_input);
-
-        for (channel = 0; channel < dsb->mix_channels; channel++) {
-            int j;
-            float sum = 0.0;
-            float* cache = &intermediate[channel * required_input + ipos];
-            for (j = 0; j < fir_used; j++)
-                sum += fir_copy[j] * cache[j];
-            dsb->put(dsb, i * ostride, channel, sum * dsb->firgain);
-        }
+    for (channel = 0; channel < channels; channel++)
+    {
+        cubic_resample(dsb, count, freqAcc_start, &intermediate[channel * required_input], &out_buffer[channel * count]);
     }
+
+    for (i = 0; i < count; ++i)
+        for (channel = 0; channel < channels; channel++)
+            dsb->put(dsb, i * ostride, channel, out_buffer[channel * count + i]);
 
     return max_ipos;
 }
