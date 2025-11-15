@@ -23,6 +23,21 @@
 #pragma makedep po
 
 LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
+IDD_PICKICONDLG DIALOG 0, 0, 230, 192
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Change Icon"
+FONT 8, "MS Shell Dlg"
+BEGIN
+  LTEXT "Search for icons in &file:", IDC_PICKICONDLG_LABELPATH, 10, 10, 210, 8
+  EDITTEXT IDC_PICKICONDLG_EDIT, 10, 20, 160, 14, WS_VISIBLE | WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL | ES_LEFT
+  PUSHBUTTON "&Change...", IDC_PICKICONDLG_CHANGE, 171, 20, 49, 14, WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON
+  LTEXT "List of the icons in the file, please &select:", IDC_PICKICONDLG_LABELICONS, 10, 39, 210, 9 
+  CONTROL "", IDC_PICKICONDLG_ICONS, "SysListView32", LVS_ICON | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_AUTOARRANGE | LVS_ALIGNLEFT | WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 10, 49, 210, 115
+  DEFPUSHBUTTON "OK", IDOK, 116, 170, 50, 14, WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_DEFPUSHBUTTON
+  PUSHBUTTON "Cancel", IDCANCEL, 170, 170, 50, 14, WS_VISIBLE | WS_CHILD | WS_TABSTOP
+END
+
+LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
 
 MENU_001 MENU
 BEGIN
@@ -126,6 +141,17 @@ BEGIN
         MENUITEM "&About Control Panel", IDM_CPANEL_ABOUT
     END
 END
+
+STRINGTABLE
+{
+  IDS_PID_ICONFILEEXTENSIONS "Files containing icons (*.ico;*.dll;*.exe)\0*.ico;*.dll;*.exe\0All files (*.*)\0*.*\0\0"
+  IDS_PID_DIALOGCOULDNOTBEDISPLAYED "The 'Change Icon' dialog could not be displayed because:\r\n%1"
+  IDS_PID_FILEDOESNOTEXIST "The file '%1' does not exist."
+  IDS_PID_PROCESSINGFAILURE "The 'Change Icon' dialog module failed to process some data successfully because the following error occurred:\r\nError %2!u!: %1"
+  IDS_PID_FILENOICONS "The file\r\n'%1'\r\ndoes not contain any icons."
+  IDS_PID_ICONSPARTLYLOADED "Only %1!i! of %2!i! icons could be loaded successfully from the file\r\n'%3'."
+  IDS_PID_CHANGEICONPROBLEM "Change Icon Problem"
+}
 
 STRINGTABLE
 {
