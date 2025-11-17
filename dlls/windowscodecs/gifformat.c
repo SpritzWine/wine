@@ -1415,7 +1415,7 @@ static inline int read_byte(struct input_stream *in, unsigned char *byte)
     return 0;
 }
 
-static HRESULT gif_compress(IStream *out_stream, const BYTE *in_data, ULONG in_size)
+static HRESULT gif_compress(IStream *out_stream, const BYTE *in_data, ULONG in_size, int color_bits)
 {
     struct input_stream in;
     struct output_stream out;
@@ -1429,7 +1429,7 @@ static HRESULT gif_compress(IStream *out_stream, const BYTE *in_data, ULONG in_s
     out.gif_block.len = 0;
     out.out = out_stream;
 
-    init_code_bits = suffix = 8;
+    init_code_bits = suffix = max(2, color_bits);
     if (IStream_Write(out.out, &suffix, sizeof(suffix), NULL) != S_OK)
         return E_FAIL;
 
@@ -1563,11 +1563,23 @@ static HRESULT WINAPI GifFrameEncode_Commit(IWICBitmapFrameEncode *iface)
                     hr = IStream_Write(This->encoder->stream, gif_palette, sizeof(gif_palette), NULL);
                     if (hr == S_OK)
                     {
+                        int color_bits = 1;
+                        while ((1 << color_bits) < This->colors) color_bits++;
+
                         /* Image Data */
-                        hr = gif_compress(This->encoder->stream, This->image_data, This->width * This->height);
+                        hr = gif_compress(This->encoder->stream, This->image_data, This->width * This->height, color_bits);
                         if (hr == S_OK)
                             This->committed = TRUE;
                     }
+                }
+                else if (hr == S_OK)
+                {
+                    int color_bits = 1;
+                    while ((1 << color_bits) < This->encoder->colors) color_bits++;
+
+                    hr = gif_compress(This->encoder->stream, This->image_data, This->width * This->height, color_bits);
+                    if (hr == S_OK)
+                        This->committed = TRUE;
                 }
             }
         }
