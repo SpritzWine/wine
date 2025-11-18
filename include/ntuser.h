@@ -1072,6 +1072,7 @@ enum
     NtUserCallNoParam_GetShellWindow,
     NtUserCallNoParam_GetTaskmanWindow,
     NtUserCallNoParam_DisplayModeChanged,
+    NtUserCallNoParam_TimelineThread,
     /* temporary exports */
     NtUserExitingThread,
     NtUserThreadDetach,

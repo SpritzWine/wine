@@ -212,6 +212,10 @@ struct vulkan_device
     ALL_VK_DEVICE_FUNCS
 #undef USE_VK_FUNC
 
+    HANDLE      timeline_thread;
+    VkSemaphore timeline_semaphore;
+    uint64_t    timeline_value;
+
     uint64_t queue_count;
     struct vulkan_queue queues[];
 };

@@ -31,6 +31,8 @@
 #include "wine/asm.h"
 #include "win32syscalls.h"
 
+#include "unixlib.h"
+
 void *__wine_syscall_dispatcher = NULL;
 
 /*******************************************************************
@@ -2554,8 +2556,25 @@ ALL_SYSCALLS
 
 void *dummy = NtQueryVirtualMemory;  /* forced import to avoid link error with winecrt0 */
 
+static void set_thread_name( const WCHAR *name )
+{
+    THREAD_NAME_INFORMATION info;
+    RtlInitUnicodeString( &info.ThreadName, name );
+    NtSetInformationThread( GetCurrentThread(), ThreadNameInformation, &info, sizeof(info) );
+}
+
+static NTSTATUS WINAPI timeline_thread( void *arg )
+{
+    set_thread_name( L"wine_timeline_thread" );
+    RtlExitUserThread( NtUserCallNoParam( NtUserCallNoParam_TimelineThread ) );
+}
+
 BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, void *reserved )
 {
+    struct process_attach_params params =
+    {
+        .timeline_thread_proc = (UINT_PTR)timeline_thread,
+    };
     HMODULE ntdll;
     void **dispatcher_ptr;
     const UNICODE_STRING ntdll_name = RTL_CONSTANT_STRING( L"ntdll.dll" );
@@ -2568,7 +2587,7 @@ BOOL WINAPI DllMain( HINSTANCE inst, DWORD reason, void *reserved )
         LdrGetDllHandle( NULL, 0, &ntdll_name, &ntdll );
         dispatcher_ptr = RtlFindExportedRoutineByName( ntdll, "__wine_syscall_dispatcher" );
         __wine_syscall_dispatcher = *dispatcher_ptr;
-        if (!__wine_init_unix_call()) WINE_UNIX_CALL( 0, NULL );
+        if (!__wine_init_unix_call()) WINE_UNIX_CALL( unix_process_attach, &params );
         break;
     }
     return TRUE;
