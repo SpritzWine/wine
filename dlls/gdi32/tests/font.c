@@ -7918,13 +7918,13 @@ static void test_font_family(void)
         { 96,   DEFAULT_CHARSET,    FF_ROMAN,    L"Times New Roman" },
 
         /* Test font family with invalid bit */
-        { 6,    DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"Times New Roman", 1 },
-        { 12,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Small Fonts",     0 },
-        { 16,   DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"MS Serif"       , 1 },
-        { 24,   DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"Times New Roman", 1 },
-        { 32,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Arial",           0 },
-        { 48,   DEFAULT_CHARSET,    0x80 | FF_MODERN,   L"Courier New",     1 },
-        { 96,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Arial",           0 },
+        { 6,    DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"Times New Roman" },
+        { 12,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Small Fonts"     },
+        { 16,   DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"MS Serif"        },
+        { 24,   DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"Times New Roman" },
+        { 32,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Arial"           },
+        { 48,   DEFAULT_CHARSET,    0x80 | FF_MODERN,   L"Courier New"     },
+        { 96,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Arial"           },
     };
     WCHAR font_name[1024] = { 0 };
     TEXTMETRICW metric;
