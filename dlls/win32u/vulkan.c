@@ -2091,6 +2091,79 @@ failed:
     return VK_ERROR_UNKNOWN;
 }
 
+static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, const VkBindSparseInfo *binds, VkFence client_fence )
+{
+    struct vulkan_fence *fence = client_fence ? vulkan_fence_from_handle( client_fence ) : NULL;
+    struct vulkan_queue *queue = vulkan_queue_from_handle( client_queue );
+    struct vulkan_device *device = queue->device;
+
+    TRACE( "queue %p, count %u, binds %p, fence %p\n", queue, count, binds, fence );
+
+    for (uint32_t i = 0; i < count; i++)
+    {
+        VkBindSparseInfo *bind = (VkBindSparseInfo *)binds + i; /* cast away const, chain has been copied in the thunks */
+        VkBaseOutStructure **next, *prev = (VkBaseOutStructure *)bind;
+
+        for (const VkSparseBufferMemoryBindInfo *buffer = bind->pBufferBinds, *end = buffer + bind->bufferBindCount; buffer < end; buffer++)
+        {
+            for (uint32_t j = 0; j < buffer->bindCount; j++)
+            {
+                VkSparseMemoryBind *binds = (VkSparseMemoryBind *)buffer->pBinds; /* cast away const, chain has been copied in the thunks */
+                struct vulkan_device_memory *memory = vulkan_device_memory_from_handle( binds[j].memory );
+                if (memory) binds[j].memory = memory->host.device_memory;
+            }
+        }
+
+        for (const VkSparseImageOpaqueMemoryBindInfo *opaque = bind->pImageOpaqueBinds, *end = opaque + bind->imageOpaqueBindCount; opaque < end; opaque++)
+        {
+            for (uint32_t j = 0; j < opaque->bindCount; j++)
+            {
+                VkSparseMemoryBind *binds = (VkSparseMemoryBind *)opaque->pBinds; /* cast away const, chain has been copied in the thunks */
+                struct vulkan_device_memory *memory = vulkan_device_memory_from_handle( binds[j].memory );
+                if (memory) binds[j].memory = memory->host.device_memory;
+            }
+        }
+
+        for (const VkSparseImageMemoryBindInfo *image = bind->pImageBinds, *end = image + bind->imageBindCount; image < end; image++)
+        {
+            for (uint32_t j = 0; j < image->bindCount; j++)
+            {
+                VkSparseImageMemoryBind *binds = (VkSparseImageMemoryBind *)image->pBinds; /* cast away const, chain has been copied in the thunks */
+                struct vulkan_device_memory *memory = vulkan_device_memory_from_handle( binds[j].memory );
+                if (memory) binds[j].memory = memory->host.device_memory;
+            }
+        }
+
+        for (next = &prev->pNext; *next; prev = *next, next = &(*next)->pNext)
+        {
+            switch ((*next)->sType)
+            {
+            case VK_STRUCTURE_TYPE_DEVICE_GROUP_BIND_SPARSE_INFO: break;
+            case VK_STRUCTURE_TYPE_FRAME_BOUNDARY_EXT: break;
+            case VK_STRUCTURE_TYPE_FRAME_BOUNDARY_TENSORS_ARM: break;
+            case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO: break;
+            default: FIXME( "Unhandled sType %u.\n", (*next)->sType ); break;
+            }
+        }
+
+        for (uint32_t j = 0; j < bind->waitSemaphoreCount; j++)
+        {
+            VkSemaphore *semaphores = (VkSemaphore *)bind->pWaitSemaphores; /* cast away const, it has been copied in the thunks */
+            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore->host.semaphore;
+        }
+
+        for (uint32_t j = 0; j < bind->signalSemaphoreCount; j++)
+        {
+            VkSemaphore *semaphores = (VkSemaphore *)bind->pSignalSemaphores; /* cast away const, it has been copied in the thunks */
+            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore->host.semaphore;
+        }
+    }
+
+    return device->p_vkQueueBindSparse( queue->host.queue, count, binds, fence ? fence->host.fence : 0 );
+}
+
 static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, const VkSubmitInfo *submits, VkFence client_fence )
 {
     struct vulkan_fence *fence = client_fence ? vulkan_fence_from_handle( client_fence ) : NULL;
@@ -2462,6 +2535,100 @@ static void win32u_vkDestroySemaphore( VkDevice client_device, VkSemaphore clien
     if (semaphore->shared) NtClose( semaphore->shared );
     d3dkmt_destroy_sync( semaphore->local );
     free( semaphore );
+}
+
+static VkResult get_semaphore_counter_value( struct vulkan_device *device, struct semaphore *semaphore, uint64_t *value,
+                                             PFN_vkGetSemaphoreCounterValue p_vkGetSemaphoreCounterValue )
+{
+    return p_vkGetSemaphoreCounterValue( device->host.device, semaphore->obj.host.semaphore, value );
+}
+
+static VkResult win32u_vkGetSemaphoreCounterValue( VkDevice client_device, VkSemaphore client_semaphore, uint64_t *value )
+{
+    struct vulkan_device *device = vulkan_device_from_handle( client_device );
+    struct semaphore *semaphore = semaphore_from_handle( client_semaphore );
+    TRACE( "device %p, semaphore %p, value %p\n", device, semaphore, value );
+    return get_semaphore_counter_value( device, semaphore, value, device->p_vkGetSemaphoreCounterValue );
+}
+
+static VkResult win32u_vkGetSemaphoreCounterValueKHR( VkDevice client_device, VkSemaphore client_semaphore, uint64_t *value )
+{
+    struct vulkan_device *device = vulkan_device_from_handle( client_device );
+    struct semaphore *semaphore = semaphore_from_handle( client_semaphore );
+    TRACE( "device %p, semaphore %p, value %p\n", device, semaphore, value );
+    return get_semaphore_counter_value( device, semaphore, value, device->p_vkGetSemaphoreCounterValueKHR );
+}
+
+static VkResult signal_semaphore( struct vulkan_device *device, const VkSemaphoreSignalInfo *signal_info,
+                                  PFN_vkSignalSemaphore p_vkSignalSemaphore )
+{
+    struct semaphore *semaphore = semaphore_from_handle( signal_info->semaphore );
+    VkSemaphoreSignalInfo info = *signal_info;
+
+    if (info.pNext) FIXME( "pNext not implemented\n" );
+    info.pNext = NULL;
+
+    info.semaphore = semaphore->obj.host.semaphore;
+    return p_vkSignalSemaphore( device->host.device, &info );
+}
+
+static VkResult win32u_vkSignalSemaphore( VkDevice client_device, const VkSemaphoreSignalInfo *signal_info )
+{
+    struct vulkan_device *device = vulkan_device_from_handle( client_device );
+    TRACE( "device %p, signal_info %p\n", device, signal_info );
+    return signal_semaphore( device, signal_info, device->p_vkSignalSemaphore );
+}
+
+static VkResult win32u_vkSignalSemaphoreKHR( VkDevice client_device, const VkSemaphoreSignalInfo *signal_info )
+{
+    struct vulkan_device *device = vulkan_device_from_handle( client_device );
+    TRACE( "device %p, signal_info %p\n", device, signal_info );
+    return signal_semaphore( device, signal_info, device->p_vkSignalSemaphoreKHR );
+}
+
+static VkResult wait_semaphores( struct vulkan_device *device, const VkSemaphoreWaitInfo *wait_info, uint64_t timeout,
+                                 PFN_vkWaitSemaphores p_vkWaitSemaphores )
+{
+    VkResult res = VK_ERROR_OUT_OF_HOST_MEMORY;
+    VkSemaphoreWaitInfo info = *wait_info;
+    struct mempool pool = {0};
+    VkSemaphore *semaphores;
+    uint64_t *values;
+
+    if (!(semaphores = mem_alloc( &pool, info.semaphoreCount * sizeof(semaphores) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    info.pSemaphores = memcpy( semaphores, info.pSemaphores, info.semaphoreCount * sizeof(semaphores) );
+
+    if (!(values = mem_alloc( &pool, info.semaphoreCount * sizeof(values) ))) goto failed;
+    info.pValues = memcpy( values, info.pValues, info.semaphoreCount * sizeof(values) );
+
+    if (info.pNext) FIXME( "pNext not implemented\n" );
+    info.pNext = NULL;
+
+    for (uint32_t i = 0; i < info.semaphoreCount; i++)
+    {
+        struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[i] );
+        semaphores[i] = semaphore->host.semaphore;
+    }
+
+    res = p_vkWaitSemaphores( device->host.device, &info, timeout );
+
+failed:
+    mem_free( &pool );
+    return res;
+}
+
+static VkResult win32u_vkWaitSemaphores( VkDevice client_device, const VkSemaphoreWaitInfo *wait_info, uint64_t timeout )
+{
+    struct vulkan_device *device = vulkan_device_from_handle( client_device );
+    TRACE( "device %p, wait_info %p, timeout %jd\n", device, wait_info, (intmax_t)timeout );
+    return wait_semaphores( device, wait_info, timeout, device->p_vkWaitSemaphores );
+}
+
+static VkResult win32u_vkWaitSemaphoresKHR( VkDevice client_device, const VkSemaphoreWaitInfo *wait_info, uint64_t timeout )
+{
+    struct vulkan_device *device = vulkan_device_from_handle( client_device );
+    TRACE( "device %p, wait_info %p, timeout %jd\n", device, wait_info, (intmax_t)timeout );
+    return wait_semaphores( device, wait_info, timeout, device->p_vkWaitSemaphoresKHR );
 }
 
 static VkResult win32u_vkGetSemaphoreWin32HandleKHR( VkDevice client_device, const VkSemaphoreGetWin32HandleInfoKHR *handle_info, HANDLE *handle )
@@ -2855,17 +3022,24 @@ static struct vulkan_funcs vulkan_funcs =
     .p_vkGetPhysicalDeviceSurfaceFormats2KHR = win32u_vkGetPhysicalDeviceSurfaceFormats2KHR,
     .p_vkGetPhysicalDeviceSurfaceFormatsKHR = win32u_vkGetPhysicalDeviceSurfaceFormatsKHR,
     .p_vkGetPhysicalDeviceWin32PresentationSupportKHR = win32u_vkGetPhysicalDeviceWin32PresentationSupportKHR,
+    .p_vkGetSemaphoreCounterValue = win32u_vkGetSemaphoreCounterValue,
+    .p_vkGetSemaphoreCounterValueKHR = win32u_vkGetSemaphoreCounterValueKHR,
     .p_vkGetSemaphoreWin32HandleKHR = win32u_vkGetSemaphoreWin32HandleKHR,
     .p_vkImportFenceWin32HandleKHR = win32u_vkImportFenceWin32HandleKHR,
     .p_vkImportSemaphoreWin32HandleKHR = win32u_vkImportSemaphoreWin32HandleKHR,
     .p_vkMapMemory = win32u_vkMapMemory,
     .p_vkMapMemory2KHR = win32u_vkMapMemory2KHR,
+    .p_vkQueueBindSparse = win32u_vkQueueBindSparse,
     .p_vkQueuePresentKHR = win32u_vkQueuePresentKHR,
     .p_vkQueueSubmit = win32u_vkQueueSubmit,
     .p_vkQueueSubmit2 = win32u_vkQueueSubmit2,
     .p_vkQueueSubmit2KHR = win32u_vkQueueSubmit2KHR,
+    .p_vkSignalSemaphore = win32u_vkSignalSemaphore,
+    .p_vkSignalSemaphoreKHR = win32u_vkSignalSemaphoreKHR,
     .p_vkUnmapMemory = win32u_vkUnmapMemory,
     .p_vkUnmapMemory2KHR = win32u_vkUnmapMemory2KHR,
+    .p_vkWaitSemaphores = win32u_vkWaitSemaphores,
+    .p_vkWaitSemaphoresKHR = win32u_vkWaitSemaphoresKHR,
 };
 
 static VkResult nulldrv_vulkan_surface_create( HWND hwnd, const struct vulkan_instance *instance, VkSurfaceKHR *surface,

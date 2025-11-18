@@ -227,17 +227,24 @@ USER_DRIVER_FUNCS = {
     "vkGetPhysicalDeviceSurfaceFormats2KHR",
     "vkGetPhysicalDeviceSurfaceFormatsKHR",
     "vkGetPhysicalDeviceWin32PresentationSupportKHR",
+    "vkGetSemaphoreCounterValue",
+    "vkGetSemaphoreCounterValueKHR",
     "vkGetSemaphoreWin32HandleKHR",
     "vkImportFenceWin32HandleKHR",
     "vkImportSemaphoreWin32HandleKHR",
     "vkMapMemory",
     "vkMapMemory2KHR",
+    "vkQueueBindSparse",
     "vkQueuePresentKHR",
     "vkQueueSubmit",
     "vkQueueSubmit2",
     "vkQueueSubmit2KHR",
+    "vkSignalSemaphore",
+    "vkSignalSemaphoreKHR",
     "vkUnmapMemory",
     "vkUnmapMemory2KHR",
+    "vkWaitSemaphores",
+    "vkWaitSemaphoresKHR",
 }
 
 # functions for which the unix thunk is manually implemented
@@ -307,6 +314,7 @@ STRUCT_CHAIN_CONVERSIONS = {
     "VkFenceCreateInfo": {},
     "VkSubmitInfo": {},
     "VkSubmitInfo2": {},
+    "VkBindSparseInfo": {},
 
     # Ignore to not confuse host loader.
     "VkDeviceCreateInfo": {"strip": ["VK_STRUCTURE_TYPE_LOADER_DEVICE_CREATE_INFO"]},

@@ -40336,7 +40336,7 @@ static void convert_VkMemoryMapInfo_win32_to_unwrapped_host(const VkMemoryMapInf
 }
 
 #ifdef _WIN64
-static const VkSemaphore *convert_VkSemaphore_array_win64_to_host(struct conversion_context *ctx, const VkSemaphore *in, uint32_t count)
+static const VkSemaphore *convert_VkSemaphore_array_win64_to_unwrapped_host(struct conversion_context *ctx, const VkSemaphore *in, uint32_t count)
 {
     VkSemaphore *out;
     unsigned int i;
@@ -40346,7 +40346,7 @@ static const VkSemaphore *convert_VkSemaphore_array_win64_to_host(struct convers
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        out[i] = vulkan_semaphore_from_handle(in[i])->host.semaphore;
+        out[i] = in[i];
     }
 
     return out;
@@ -40354,177 +40354,97 @@ static const VkSemaphore *convert_VkSemaphore_array_win64_to_host(struct convers
 #endif /* _WIN64 */
 
 #ifdef _WIN64
-static void convert_VkSparseMemoryBind_win64_to_host(const VkSparseMemoryBind *in, VkSparseMemoryBind *out)
+static void convert_VkBindSparseInfo_win64_to_unwrapped_host(struct conversion_context *ctx, const VkBindSparseInfo *in, VkBindSparseInfo *out)
 {
-    if (!in) return;
+    const VkBaseInStructure *in_header;
+    VkBaseOutStructure *out_header = (void *)out;
 
-    out->resourceOffset = in->resourceOffset;
-    out->size = in->size;
-    out->memory = in->memory ? vulkan_device_memory_from_handle(in->memory)->host.device_memory : 0;
-    out->memoryOffset = in->memoryOffset;
-    out->flags = in->flags;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static const VkSparseMemoryBind *convert_VkSparseMemoryBind_array_win64_to_host(struct conversion_context *ctx, const VkSparseMemoryBind *in, uint32_t count)
-{
-    VkSparseMemoryBind *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        convert_VkSparseMemoryBind_win64_to_host(&in[i], &out[i]);
-    }
-
-    return out;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static void convert_VkSparseBufferMemoryBindInfo_win64_to_host(struct conversion_context *ctx, const VkSparseBufferMemoryBindInfo *in, VkSparseBufferMemoryBindInfo *out)
-{
-    if (!in) return;
-
-    out->buffer = in->buffer;
-    out->bindCount = in->bindCount;
-    out->pBinds = convert_VkSparseMemoryBind_array_win64_to_host(ctx, in->pBinds, in->bindCount);
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static const VkSparseBufferMemoryBindInfo *convert_VkSparseBufferMemoryBindInfo_array_win64_to_host(struct conversion_context *ctx, const VkSparseBufferMemoryBindInfo *in, uint32_t count)
-{
-    VkSparseBufferMemoryBindInfo *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        convert_VkSparseBufferMemoryBindInfo_win64_to_host(ctx, &in[i], &out[i]);
-    }
-
-    return out;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static void convert_VkSparseImageOpaqueMemoryBindInfo_win64_to_host(struct conversion_context *ctx, const VkSparseImageOpaqueMemoryBindInfo *in, VkSparseImageOpaqueMemoryBindInfo *out)
-{
-    if (!in) return;
-
-    out->image = in->image;
-    out->bindCount = in->bindCount;
-    out->pBinds = convert_VkSparseMemoryBind_array_win64_to_host(ctx, in->pBinds, in->bindCount);
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static const VkSparseImageOpaqueMemoryBindInfo *convert_VkSparseImageOpaqueMemoryBindInfo_array_win64_to_host(struct conversion_context *ctx, const VkSparseImageOpaqueMemoryBindInfo *in, uint32_t count)
-{
-    VkSparseImageOpaqueMemoryBindInfo *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        convert_VkSparseImageOpaqueMemoryBindInfo_win64_to_host(ctx, &in[i], &out[i]);
-    }
-
-    return out;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static void convert_VkSparseImageMemoryBind_win64_to_host(const VkSparseImageMemoryBind *in, VkSparseImageMemoryBind *out)
-{
-    if (!in) return;
-
-    out->subresource = in->subresource;
-    out->offset = in->offset;
-    out->extent = in->extent;
-    out->memory = in->memory ? vulkan_device_memory_from_handle(in->memory)->host.device_memory : 0;
-    out->memoryOffset = in->memoryOffset;
-    out->flags = in->flags;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static const VkSparseImageMemoryBind *convert_VkSparseImageMemoryBind_array_win64_to_host(struct conversion_context *ctx, const VkSparseImageMemoryBind *in, uint32_t count)
-{
-    VkSparseImageMemoryBind *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        convert_VkSparseImageMemoryBind_win64_to_host(&in[i], &out[i]);
-    }
-
-    return out;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static void convert_VkSparseImageMemoryBindInfo_win64_to_host(struct conversion_context *ctx, const VkSparseImageMemoryBindInfo *in, VkSparseImageMemoryBindInfo *out)
-{
-    if (!in) return;
-
-    out->image = in->image;
-    out->bindCount = in->bindCount;
-    out->pBinds = convert_VkSparseImageMemoryBind_array_win64_to_host(ctx, in->pBinds, in->bindCount);
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static const VkSparseImageMemoryBindInfo *convert_VkSparseImageMemoryBindInfo_array_win64_to_host(struct conversion_context *ctx, const VkSparseImageMemoryBindInfo *in, uint32_t count)
-{
-    VkSparseImageMemoryBindInfo *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        convert_VkSparseImageMemoryBindInfo_win64_to_host(ctx, &in[i], &out[i]);
-    }
-
-    return out;
-}
-#endif /* _WIN64 */
-
-#ifdef _WIN64
-static void convert_VkBindSparseInfo_win64_to_host(struct conversion_context *ctx, const VkBindSparseInfo *in, VkBindSparseInfo *out)
-{
     if (!in) return;
 
     out->sType = in->sType;
-    out->pNext = in->pNext;
+    out->pNext = NULL;
     out->waitSemaphoreCount = in->waitSemaphoreCount;
-    out->pWaitSemaphores = convert_VkSemaphore_array_win64_to_host(ctx, in->pWaitSemaphores, in->waitSemaphoreCount);
+    out->pWaitSemaphores = convert_VkSemaphore_array_win64_to_unwrapped_host(ctx, in->pWaitSemaphores, in->waitSemaphoreCount);
     out->bufferBindCount = in->bufferBindCount;
-    out->pBufferBinds = convert_VkSparseBufferMemoryBindInfo_array_win64_to_host(ctx, in->pBufferBinds, in->bufferBindCount);
+    out->pBufferBinds = in->pBufferBinds;
     out->imageOpaqueBindCount = in->imageOpaqueBindCount;
-    out->pImageOpaqueBinds = convert_VkSparseImageOpaqueMemoryBindInfo_array_win64_to_host(ctx, in->pImageOpaqueBinds, in->imageOpaqueBindCount);
+    out->pImageOpaqueBinds = in->pImageOpaqueBinds;
     out->imageBindCount = in->imageBindCount;
-    out->pImageBinds = convert_VkSparseImageMemoryBindInfo_array_win64_to_host(ctx, in->pImageBinds, in->imageBindCount);
+    out->pImageBinds = in->pImageBinds;
     out->signalSemaphoreCount = in->signalSemaphoreCount;
-    out->pSignalSemaphores = convert_VkSemaphore_array_win64_to_host(ctx, in->pSignalSemaphores, in->signalSemaphoreCount);
+    out->pSignalSemaphores = convert_VkSemaphore_array_win64_to_unwrapped_host(ctx, in->pSignalSemaphores, in->signalSemaphoreCount);
+
+    for (in_header = (void *)in->pNext; in_header; in_header = (void *)in_header->pNext)
+    {
+        switch (in_header->sType)
+        {
+        case VK_STRUCTURE_TYPE_DEVICE_GROUP_BIND_SPARSE_INFO:
+        {
+            VkDeviceGroupBindSparseInfo *out_ext = conversion_context_alloc(ctx, sizeof(*out_ext));
+            const VkDeviceGroupBindSparseInfo *in_ext = (const VkDeviceGroupBindSparseInfo *)in_header;
+            out_ext->sType = VK_STRUCTURE_TYPE_DEVICE_GROUP_BIND_SPARSE_INFO;
+            out_ext->pNext = NULL;
+            out_ext->resourceDeviceIndex = in_ext->resourceDeviceIndex;
+            out_ext->memoryDeviceIndex = in_ext->memoryDeviceIndex;
+            out_header->pNext = (void *)out_ext;
+            out_header = (void *)out_ext;
+            break;
+        }
+        case VK_STRUCTURE_TYPE_FRAME_BOUNDARY_EXT:
+        {
+            VkFrameBoundaryEXT *out_ext = conversion_context_alloc(ctx, sizeof(*out_ext));
+            const VkFrameBoundaryEXT *in_ext = (const VkFrameBoundaryEXT *)in_header;
+            out_ext->sType = VK_STRUCTURE_TYPE_FRAME_BOUNDARY_EXT;
+            out_ext->pNext = NULL;
+            out_ext->flags = in_ext->flags;
+            out_ext->frameID = in_ext->frameID;
+            out_ext->imageCount = in_ext->imageCount;
+            out_ext->pImages = in_ext->pImages;
+            out_ext->bufferCount = in_ext->bufferCount;
+            out_ext->pBuffers = in_ext->pBuffers;
+            out_ext->tagName = in_ext->tagName;
+            out_ext->tagSize = in_ext->tagSize;
+            out_ext->pTag = in_ext->pTag;
+            out_header->pNext = (void *)out_ext;
+            out_header = (void *)out_ext;
+            break;
+        }
+        case VK_STRUCTURE_TYPE_FRAME_BOUNDARY_TENSORS_ARM:
+        {
+            VkFrameBoundaryTensorsARM *out_ext = conversion_context_alloc(ctx, sizeof(*out_ext));
+            const VkFrameBoundaryTensorsARM *in_ext = (const VkFrameBoundaryTensorsARM *)in_header;
+            out_ext->sType = VK_STRUCTURE_TYPE_FRAME_BOUNDARY_TENSORS_ARM;
+            out_ext->pNext = NULL;
+            out_ext->tensorCount = in_ext->tensorCount;
+            out_ext->pTensors = in_ext->pTensors;
+            out_header->pNext = (void *)out_ext;
+            out_header = (void *)out_ext;
+            break;
+        }
+        case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO:
+        {
+            VkTimelineSemaphoreSubmitInfo *out_ext = conversion_context_alloc(ctx, sizeof(*out_ext));
+            const VkTimelineSemaphoreSubmitInfo *in_ext = (const VkTimelineSemaphoreSubmitInfo *)in_header;
+            out_ext->sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+            out_ext->pNext = NULL;
+            out_ext->waitSemaphoreValueCount = in_ext->waitSemaphoreValueCount;
+            out_ext->pWaitSemaphoreValues = in_ext->pWaitSemaphoreValues;
+            out_ext->signalSemaphoreValueCount = in_ext->signalSemaphoreValueCount;
+            out_ext->pSignalSemaphoreValues = in_ext->pSignalSemaphoreValues;
+            out_header->pNext = (void *)out_ext;
+            out_header = (void *)out_ext;
+            break;
+        }
+        default:
+            FIXME("Unhandled sType %u.\n", in_header->sType);
+            break;
+        }
+    }
 }
 #endif /* _WIN64 */
 
 #ifdef _WIN64
-static const VkBindSparseInfo *convert_VkBindSparseInfo_array_win64_to_host(struct conversion_context *ctx, const VkBindSparseInfo *in, uint32_t count)
+static const VkBindSparseInfo *convert_VkBindSparseInfo_array_win64_to_unwrapped_host(struct conversion_context *ctx, const VkBindSparseInfo *in, uint32_t count)
 {
     VkBindSparseInfo *out;
     unsigned int i;
@@ -40534,14 +40454,14 @@ static const VkBindSparseInfo *convert_VkBindSparseInfo_array_win64_to_host(stru
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkBindSparseInfo_win64_to_host(ctx, &in[i], &out[i]);
+        convert_VkBindSparseInfo_win64_to_unwrapped_host(ctx, &in[i], &out[i]);
     }
 
     return out;
 }
 #endif /* _WIN64 */
 
-static const VkSemaphore *convert_VkSemaphore_array_win32_to_host(struct conversion_context *ctx, const VkSemaphore *in, uint32_t count)
+static const VkSemaphore *convert_VkSemaphore_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSemaphore *in, uint32_t count)
 {
     VkSemaphore *out;
     unsigned int i;
@@ -40551,24 +40471,24 @@ static const VkSemaphore *convert_VkSemaphore_array_win32_to_host(struct convers
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        out[i] = vulkan_semaphore_from_handle(in[i])->host.semaphore;
+        out[i] = in[i];
     }
 
     return out;
 }
 
-static void convert_VkSparseMemoryBind_win32_to_host(const VkSparseMemoryBind32 *in, VkSparseMemoryBind *out)
+static void convert_VkSparseMemoryBind_win32_to_unwrapped_host(const VkSparseMemoryBind32 *in, VkSparseMemoryBind *out)
 {
     if (!in) return;
 
     out->resourceOffset = in->resourceOffset;
     out->size = in->size;
-    out->memory = in->memory ? vulkan_device_memory_from_handle(in->memory)->host.device_memory : 0;
+    out->memory = in->memory;
     out->memoryOffset = in->memoryOffset;
     out->flags = in->flags;
 }
 
-static const VkSparseMemoryBind *convert_VkSparseMemoryBind_array_win32_to_host(struct conversion_context *ctx, const VkSparseMemoryBind32 *in, uint32_t count)
+static const VkSparseMemoryBind *convert_VkSparseMemoryBind_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseMemoryBind32 *in, uint32_t count)
 {
     VkSparseMemoryBind *out;
     unsigned int i;
@@ -40578,22 +40498,22 @@ static const VkSparseMemoryBind *convert_VkSparseMemoryBind_array_win32_to_host(
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkSparseMemoryBind_win32_to_host(&in[i], &out[i]);
+        convert_VkSparseMemoryBind_win32_to_unwrapped_host(&in[i], &out[i]);
     }
 
     return out;
 }
 
-static void convert_VkSparseBufferMemoryBindInfo_win32_to_host(struct conversion_context *ctx, const VkSparseBufferMemoryBindInfo32 *in, VkSparseBufferMemoryBindInfo *out)
+static void convert_VkSparseBufferMemoryBindInfo_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseBufferMemoryBindInfo32 *in, VkSparseBufferMemoryBindInfo *out)
 {
     if (!in) return;
 
     out->buffer = in->buffer;
     out->bindCount = in->bindCount;
-    out->pBinds = convert_VkSparseMemoryBind_array_win32_to_host(ctx, (const VkSparseMemoryBind32 *)UlongToPtr(in->pBinds), in->bindCount);
+    out->pBinds = convert_VkSparseMemoryBind_array_win32_to_unwrapped_host(ctx, (const VkSparseMemoryBind32 *)UlongToPtr(in->pBinds), in->bindCount);
 }
 
-static const VkSparseBufferMemoryBindInfo *convert_VkSparseBufferMemoryBindInfo_array_win32_to_host(struct conversion_context *ctx, const VkSparseBufferMemoryBindInfo32 *in, uint32_t count)
+static const VkSparseBufferMemoryBindInfo *convert_VkSparseBufferMemoryBindInfo_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseBufferMemoryBindInfo32 *in, uint32_t count)
 {
     VkSparseBufferMemoryBindInfo *out;
     unsigned int i;
@@ -40603,22 +40523,22 @@ static const VkSparseBufferMemoryBindInfo *convert_VkSparseBufferMemoryBindInfo_
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkSparseBufferMemoryBindInfo_win32_to_host(ctx, &in[i], &out[i]);
+        convert_VkSparseBufferMemoryBindInfo_win32_to_unwrapped_host(ctx, &in[i], &out[i]);
     }
 
     return out;
 }
 
-static void convert_VkSparseImageOpaqueMemoryBindInfo_win32_to_host(struct conversion_context *ctx, const VkSparseImageOpaqueMemoryBindInfo32 *in, VkSparseImageOpaqueMemoryBindInfo *out)
+static void convert_VkSparseImageOpaqueMemoryBindInfo_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseImageOpaqueMemoryBindInfo32 *in, VkSparseImageOpaqueMemoryBindInfo *out)
 {
     if (!in) return;
 
     out->image = in->image;
     out->bindCount = in->bindCount;
-    out->pBinds = convert_VkSparseMemoryBind_array_win32_to_host(ctx, (const VkSparseMemoryBind32 *)UlongToPtr(in->pBinds), in->bindCount);
+    out->pBinds = convert_VkSparseMemoryBind_array_win32_to_unwrapped_host(ctx, (const VkSparseMemoryBind32 *)UlongToPtr(in->pBinds), in->bindCount);
 }
 
-static const VkSparseImageOpaqueMemoryBindInfo *convert_VkSparseImageOpaqueMemoryBindInfo_array_win32_to_host(struct conversion_context *ctx, const VkSparseImageOpaqueMemoryBindInfo32 *in, uint32_t count)
+static const VkSparseImageOpaqueMemoryBindInfo *convert_VkSparseImageOpaqueMemoryBindInfo_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseImageOpaqueMemoryBindInfo32 *in, uint32_t count)
 {
     VkSparseImageOpaqueMemoryBindInfo *out;
     unsigned int i;
@@ -40628,25 +40548,25 @@ static const VkSparseImageOpaqueMemoryBindInfo *convert_VkSparseImageOpaqueMemor
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkSparseImageOpaqueMemoryBindInfo_win32_to_host(ctx, &in[i], &out[i]);
+        convert_VkSparseImageOpaqueMemoryBindInfo_win32_to_unwrapped_host(ctx, &in[i], &out[i]);
     }
 
     return out;
 }
 
-static void convert_VkSparseImageMemoryBind_win32_to_host(const VkSparseImageMemoryBind32 *in, VkSparseImageMemoryBind *out)
+static void convert_VkSparseImageMemoryBind_win32_to_unwrapped_host(const VkSparseImageMemoryBind32 *in, VkSparseImageMemoryBind *out)
 {
     if (!in) return;
 
     out->subresource = in->subresource;
     out->offset = in->offset;
     out->extent = in->extent;
-    out->memory = in->memory ? vulkan_device_memory_from_handle(in->memory)->host.device_memory : 0;
+    out->memory = in->memory;
     out->memoryOffset = in->memoryOffset;
     out->flags = in->flags;
 }
 
-static const VkSparseImageMemoryBind *convert_VkSparseImageMemoryBind_array_win32_to_host(struct conversion_context *ctx, const VkSparseImageMemoryBind32 *in, uint32_t count)
+static const VkSparseImageMemoryBind *convert_VkSparseImageMemoryBind_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseImageMemoryBind32 *in, uint32_t count)
 {
     VkSparseImageMemoryBind *out;
     unsigned int i;
@@ -40656,22 +40576,22 @@ static const VkSparseImageMemoryBind *convert_VkSparseImageMemoryBind_array_win3
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkSparseImageMemoryBind_win32_to_host(&in[i], &out[i]);
+        convert_VkSparseImageMemoryBind_win32_to_unwrapped_host(&in[i], &out[i]);
     }
 
     return out;
 }
 
-static void convert_VkSparseImageMemoryBindInfo_win32_to_host(struct conversion_context *ctx, const VkSparseImageMemoryBindInfo32 *in, VkSparseImageMemoryBindInfo *out)
+static void convert_VkSparseImageMemoryBindInfo_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseImageMemoryBindInfo32 *in, VkSparseImageMemoryBindInfo *out)
 {
     if (!in) return;
 
     out->image = in->image;
     out->bindCount = in->bindCount;
-    out->pBinds = convert_VkSparseImageMemoryBind_array_win32_to_host(ctx, (const VkSparseImageMemoryBind32 *)UlongToPtr(in->pBinds), in->bindCount);
+    out->pBinds = convert_VkSparseImageMemoryBind_array_win32_to_unwrapped_host(ctx, (const VkSparseImageMemoryBind32 *)UlongToPtr(in->pBinds), in->bindCount);
 }
 
-static const VkSparseImageMemoryBindInfo *convert_VkSparseImageMemoryBindInfo_array_win32_to_host(struct conversion_context *ctx, const VkSparseImageMemoryBindInfo32 *in, uint32_t count)
+static const VkSparseImageMemoryBindInfo *convert_VkSparseImageMemoryBindInfo_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSparseImageMemoryBindInfo32 *in, uint32_t count)
 {
     VkSparseImageMemoryBindInfo *out;
     unsigned int i;
@@ -40681,13 +40601,13 @@ static const VkSparseImageMemoryBindInfo *convert_VkSparseImageMemoryBindInfo_ar
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkSparseImageMemoryBindInfo_win32_to_host(ctx, &in[i], &out[i]);
+        convert_VkSparseImageMemoryBindInfo_win32_to_unwrapped_host(ctx, &in[i], &out[i]);
     }
 
     return out;
 }
 
-static void convert_VkBindSparseInfo_win32_to_host(struct conversion_context *ctx, const VkBindSparseInfo32 *in, VkBindSparseInfo *out)
+static void convert_VkBindSparseInfo_win32_to_unwrapped_host(struct conversion_context *ctx, const VkBindSparseInfo32 *in, VkBindSparseInfo *out)
 {
     const VkBaseInStructure32 *in_header;
     VkBaseOutStructure *out_header = (void *)out;
@@ -40697,15 +40617,15 @@ static void convert_VkBindSparseInfo_win32_to_host(struct conversion_context *ct
     out->sType = in->sType;
     out->pNext = NULL;
     out->waitSemaphoreCount = in->waitSemaphoreCount;
-    out->pWaitSemaphores = convert_VkSemaphore_array_win32_to_host(ctx, (const VkSemaphore *)UlongToPtr(in->pWaitSemaphores), in->waitSemaphoreCount);
+    out->pWaitSemaphores = convert_VkSemaphore_array_win32_to_unwrapped_host(ctx, (const VkSemaphore *)UlongToPtr(in->pWaitSemaphores), in->waitSemaphoreCount);
     out->bufferBindCount = in->bufferBindCount;
-    out->pBufferBinds = convert_VkSparseBufferMemoryBindInfo_array_win32_to_host(ctx, (const VkSparseBufferMemoryBindInfo32 *)UlongToPtr(in->pBufferBinds), in->bufferBindCount);
+    out->pBufferBinds = convert_VkSparseBufferMemoryBindInfo_array_win32_to_unwrapped_host(ctx, (const VkSparseBufferMemoryBindInfo32 *)UlongToPtr(in->pBufferBinds), in->bufferBindCount);
     out->imageOpaqueBindCount = in->imageOpaqueBindCount;
-    out->pImageOpaqueBinds = convert_VkSparseImageOpaqueMemoryBindInfo_array_win32_to_host(ctx, (const VkSparseImageOpaqueMemoryBindInfo32 *)UlongToPtr(in->pImageOpaqueBinds), in->imageOpaqueBindCount);
+    out->pImageOpaqueBinds = convert_VkSparseImageOpaqueMemoryBindInfo_array_win32_to_unwrapped_host(ctx, (const VkSparseImageOpaqueMemoryBindInfo32 *)UlongToPtr(in->pImageOpaqueBinds), in->imageOpaqueBindCount);
     out->imageBindCount = in->imageBindCount;
-    out->pImageBinds = convert_VkSparseImageMemoryBindInfo_array_win32_to_host(ctx, (const VkSparseImageMemoryBindInfo32 *)UlongToPtr(in->pImageBinds), in->imageBindCount);
+    out->pImageBinds = convert_VkSparseImageMemoryBindInfo_array_win32_to_unwrapped_host(ctx, (const VkSparseImageMemoryBindInfo32 *)UlongToPtr(in->pImageBinds), in->imageBindCount);
     out->signalSemaphoreCount = in->signalSemaphoreCount;
-    out->pSignalSemaphores = convert_VkSemaphore_array_win32_to_host(ctx, (const VkSemaphore *)UlongToPtr(in->pSignalSemaphores), in->signalSemaphoreCount);
+    out->pSignalSemaphores = convert_VkSemaphore_array_win32_to_unwrapped_host(ctx, (const VkSemaphore *)UlongToPtr(in->pSignalSemaphores), in->signalSemaphoreCount);
 
     for (in_header = UlongToPtr(in->pNext); in_header; in_header = UlongToPtr(in_header->pNext))
     {
@@ -40775,7 +40695,7 @@ static void convert_VkBindSparseInfo_win32_to_host(struct conversion_context *ct
     }
 }
 
-static const VkBindSparseInfo *convert_VkBindSparseInfo_array_win32_to_host(struct conversion_context *ctx, const VkBindSparseInfo32 *in, uint32_t count)
+static const VkBindSparseInfo *convert_VkBindSparseInfo_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkBindSparseInfo32 *in, uint32_t count)
 {
     VkBindSparseInfo *out;
     unsigned int i;
@@ -40785,7 +40705,7 @@ static const VkBindSparseInfo *convert_VkBindSparseInfo_array_win32_to_host(stru
     out = conversion_context_alloc(ctx, count * sizeof(*out));
     for (i = 0; i < count; i++)
     {
-        convert_VkBindSparseInfo_win32_to_host(ctx, &in[i], &out[i]);
+        convert_VkBindSparseInfo_win32_to_unwrapped_host(ctx, &in[i], &out[i]);
     }
 
     return out;
@@ -40801,24 +40721,6 @@ static void convert_VkOutOfBandQueueTypeInfoNV_win32_to_host(const VkOutOfBandQu
     if (in->pNext)
         FIXME("Unexpected pNext\n");
 }
-
-#ifdef _WIN64
-static const VkSemaphore *convert_VkSemaphore_array_win64_to_unwrapped_host(struct conversion_context *ctx, const VkSemaphore *in, uint32_t count)
-{
-    VkSemaphore *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        out[i] = in[i];
-    }
-
-    return out;
-}
-#endif /* _WIN64 */
 
 #ifdef _WIN64
 static const VkSwapchainKHR *convert_VkSwapchainKHR_array_win64_to_unwrapped_host(struct conversion_context *ctx, const VkSwapchainKHR *in, uint32_t count)
@@ -40988,22 +40890,6 @@ static void convert_VkPresentInfoKHR_win64_to_unwrapped_host(struct conversion_c
     }
 }
 #endif /* _WIN64 */
-
-static const VkSemaphore *convert_VkSemaphore_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSemaphore *in, uint32_t count)
-{
-    VkSemaphore *out;
-    unsigned int i;
-
-    if (!in || !count) return NULL;
-
-    out = conversion_context_alloc(ctx, count * sizeof(*out));
-    for (i = 0; i < count; i++)
-    {
-        out[i] = in[i];
-    }
-
-    return out;
-}
 
 static const VkSwapchainKHR *convert_VkSwapchainKHR_array_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSwapchainKHR *in, uint32_t count)
 {
@@ -42257,25 +42143,13 @@ static void convert_VkLatencySleepModeInfoNV_win32_to_host(const VkLatencySleepM
         FIXME("Unexpected pNext\n");
 }
 
-#ifdef _WIN64
-static void convert_VkSemaphoreSignalInfo_win64_to_host(const VkSemaphoreSignalInfo *in, VkSemaphoreSignalInfo *out)
-{
-    if (!in) return;
-
-    out->sType = in->sType;
-    out->pNext = in->pNext;
-    out->semaphore = vulkan_semaphore_from_handle(in->semaphore)->host.semaphore;
-    out->value = in->value;
-}
-#endif /* _WIN64 */
-
-static void convert_VkSemaphoreSignalInfo_win32_to_host(const VkSemaphoreSignalInfo32 *in, VkSemaphoreSignalInfo *out)
+static void convert_VkSemaphoreSignalInfo_win32_to_unwrapped_host(const VkSemaphoreSignalInfo32 *in, VkSemaphoreSignalInfo *out)
 {
     if (!in) return;
 
     out->sType = in->sType;
     out->pNext = NULL;
-    out->semaphore = vulkan_semaphore_from_handle(in->semaphore)->host.semaphore;
+    out->semaphore = in->semaphore;
     out->value = in->value;
     if (in->pNext)
         FIXME("Unexpected pNext\n");
@@ -42614,7 +42488,7 @@ static void convert_VkPresentWait2InfoKHR_win32_to_host(const VkPresentWait2Info
 }
 
 #ifdef _WIN64
-static void convert_VkSemaphoreWaitInfo_win64_to_host(struct conversion_context *ctx, const VkSemaphoreWaitInfo *in, VkSemaphoreWaitInfo *out)
+static void convert_VkSemaphoreWaitInfo_win64_to_unwrapped_host(struct conversion_context *ctx, const VkSemaphoreWaitInfo *in, VkSemaphoreWaitInfo *out)
 {
     if (!in) return;
 
@@ -42622,12 +42496,12 @@ static void convert_VkSemaphoreWaitInfo_win64_to_host(struct conversion_context 
     out->pNext = in->pNext;
     out->flags = in->flags;
     out->semaphoreCount = in->semaphoreCount;
-    out->pSemaphores = convert_VkSemaphore_array_win64_to_host(ctx, in->pSemaphores, in->semaphoreCount);
+    out->pSemaphores = convert_VkSemaphore_array_win64_to_unwrapped_host(ctx, in->pSemaphores, in->semaphoreCount);
     out->pValues = in->pValues;
 }
 #endif /* _WIN64 */
 
-static void convert_VkSemaphoreWaitInfo_win32_to_host(struct conversion_context *ctx, const VkSemaphoreWaitInfo32 *in, VkSemaphoreWaitInfo *out)
+static void convert_VkSemaphoreWaitInfo_win32_to_unwrapped_host(struct conversion_context *ctx, const VkSemaphoreWaitInfo32 *in, VkSemaphoreWaitInfo *out)
 {
     if (!in) return;
 
@@ -42635,7 +42509,7 @@ static void convert_VkSemaphoreWaitInfo_win32_to_host(struct conversion_context 
     out->pNext = NULL;
     out->flags = in->flags;
     out->semaphoreCount = in->semaphoreCount;
-    out->pSemaphores = convert_VkSemaphore_array_win32_to_host(ctx, (const VkSemaphore *)UlongToPtr(in->pSemaphores), in->semaphoreCount);
+    out->pSemaphores = convert_VkSemaphore_array_win32_to_unwrapped_host(ctx, (const VkSemaphore *)UlongToPtr(in->pSemaphores), in->semaphoreCount);
     out->pValues = UlongToPtr(in->pValues);
     if (in->pNext)
         FIXME("Unexpected pNext\n");
@@ -59536,7 +59410,7 @@ static NTSTATUS thunk64_vkGetSemaphoreCounterValue(void *args)
 
     TRACE("%p, 0x%s, %p\n", params->device, wine_dbgstr_longlong(params->semaphore), params->pValue);
 
-    params->result = vulkan_device_from_handle(params->device)->p_vkGetSemaphoreCounterValue(vulkan_device_from_handle(params->device)->host.device, vulkan_semaphore_from_handle(params->semaphore)->host.semaphore, params->pValue);
+    params->result = vk_funcs->p_vkGetSemaphoreCounterValue(params->device, params->semaphore, params->pValue);
     return STATUS_SUCCESS;
 }
 #endif /* _WIN64 */
@@ -59553,7 +59427,7 @@ static NTSTATUS thunk32_vkGetSemaphoreCounterValue(void *args)
 
     TRACE("%#x, 0x%s, %#x\n", params->device, wine_dbgstr_longlong(params->semaphore), params->pValue);
 
-    params->result = vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->p_vkGetSemaphoreCounterValue(vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->host.device, vulkan_semaphore_from_handle(params->semaphore)->host.semaphore, (uint64_t *)UlongToPtr(params->pValue));
+    params->result = vk_funcs->p_vkGetSemaphoreCounterValue((VkDevice)UlongToPtr(params->device), params->semaphore, (uint64_t *)UlongToPtr(params->pValue));
     return STATUS_SUCCESS;
 }
 
@@ -59564,7 +59438,7 @@ static NTSTATUS thunk64_vkGetSemaphoreCounterValueKHR(void *args)
 
     TRACE("%p, 0x%s, %p\n", params->device, wine_dbgstr_longlong(params->semaphore), params->pValue);
 
-    params->result = vulkan_device_from_handle(params->device)->p_vkGetSemaphoreCounterValueKHR(vulkan_device_from_handle(params->device)->host.device, vulkan_semaphore_from_handle(params->semaphore)->host.semaphore, params->pValue);
+    params->result = vk_funcs->p_vkGetSemaphoreCounterValueKHR(params->device, params->semaphore, params->pValue);
     return STATUS_SUCCESS;
 }
 #endif /* _WIN64 */
@@ -59581,7 +59455,7 @@ static NTSTATUS thunk32_vkGetSemaphoreCounterValueKHR(void *args)
 
     TRACE("%#x, 0x%s, %#x\n", params->device, wine_dbgstr_longlong(params->semaphore), params->pValue);
 
-    params->result = vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->p_vkGetSemaphoreCounterValueKHR(vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->host.device, vulkan_semaphore_from_handle(params->semaphore)->host.semaphore, (uint64_t *)UlongToPtr(params->pValue));
+    params->result = vk_funcs->p_vkGetSemaphoreCounterValueKHR((VkDevice)UlongToPtr(params->device), params->semaphore, (uint64_t *)UlongToPtr(params->pValue));
     return STATUS_SUCCESS;
 }
 
@@ -60301,8 +60175,8 @@ static NTSTATUS thunk64_vkQueueBindSparse(void *args)
     TRACE("%p, %u, %p, 0x%s\n", params->queue, params->bindInfoCount, params->pBindInfo, wine_dbgstr_longlong(params->fence));
 
     init_conversion_context(ctx);
-    pBindInfo_host = convert_VkBindSparseInfo_array_win64_to_host(ctx, params->pBindInfo, params->bindInfoCount);
-    params->result = vulkan_queue_from_handle(params->queue)->device->p_vkQueueBindSparse(vulkan_queue_from_handle(params->queue)->host.queue, params->bindInfoCount, pBindInfo_host, params->fence ? vulkan_fence_from_handle(params->fence)->host.fence : 0);
+    pBindInfo_host = convert_VkBindSparseInfo_array_win64_to_unwrapped_host(ctx, params->pBindInfo, params->bindInfoCount);
+    params->result = vk_funcs->p_vkQueueBindSparse(params->queue, params->bindInfoCount, pBindInfo_host, params->fence);
     free_conversion_context(ctx);
     return STATUS_SUCCESS;
 }
@@ -60325,8 +60199,8 @@ static NTSTATUS thunk32_vkQueueBindSparse(void *args)
     TRACE("%#x, %u, %#x, 0x%s\n", params->queue, params->bindInfoCount, params->pBindInfo, wine_dbgstr_longlong(params->fence));
 
     init_conversion_context(ctx);
-    pBindInfo_host = convert_VkBindSparseInfo_array_win32_to_host(ctx, (const VkBindSparseInfo32 *)UlongToPtr(params->pBindInfo), params->bindInfoCount);
-    params->result = vulkan_queue_from_handle((VkQueue)UlongToPtr(params->queue))->device->p_vkQueueBindSparse(vulkan_queue_from_handle((VkQueue)UlongToPtr(params->queue))->host.queue, params->bindInfoCount, pBindInfo_host, params->fence ? vulkan_fence_from_handle(params->fence)->host.fence : 0);
+    pBindInfo_host = convert_VkBindSparseInfo_array_win32_to_unwrapped_host(ctx, (const VkBindSparseInfo32 *)UlongToPtr(params->pBindInfo), params->bindInfoCount);
+    params->result = vk_funcs->p_vkQueueBindSparse((VkQueue)UlongToPtr(params->queue), params->bindInfoCount, pBindInfo_host, params->fence);
     free_conversion_context(ctx);
     return STATUS_SUCCESS;
 }
@@ -61258,12 +61132,10 @@ static NTSTATUS thunk32_vkSetPrivateDataEXT(void *args)
 static NTSTATUS thunk64_vkSignalSemaphore(void *args)
 {
     struct vkSignalSemaphore_params *params = args;
-    VkSemaphoreSignalInfo pSignalInfo_host;
 
     TRACE("%p, %p\n", params->device, params->pSignalInfo);
 
-    convert_VkSemaphoreSignalInfo_win64_to_host(params->pSignalInfo, &pSignalInfo_host);
-    params->result = vulkan_device_from_handle(params->device)->p_vkSignalSemaphore(vulkan_device_from_handle(params->device)->host.device, &pSignalInfo_host);
+    params->result = vk_funcs->p_vkSignalSemaphore(params->device, params->pSignalInfo);
     return STATUS_SUCCESS;
 }
 #endif /* _WIN64 */
@@ -61280,8 +61152,8 @@ static NTSTATUS thunk32_vkSignalSemaphore(void *args)
 
     TRACE("%#x, %#x\n", params->device, params->pSignalInfo);
 
-    convert_VkSemaphoreSignalInfo_win32_to_host((const VkSemaphoreSignalInfo32 *)UlongToPtr(params->pSignalInfo), &pSignalInfo_host);
-    params->result = vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->p_vkSignalSemaphore(vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->host.device, &pSignalInfo_host);
+    convert_VkSemaphoreSignalInfo_win32_to_unwrapped_host((const VkSemaphoreSignalInfo32 *)UlongToPtr(params->pSignalInfo), &pSignalInfo_host);
+    params->result = vk_funcs->p_vkSignalSemaphore((VkDevice)UlongToPtr(params->device), &pSignalInfo_host);
     return STATUS_SUCCESS;
 }
 
@@ -61289,12 +61161,10 @@ static NTSTATUS thunk32_vkSignalSemaphore(void *args)
 static NTSTATUS thunk64_vkSignalSemaphoreKHR(void *args)
 {
     struct vkSignalSemaphoreKHR_params *params = args;
-    VkSemaphoreSignalInfo pSignalInfo_host;
 
     TRACE("%p, %p\n", params->device, params->pSignalInfo);
 
-    convert_VkSemaphoreSignalInfo_win64_to_host(params->pSignalInfo, &pSignalInfo_host);
-    params->result = vulkan_device_from_handle(params->device)->p_vkSignalSemaphoreKHR(vulkan_device_from_handle(params->device)->host.device, &pSignalInfo_host);
+    params->result = vk_funcs->p_vkSignalSemaphoreKHR(params->device, params->pSignalInfo);
     return STATUS_SUCCESS;
 }
 #endif /* _WIN64 */
@@ -61311,8 +61181,8 @@ static NTSTATUS thunk32_vkSignalSemaphoreKHR(void *args)
 
     TRACE("%#x, %#x\n", params->device, params->pSignalInfo);
 
-    convert_VkSemaphoreSignalInfo_win32_to_host((const VkSemaphoreSignalInfo32 *)UlongToPtr(params->pSignalInfo), &pSignalInfo_host);
-    params->result = vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->p_vkSignalSemaphoreKHR(vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->host.device, &pSignalInfo_host);
+    convert_VkSemaphoreSignalInfo_win32_to_unwrapped_host((const VkSemaphoreSignalInfo32 *)UlongToPtr(params->pSignalInfo), &pSignalInfo_host);
+    params->result = vk_funcs->p_vkSignalSemaphoreKHR((VkDevice)UlongToPtr(params->device), &pSignalInfo_host);
     return STATUS_SUCCESS;
 }
 
@@ -61884,8 +61754,8 @@ static NTSTATUS thunk64_vkWaitSemaphores(void *args)
     TRACE("%p, %p, 0x%s\n", params->device, params->pWaitInfo, wine_dbgstr_longlong(params->timeout));
 
     init_conversion_context(ctx);
-    convert_VkSemaphoreWaitInfo_win64_to_host(ctx, params->pWaitInfo, &pWaitInfo_host);
-    params->result = vulkan_device_from_handle(params->device)->p_vkWaitSemaphores(vulkan_device_from_handle(params->device)->host.device, &pWaitInfo_host, params->timeout);
+    convert_VkSemaphoreWaitInfo_win64_to_unwrapped_host(ctx, params->pWaitInfo, &pWaitInfo_host);
+    params->result = vk_funcs->p_vkWaitSemaphores(params->device, &pWaitInfo_host, params->timeout);
     free_conversion_context(ctx);
     return STATUS_SUCCESS;
 }
@@ -61907,8 +61777,8 @@ static NTSTATUS thunk32_vkWaitSemaphores(void *args)
     TRACE("%#x, %#x, 0x%s\n", params->device, params->pWaitInfo, wine_dbgstr_longlong(params->timeout));
 
     init_conversion_context(ctx);
-    convert_VkSemaphoreWaitInfo_win32_to_host(ctx, (const VkSemaphoreWaitInfo32 *)UlongToPtr(params->pWaitInfo), &pWaitInfo_host);
-    params->result = vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->p_vkWaitSemaphores(vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->host.device, &pWaitInfo_host, params->timeout);
+    convert_VkSemaphoreWaitInfo_win32_to_unwrapped_host(ctx, (const VkSemaphoreWaitInfo32 *)UlongToPtr(params->pWaitInfo), &pWaitInfo_host);
+    params->result = vk_funcs->p_vkWaitSemaphores((VkDevice)UlongToPtr(params->device), &pWaitInfo_host, params->timeout);
     free_conversion_context(ctx);
     return STATUS_SUCCESS;
 }
@@ -61924,8 +61794,8 @@ static NTSTATUS thunk64_vkWaitSemaphoresKHR(void *args)
     TRACE("%p, %p, 0x%s\n", params->device, params->pWaitInfo, wine_dbgstr_longlong(params->timeout));
 
     init_conversion_context(ctx);
-    convert_VkSemaphoreWaitInfo_win64_to_host(ctx, params->pWaitInfo, &pWaitInfo_host);
-    params->result = vulkan_device_from_handle(params->device)->p_vkWaitSemaphoresKHR(vulkan_device_from_handle(params->device)->host.device, &pWaitInfo_host, params->timeout);
+    convert_VkSemaphoreWaitInfo_win64_to_unwrapped_host(ctx, params->pWaitInfo, &pWaitInfo_host);
+    params->result = vk_funcs->p_vkWaitSemaphoresKHR(params->device, &pWaitInfo_host, params->timeout);
     free_conversion_context(ctx);
     return STATUS_SUCCESS;
 }
@@ -61947,8 +61817,8 @@ static NTSTATUS thunk32_vkWaitSemaphoresKHR(void *args)
     TRACE("%#x, %#x, 0x%s\n", params->device, params->pWaitInfo, wine_dbgstr_longlong(params->timeout));
 
     init_conversion_context(ctx);
-    convert_VkSemaphoreWaitInfo_win32_to_host(ctx, (const VkSemaphoreWaitInfo32 *)UlongToPtr(params->pWaitInfo), &pWaitInfo_host);
-    params->result = vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->p_vkWaitSemaphoresKHR(vulkan_device_from_handle((VkDevice)UlongToPtr(params->device))->host.device, &pWaitInfo_host, params->timeout);
+    convert_VkSemaphoreWaitInfo_win32_to_unwrapped_host(ctx, (const VkSemaphoreWaitInfo32 *)UlongToPtr(params->pWaitInfo), &pWaitInfo_host);
+    params->result = vk_funcs->p_vkWaitSemaphoresKHR((VkDevice)UlongToPtr(params->device), &pWaitInfo_host, params->timeout);
     free_conversion_context(ctx);
     return STATUS_SUCCESS;
 }
