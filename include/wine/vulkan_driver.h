@@ -215,6 +215,9 @@ struct vulkan_device
     HANDLE      timeline_thread;
     VkSemaphore timeline_semaphore;
     uint64_t    timeline_value;
+    struct list timeline_waits;
+    struct list timeline_signals;
+    struct list timeline_events;
 
     uint64_t queue_count;
     struct vulkan_queue queues[];

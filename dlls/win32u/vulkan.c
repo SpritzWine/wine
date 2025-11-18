@@ -169,9 +169,14 @@ static struct swapchain *swapchain_from_handle( VkSwapchainKHR handle )
 struct semaphore
 {
     struct vulkan_semaphore obj;
+    struct vulkan_device *device;
+    VkSemaphoreType type;
+
     D3DKMT_HANDLE local;
     D3DKMT_HANDLE global;
     HANDLE shared;
+
+    uint64_t semaphore_value;
 };
 
 static struct semaphore *semaphore_from_handle( VkSemaphore handle )
@@ -348,6 +353,16 @@ static void timeline_semaphore_signal( struct vulkan_device *device, VkSemaphore
     if (res) ERR( "Failed to signal timeline semaphore %#jx value %#jx, res %d\n", (uintmax_t)semaphore, (uintmax_t)value, res );
 }
 
+static uint64_t timeline_semaphore_value( struct vulkan_device *device, VkSemaphore semaphore )
+{
+    PFN_vkGetSemaphoreCounterValue p_vkGetSemaphoreCounterValue = device->p_vkGetSemaphoreCounterValue ? device->p_vkGetSemaphoreCounterValue
+                                                                                                       : device->p_vkGetSemaphoreCounterValueKHR;
+    uint64_t value = 0;
+    VkResult res = p_vkGetSemaphoreCounterValue( device->host.device, semaphore, &value );
+    if (res) ERR( "Failed to read timeline semaphore %#jx, res %d\n", (uintmax_t)semaphore, res );
+    return value;
+}
+
 static VkResult timeline_semaphore_wait_any( struct vulkan_device *device, uint32_t count, VkSemaphore *semaphores, uint64_t *values, uint64_t timeout )
 {
     PFN_vkWaitSemaphores p_vkWaitSemaphores = device->p_vkWaitSemaphores ? device->p_vkWaitSemaphores : device->p_vkWaitSemaphoresKHR;
@@ -358,13 +373,127 @@ static VkResult timeline_semaphore_wait_any( struct vulkan_device *device, uint3
     return res;
 }
 
+struct timeline_event
+{
+    struct vulkan_semaphore obj;
+    D3DKMT_HANDLE global;
+    struct list entry;
+    uint64_t timeout;
+    uint64_t event_value;
+    uint64_t semaphore_value;
+};
+
 static pthread_mutex_t timeline_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct vulkan_device *timeline_thread_param;
 PRTL_THREAD_START_ROUTINE timeline_thread_proc;
 
+static struct timeline_event *timeline_event_create( struct vulkan_device *device )
+{
+    struct timeline_event *event;
+    VkSemaphore host_semaphore;
+
+    if (!(event = calloc( 1, sizeof(*event) ))) return NULL;
+    if (timeline_semaphore_create( device, &host_semaphore ))
+    {
+        free( event );
+        return NULL;
+    }
+    event->event_value = 1;
+
+    vulkan_object_init( &event->obj.obj, host_semaphore );
+    TRACE( "device %p, event %p\n", device, event );
+    return event;
+}
+
+static void timeline_event_destroy( struct vulkan_device *device, struct timeline_event *event )
+{
+    struct vulkan_instance *instance = device->physical_device->instance;
+
+    TRACE( "device %p, event %p\n", device, event );
+
+    if (event->obj.obj.client_handle) instance->p_remove_object( instance, &event->obj.obj );
+    device->p_vkDestroySemaphore( device->host.device, event->obj.host.semaphore, NULL /* allocator */ );
+    free( event );
+}
+
+static struct timeline_event *timeline_event_acquire( struct vulkan_device *device, VkSemaphore client_semaphore, uint64_t semaphore_value )
+{
+    struct vulkan_instance *instance = device->physical_device->instance;
+    struct timeline_event *event = NULL;
+    struct list *ptr;
+
+    pthread_mutex_lock( &timeline_lock );
+    if (device->timeline_thread && (ptr = list_head( &device->timeline_events )))
+    {
+        event = LIST_ENTRY( ptr, struct timeline_event, entry );
+        if (!event->event_value) event = NULL;
+        else list_remove( &event->entry );
+    }
+    pthread_mutex_unlock( &timeline_lock );
+
+    if (!event && !(event = timeline_event_create( device ))) return NULL;
+    event->semaphore_value = semaphore_value;
+    event->obj.client.semaphore = client_semaphore;
+    instance->p_insert_object( instance, &event->obj.obj );
+
+    return event;
+}
+
+static void timeline_event_release( struct vulkan_device *device, struct timeline_event *event )
+{
+    struct vulkan_instance *instance = device->physical_device->instance;
+
+    instance->p_remove_object( instance, &event->obj.obj );
+    event->obj.client.semaphore = 0;
+    event->semaphore_value = 0;
+
+    if (event->event_value) list_add_head( &device->timeline_events, &event->entry );
+    else list_add_tail( &device->timeline_events, &event->entry );
+}
+
+static void timeline_release_wait( struct vulkan_device *device, struct timeline_event *wait )
+{
+    wait->event_value++;
+    list_remove( &wait->entry );
+    timeline_event_release( device, wait );
+}
+
+static void timeline_satisfy_wait( struct vulkan_device *device, struct timeline_event *wait )
+{
+    struct semaphore *semaphore = semaphore_from_handle( wait->obj.client.semaphore );
+
+    TRACE( "Signaling event %p/%#jx for semaphore %p wait %#jx\n", wait, (uintmax_t)wait->event_value,
+           semaphore, (uintmax_t)wait->semaphore_value );
+    timeline_semaphore_signal( device, wait->obj.host.semaphore, wait->event_value );
+    timeline_release_wait( device, wait );
+}
+
+static void timeline_satisfied( struct vulkan_device *device, struct timeline_event *signal )
+{
+    struct semaphore *semaphore = semaphore_from_handle( signal->obj.client.semaphore );
+    struct timeline_event *wait, *next;
+
+    TRACE( "Satisfied event %p/%#jx for semaphore %p signal %#jx\n", signal, (uintmax_t)signal->event_value,
+           semaphore, (uintmax_t)signal->semaphore_value );
+
+    LIST_FOR_EACH_ENTRY_SAFE( wait, next, &device->timeline_waits, struct timeline_event, entry )
+    {
+        if (wait->obj.client.semaphore != signal->obj.client.semaphore) continue;
+        if (wait->semaphore_value > signal->semaphore_value) continue;
+        timeline_satisfy_wait( device, wait );
+    }
+
+    semaphore->semaphore_value = signal->semaphore_value;
+    signal->event_value++;
+    list_remove( &signal->entry );
+    timeline_event_release( device, signal );
+}
+
 NTSTATUS timeline_thread(void)
 {
+    struct list waits = LIST_INIT( waits ), signals = LIST_INIT( signals );
     struct vulkan_device *device = timeline_thread_param;
+    struct timeline_event *signal, *wait, *next;
     struct mempool pool = {0};
     VkResult res;
 
@@ -376,15 +505,44 @@ NTSTATUS timeline_thread(void)
     do
     {
         VkSemaphore *wait_semaphores, *wait_semaphore;
-        uint64_t *wait_values, *wait_value;
+        uint64_t *wait_values, *wait_value, time;
+        LARGE_INTEGER counter, freq;
         uint32_t count = 0;
 
+        NtQueryPerformanceCounter( &counter, &freq );
+        time = counter.QuadPart * 100;
+
         pthread_mutex_lock( &timeline_lock );
+
+        list_move_tail( &waits, &device->timeline_waits );
+        list_move_tail( &signals, &device->timeline_signals );
+
+        LIST_FOR_EACH_ENTRY_SAFE( signal, next, &signals, struct timeline_event, entry )
+        {
+            uint64_t value = timeline_semaphore_value( device, signal->obj.host.semaphore );
+            if (value < signal->event_value) count++;
+            else timeline_satisfied( device, signal );
+        }
+
+        LIST_FOR_EACH_ENTRY_SAFE( wait, next, &waits, struct timeline_event, entry )
+        {
+            struct semaphore *semaphore = semaphore_from_handle( wait->obj.client.semaphore );
+            uint64_t semaphore_value = semaphore->semaphore_value;
+            if (semaphore_value >= wait->semaphore_value) timeline_satisfy_wait( device, wait );
+            else if (wait->timeout < time) timeline_release_wait( device, wait );
+        }
 
         TRACE( "Waiting on semaphores:\n" );
         wait_semaphores = wait_semaphore = mem_alloc( &pool, (count * 2 + 1) * sizeof(*wait_semaphores) );
         wait_values = wait_value = mem_alloc( &pool, (count * 2 + 1) * sizeof(*wait_values) );
-
+        LIST_FOR_EACH_ENTRY_SAFE( signal, next, &signals, struct timeline_event, entry )
+        {
+            struct semaphore *semaphore = semaphore_from_handle( signal->obj.client.semaphore );
+            TRACE( "  - event %p/%#jx for semaphore %p signal %#jx\n", signal, (uintmax_t)signal->event_value,
+                   semaphore, (uintmax_t)signal->semaphore_value );
+            *wait_semaphore++ = signal->obj.host.semaphore;
+            *wait_value++ = signal->event_value;
+        }
         TRACE( "  - timeline %p/%#jx\n", device, (uintmax_t)device->timeline_value );
         *wait_semaphore++ = device->timeline_semaphore;
         *wait_value++ = device->timeline_value;
@@ -396,15 +554,32 @@ NTSTATUS timeline_thread(void)
         mem_free( &pool );
     } while (!res && InterlockedCompareExchangePointer( &device->timeline_thread, NULL, NULL ));
 
+    pthread_mutex_lock( &timeline_lock );
+
+    list_move_tail( &waits, &device->timeline_waits );
+    list_move_tail( &signals, &device->timeline_signals );
+
+    LIST_FOR_EACH_ENTRY_SAFE( signal, next, &signals, struct timeline_event, entry )
+        timeline_satisfied( device, signal );
+    LIST_FOR_EACH_ENTRY_SAFE( wait, next, &waits, struct timeline_event, entry )
+        timeline_satisfy_wait( device, wait );
+
+    pthread_mutex_unlock( &timeline_lock );
+
     if (res) ERR( "Timeline thread for device %p exiting with res %d\n", device, res );
     return 0;
 }
 
-static void timeline_thread_notify( struct vulkan_device *device )
+static void timeline_thread_notify( struct vulkan_device *device, struct list *waits, struct list *signals, BOOL force )
 {
     NTSTATUS status;
 
+    if (list_empty( waits ) && list_empty( signals ) && !force) return;
+
     pthread_mutex_lock( &timeline_lock );
+
+    list_move_tail( &device->timeline_waits, waits );
+    list_move_tail( &device->timeline_signals, signals );
 
     if (!device->timeline_semaphore) timeline_semaphore_create( device, &device->timeline_semaphore );
     if (!device->timeline_semaphore) ERR( "Failed to create device timeline semaphore\n" );
@@ -427,6 +602,18 @@ static void timeline_thread_notify( struct vulkan_device *device )
     }
 
     pthread_mutex_unlock( &timeline_lock );
+}
+
+static void free_timeline_events( struct vulkan_device *device, struct list *events )
+{
+    struct list *ptr;
+
+    while ((ptr = list_head( events )))
+    {
+        struct timeline_event *event = LIST_ENTRY( ptr, struct timeline_event, entry );
+        list_remove( &event->entry );
+        timeline_event_destroy( device, event );
+    }
 }
 
 static const void *find_next_struct( const VkBaseInStructure *header, VkStructureType type )
@@ -878,6 +1065,9 @@ static VkResult win32u_vkCreateDevice( VkPhysicalDevice client_physical_device, 
 
     if (!(device = calloc( 1, offsetof(struct vulkan_device, queues[queue_count]) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
     device->extensions = client_device->extensions;
+    list_init( &device->timeline_waits );
+    list_init( &device->timeline_signals );
+    list_init( &device->timeline_events );
     device->timeline_value = 1;
 
     if ((res = convert_device_create_info( physical_device, create_info, &pool, device ))) goto failed;
@@ -922,6 +1112,7 @@ static void win32u_vkDestroyDevice( VkDevice client_device, const VkAllocationCa
     {
         timeline_semaphore_signal( device, device->timeline_semaphore, device->timeline_value++ );
         NtWaitForSingleObject( thread, FALSE, NULL );
+        free_timeline_events( device, &device->timeline_events );
     }
 
     device->p_vkDestroyDevice( device->host.device, NULL /* pAllocator */ );
@@ -2193,9 +2384,37 @@ failed:
     return VK_ERROR_UNKNOWN;
 }
 
+static VkSemaphore semaphore_map_signal( struct semaphore *semaphore, uint64_t *value, struct list *signals )
+{
+    struct vulkan_device *device = semaphore->device;
+    struct timeline_event *event;
+
+    if (semaphore->type != VK_SEMAPHORE_TYPE_TIMELINE || semaphore->local) return semaphore->obj.host.semaphore;
+    if (!(event = timeline_event_acquire( device, semaphore->obj.client.semaphore, *value ))) return VK_NULL_HANDLE;
+    TRACE( "Mapped semaphore %p signal %#jx to event %p/%#jx\n", semaphore, (uintmax_t)*value, event, (uintmax_t)event->event_value );
+    list_add_tail( signals, &event->entry );
+    *value = event->event_value;
+    return event->obj.host.semaphore;
+}
+
+static VkSemaphore semaphore_map_wait( struct semaphore *semaphore, uint64_t *value, uint64_t timeout, struct list *waits )
+{
+    struct vulkan_device *device = semaphore->device;
+    struct timeline_event *event;
+
+    if (semaphore->type != VK_SEMAPHORE_TYPE_TIMELINE || semaphore->local) return semaphore->obj.host.semaphore;
+    if (!(event = timeline_event_acquire( device, semaphore->obj.client.semaphore, *value ))) return VK_NULL_HANDLE;
+    TRACE( "Mapped semaphore %p wait %#jx to event %p/%#jx\n", semaphore, (uintmax_t)*value, event, (uintmax_t)event->event_value );
+    list_add_tail( waits, &event->entry );
+    event->timeout = timeout;
+    *value = event->event_value;
+    return event->obj.host.semaphore;
+}
+
 static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, const VkBindSparseInfo *binds, VkFence client_fence )
 {
     struct vulkan_fence *fence = client_fence ? vulkan_fence_from_handle( client_fence ) : NULL;
+    struct list waits = LIST_INIT( waits ), signals = LIST_INIT( signals );
     struct vulkan_queue *queue = vulkan_queue_from_handle( client_queue );
     struct vulkan_device *device = queue->device;
     VkResult res = VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -2270,8 +2489,8 @@ static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, 
         for (uint32_t j = 0; j < bind->waitSemaphoreCount; j++)
         {
             VkSemaphore *semaphores = (VkSemaphore *)bind->pWaitSemaphores; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
-            semaphores[j] = semaphore->host.semaphore;
+            struct semaphore *semaphore = semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore_map_wait( semaphore, wait_values + j, -1, &waits );
         }
 
         if (timeline->sType && timeline->signalSemaphoreValueCount)
@@ -2284,8 +2503,8 @@ static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, 
         for (uint32_t j = 0; j < bind->signalSemaphoreCount; j++)
         {
             VkSemaphore *semaphores = (VkSemaphore *)bind->pSignalSemaphores; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
-            semaphores[j] = semaphore->host.semaphore;
+            struct semaphore *semaphore = semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore_map_signal( semaphore, signal_values + j, &signals );
         }
 
         /* insert the timeline semaphore values in the chain if it was there or has been created */
@@ -2297,7 +2516,9 @@ static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, 
     }
 
     res = device->p_vkQueueBindSparse( queue->host.queue, count, binds, fence ? fence->host.fence : 0 );
-    if (!res) timeline_thread_notify( queue->device );
+    if (!res) timeline_thread_notify( queue->device, &waits, &signals, FALSE );
+    free_timeline_events( queue->device, &waits );
+    free_timeline_events( queue->device, &signals );
 
 failed:
     mem_free( &pool );
@@ -2307,6 +2528,7 @@ failed:
 static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, const VkSubmitInfo *submits, VkFence client_fence )
 {
     struct vulkan_fence *fence = client_fence ? vulkan_fence_from_handle( client_fence ) : NULL;
+    struct list waits = LIST_INIT( waits ), signals = LIST_INIT( signals );
     struct vulkan_queue *queue = vulkan_queue_from_handle( client_queue );
     struct vulkan_device *device = queue->device;
     VkResult res = VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -2336,9 +2558,17 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
             switch ((*next)->sType)
             {
             case VK_STRUCTURE_TYPE_D3D12_FENCE_SUBMIT_INFO_KHR:
-                FIXME( "VK_STRUCTURE_TYPE_D3D12_FENCE_SUBMIT_INFO_KHR not implemented!\n" );
+            {
+                VkD3D12FenceSubmitInfoKHR *fence_info = (VkD3D12FenceSubmitInfoKHR *)*next;
+                if (timeline->sType) ERR( "Duplicated timeline semaphore/d3d12 fence submit info!\n" );
+                timeline->sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+                timeline->waitSemaphoreValueCount = fence_info->waitSemaphoreValuesCount;
+                timeline->pWaitSemaphoreValues = fence_info->pWaitSemaphoreValues;
+                timeline->signalSemaphoreValueCount = fence_info->signalSemaphoreValuesCount;
+                timeline->pSignalSemaphoreValues = fence_info->pSignalSemaphoreValues;
                 *next = (*next)->pNext; next = &prev;
                 break;
+            }
             case VK_STRUCTURE_TYPE_DEVICE_GROUP_SUBMIT_INFO:
                 device_group = (VkDeviceGroupSubmitInfo *)*next;
                 break;
@@ -2374,8 +2604,8 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
         for (uint32_t j = 0; j < submit->waitSemaphoreCount; j++)
         {
             VkSemaphore *semaphores = (VkSemaphore *)submit->pWaitSemaphores; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
-            semaphores[j] = semaphore->host.semaphore;
+            struct semaphore *semaphore = semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore_map_wait( semaphore, wait_values + j, -1, &waits );
         }
 
         if (wait_count) /* extra wait semaphores, need to update arrays and counts */
@@ -2425,8 +2655,8 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
         for (uint32_t j = 0; j < submit->signalSemaphoreCount; j++)
         {
             VkSemaphore *semaphores = (VkSemaphore *)submit->pSignalSemaphores; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
-            semaphores[j] = semaphore->host.semaphore;
+            struct semaphore *semaphore = semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore_map_signal( semaphore, signal_values + j, &signals );
         }
 
         if (signal_count) /* extra signal semaphores, need to update arrays and counts */
@@ -2460,7 +2690,9 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
     }
 
     res = device->p_vkQueueSubmit( queue->host.queue, count, submits, fence ? fence->host.fence : 0 );
-    if (!res) timeline_thread_notify( queue->device );
+    if (!res) timeline_thread_notify( queue->device, &waits, &signals, FALSE );
+    free_timeline_events( queue->device, &waits );
+    free_timeline_events( queue->device, &signals );
 
 failed:
     mem_free( &pool );
@@ -2470,6 +2702,7 @@ failed:
 static VkResult queue_submit( struct vulkan_queue *queue, uint32_t count, const VkSubmitInfo2 *submits, VkFence client_fence, PFN_vkQueueSubmit2 p_vkQueueSubmit2 )
 {
     struct vulkan_fence *fence = client_fence ? vulkan_fence_from_handle( client_fence ) : NULL;
+    struct list waits = LIST_INIT( waits ), signals = LIST_INIT( signals );
     struct mempool pool = {0};
     VkResult res;
 
@@ -2489,16 +2722,16 @@ static VkResult queue_submit( struct vulkan_queue *queue, uint32_t count, const 
         for (uint32_t j = 0; j < submit->waitSemaphoreInfoCount; j++)
         {
             VkSemaphoreSubmitInfo *semaphore_infos = (VkSemaphoreSubmitInfo *)submit->pWaitSemaphoreInfos; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphore_infos[j].semaphore );
-            semaphore_infos[j].semaphore = semaphore->host.semaphore;
+            struct semaphore *semaphore = semaphore_from_handle( semaphore_infos[j].semaphore );
+            semaphore_infos[j].semaphore = semaphore_map_wait( semaphore, &semaphore_infos[j].value, -1, &waits );
             if (semaphore_infos->pNext) FIXME( "Unhandled struct chain\n" );
         }
 
         for (uint32_t j = 0; j < submit->signalSemaphoreInfoCount; j++)
         {
             VkSemaphoreSubmitInfo *semaphore_infos = (VkSemaphoreSubmitInfo *)submit->pSignalSemaphoreInfos; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphore_infos[j].semaphore );
-            semaphore_infos[j].semaphore = semaphore->host.semaphore;
+            struct semaphore *semaphore = semaphore_from_handle( semaphore_infos[j].semaphore );
+            semaphore_infos[j].semaphore = semaphore_map_signal( semaphore, &semaphore_infos[j].value, &signals );
             if (semaphore_infos->pNext) FIXME( "Unhandled struct chain\n" );
         }
 
@@ -2524,7 +2757,9 @@ static VkResult queue_submit( struct vulkan_queue *queue, uint32_t count, const 
     }
 
     res = p_vkQueueSubmit2( queue->host.queue, count, submits, fence ? fence->host.fence : 0 );
-    if (!res) timeline_thread_notify( queue->device );
+    if (!res) timeline_thread_notify( queue->device, &waits, &signals, FALSE );
+    free_timeline_events( queue->device, &waits );
+    free_timeline_events( queue->device, &signals );
 
 failed:
     mem_free( &pool );
@@ -2597,6 +2832,7 @@ static VkResult win32u_vkCreateSemaphore( VkDevice client_device, const VkSemaph
     VkBaseOutStructure **next, *prev = (VkBaseOutStructure *)create_info;
     struct vulkan_instance *instance = device->physical_device->instance;
     VkExportSemaphoreCreateInfoKHR *export_info = NULL;
+    VkSemaphoreTypeCreateInfo type_info = {0};
     struct semaphore *semaphore;
     VkSemaphore host_semaphore;
     BOOL nt_shared = FALSE;
@@ -2623,12 +2859,18 @@ static VkResult win32u_vkCreateSemaphore( VkDevice client_device, const VkSemaph
             *next = (*next)->pNext; next = &prev;
             break;
         case VK_STRUCTURE_TYPE_QUERY_LOW_LATENCY_SUPPORT_NV: break;
-        case VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO: break;
+        case VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO:
+            type_info = *(VkSemaphoreTypeCreateInfo *)*next;
+            break;
         default: FIXME( "Unhandled sType %u.\n", (*next)->sType ); break;
         }
     }
 
     if (!(semaphore = calloc( 1, sizeof(*semaphore) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    semaphore->type = type_info.semaphoreType;
+    semaphore->device = device;
+    semaphore->semaphore_value = type_info.initialValue;
+    type_info.initialValue = 0;
 
     if ((res = device->p_vkCreateSemaphore( device->host.device, create_info, NULL /* allocator */, &host_semaphore )))
     {
@@ -2657,6 +2899,7 @@ static VkResult win32u_vkCreateSemaphore( VkDevice client_device, const VkSemaph
 
     vulkan_object_init( &semaphore->obj.obj, host_semaphore );
     instance->p_insert_object( instance, &semaphore->obj.obj );
+    TRACE( "Created semaphore %p with value %#jx\n", semaphore, (uintmax_t)semaphore->semaphore_value );
 
     *ret = semaphore->obj.client.semaphore;
     return res;
@@ -2690,6 +2933,14 @@ static void win32u_vkDestroySemaphore( VkDevice client_device, VkSemaphore clien
 static VkResult get_semaphore_counter_value( struct vulkan_device *device, struct semaphore *semaphore, uint64_t *value,
                                              PFN_vkGetSemaphoreCounterValue p_vkGetSemaphoreCounterValue )
 {
+    if (semaphore->type == VK_SEMAPHORE_TYPE_TIMELINE && !semaphore->local)
+    {
+        pthread_mutex_lock( &timeline_lock );
+        *value = semaphore->semaphore_value;
+        pthread_mutex_unlock( &timeline_lock );
+        return VK_SUCCESS;
+    }
+
     return p_vkGetSemaphoreCounterValue( device->host.device, semaphore->obj.host.semaphore, value );
 }
 
@@ -2713,17 +2964,25 @@ static VkResult signal_semaphore( struct vulkan_device *device, const VkSemaphor
                                   PFN_vkSignalSemaphore p_vkSignalSemaphore )
 {
     struct semaphore *semaphore = semaphore_from_handle( signal_info->semaphore );
+    struct list waits = LIST_INIT( waits ), signals = LIST_INIT( signals );
     VkSemaphoreSignalInfo info = *signal_info;
-    VkResult res;
 
     if (info.pNext) FIXME( "pNext not implemented\n" );
     info.pNext = NULL;
 
-    info.semaphore = semaphore->obj.host.semaphore;
-    res = p_vkSignalSemaphore( device->host.device, &info );
-    if (!res) timeline_thread_notify( device );
+    if (!semaphore->local)
+    {
+        pthread_mutex_lock( &timeline_lock );
+        TRACE( "Setting semaphore %p value %#jx\n", semaphore, (uintmax_t)signal_info->value );
+        semaphore->semaphore_value = signal_info->value;
+        pthread_mutex_unlock( &timeline_lock );
+        timeline_thread_notify( device, &waits, &signals, TRUE );
 
-    return res;
+        return VK_SUCCESS;
+    }
+
+    info.semaphore = semaphore->obj.host.semaphore;
+    return p_vkSignalSemaphore( device->host.device, &info );
 }
 
 static VkResult win32u_vkSignalSemaphore( VkDevice client_device, const VkSemaphoreSignalInfo *signal_info )
@@ -2743,11 +3002,17 @@ static VkResult win32u_vkSignalSemaphoreKHR( VkDevice client_device, const VkSem
 static VkResult wait_semaphores( struct vulkan_device *device, const VkSemaphoreWaitInfo *wait_info, uint64_t timeout,
                                  PFN_vkWaitSemaphores p_vkWaitSemaphores )
 {
+    struct list waits = LIST_INIT( waits ), signals = LIST_INIT( signals );
     VkResult res = VK_ERROR_OUT_OF_HOST_MEMORY;
     VkSemaphoreWaitInfo info = *wait_info;
+    LARGE_INTEGER counter, freq;
     struct mempool pool = {0};
     VkSemaphore *semaphores;
     uint64_t *values;
+
+    NtQueryPerformanceCounter( &counter, &freq );
+    if (timeout == -1) counter.QuadPart = -1;
+    else counter.QuadPart = (counter.QuadPart + 1) * (1000000000 / freq.QuadPart) + timeout;
 
     if (!(semaphores = mem_alloc( &pool, info.semaphoreCount * sizeof(semaphores) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
     info.pSemaphores = memcpy( semaphores, info.pSemaphores, info.semaphoreCount * sizeof(semaphores) );
@@ -2760,10 +3025,11 @@ static VkResult wait_semaphores( struct vulkan_device *device, const VkSemaphore
 
     for (uint32_t i = 0; i < info.semaphoreCount; i++)
     {
-        struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[i] );
-        semaphores[i] = semaphore->host.semaphore;
+        struct semaphore *semaphore = semaphore_from_handle( semaphores[i] );
+        semaphores[i] = semaphore_map_wait( semaphore, values + i, counter.QuadPart, &waits );
     }
-    timeline_thread_notify( device );
+    timeline_thread_notify( device, &waits, &signals, FALSE );
+    free_timeline_events( device, &waits );
 
     res = p_vkWaitSemaphores( device->host.device, &info, timeout );
 
