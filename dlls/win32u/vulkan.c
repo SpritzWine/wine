@@ -2198,14 +2198,21 @@ static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, 
     struct vulkan_fence *fence = client_fence ? vulkan_fence_from_handle( client_fence ) : NULL;
     struct vulkan_queue *queue = vulkan_queue_from_handle( client_queue );
     struct vulkan_device *device = queue->device;
-    VkResult res;
+    VkResult res = VK_ERROR_OUT_OF_HOST_MEMORY;
+    VkTimelineSemaphoreSubmitInfo *timelines;
+    struct mempool pool = {0};
 
     TRACE( "queue %p, count %u, binds %p, fence %p\n", queue, count, binds, fence );
+
+    if (!(timelines = mem_alloc( &pool, count * sizeof(*timelines) ))) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    memset( timelines, 0, count * sizeof(*timelines) );
 
     for (uint32_t i = 0; i < count; i++)
     {
         VkBindSparseInfo *bind = (VkBindSparseInfo *)binds + i; /* cast away const, chain has been copied in the thunks */
         VkBaseOutStructure **next, *prev = (VkBaseOutStructure *)bind;
+        VkTimelineSemaphoreSubmitInfo *timeline = timelines + i;
+        uint64_t *wait_values = NULL, *signal_values = NULL;
 
         for (const VkSparseBufferMemoryBindInfo *buffer = bind->pBufferBinds, *end = buffer + bind->bufferBindCount; buffer < end; buffer++)
         {
@@ -2244,9 +2251,20 @@ static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, 
             case VK_STRUCTURE_TYPE_DEVICE_GROUP_BIND_SPARSE_INFO: break;
             case VK_STRUCTURE_TYPE_FRAME_BOUNDARY_EXT: break;
             case VK_STRUCTURE_TYPE_FRAME_BOUNDARY_TENSORS_ARM: break;
-            case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO: break;
+            case VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO:
+                if (timeline->sType) ERR( "Duplicated timeline semaphore submit info!\n" );
+                *timeline = *(VkTimelineSemaphoreSubmitInfo *)*next;
+                *next = (*next)->pNext; next = &prev; /* remove it from the chain, we'll add it back below */
+                break;
             default: FIXME( "Unhandled sType %u.\n", (*next)->sType ); break;
             }
+        }
+
+        if (timeline->sType && timeline->waitSemaphoreValueCount)
+        {
+            if (!(wait_values = mem_alloc( &pool, timeline->waitSemaphoreValueCount * sizeof(*wait_values) ))) goto failed;
+            memcpy( wait_values, timeline->pWaitSemaphoreValues, timeline->waitSemaphoreValueCount * sizeof(*wait_values) );
+            timeline->pWaitSemaphoreValues = wait_values;
         }
 
         for (uint32_t j = 0; j < bind->waitSemaphoreCount; j++)
@@ -2256,17 +2274,33 @@ static VkResult win32u_vkQueueBindSparse( VkQueue client_queue, uint32_t count, 
             semaphores[j] = semaphore->host.semaphore;
         }
 
+        if (timeline->sType && timeline->signalSemaphoreValueCount)
+        {
+            if (!(signal_values = mem_alloc( &pool, timeline->signalSemaphoreValueCount * sizeof(*signal_values) ))) goto failed;
+            memcpy( signal_values, timeline->pSignalSemaphoreValues, timeline->signalSemaphoreValueCount * sizeof(*signal_values) );
+            timeline->pSignalSemaphoreValues = signal_values;
+        }
+
         for (uint32_t j = 0; j < bind->signalSemaphoreCount; j++)
         {
             VkSemaphore *semaphores = (VkSemaphore *)bind->pSignalSemaphores; /* cast away const, it has been copied in the thunks */
             struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
             semaphores[j] = semaphore->host.semaphore;
         }
+
+        /* insert the timeline semaphore values in the chain if it was there or has been created */
+        if (timeline->sType)
+        {
+            timeline->pNext = bind->pNext;
+            bind->pNext = timeline;
+        }
     }
 
     res = device->p_vkQueueBindSparse( queue->host.queue, count, binds, fence ? fence->host.fence : 0 );
     if (!res) timeline_thread_notify( queue->device );
 
+failed:
+    mem_free( &pool );
     return res;
 }
 
@@ -2290,33 +2324,12 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
         const VkSemaphoreSubmitInfo *wait_infos = NULL, *signal_infos = NULL;
         VkBaseOutStructure **next, *prev = (VkBaseOutStructure *)submit;
         VkTimelineSemaphoreSubmitInfo *timeline = timelines + i;
+        uint64_t *wait_values = NULL, *signal_values = NULL;
         VkSemaphore *wait_semaphores, *signal_semaphores;
         VkDeviceGroupSubmitInfo *device_group = NULL;
         UINT wait_count = 0, signal_count = 0;
         VkPipelineStageFlags *wait_stages;
         uint32_t *indexes;
-        uint64_t *values;
-
-        for (uint32_t j = 0; j < submit->commandBufferCount; j++)
-        {
-            VkCommandBuffer *command_buffers = (VkCommandBuffer *)submit->pCommandBuffers; /* cast away const, chain has been copied in the thunks */
-            struct vulkan_command_buffer *command_buffer = vulkan_command_buffer_from_handle( command_buffers[j] );
-            command_buffers[j] = command_buffer->host.command_buffer;
-        }
-
-        for (uint32_t j = 0; j < submit->waitSemaphoreCount; j++)
-        {
-            VkSemaphore *semaphores = (VkSemaphore *)submit->pWaitSemaphores; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
-            semaphores[j] = semaphore->host.semaphore;
-        }
-
-        for (uint32_t j = 0; j < submit->signalSemaphoreCount; j++)
-        {
-            VkSemaphore *semaphores = (VkSemaphore *)submit->pSignalSemaphores; /* cast away const, it has been copied in the thunks */
-            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
-            semaphores[j] = semaphore->host.semaphore;
-        }
 
         for (next = &prev->pNext; *next; prev = *next, next = &(*next)->pNext)
         {
@@ -2351,6 +2364,20 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
             }
         }
 
+        if ((timeline->sType && timeline->waitSemaphoreValueCount) || wait_count)
+        {
+            if (!(wait_values = mem_alloc( &pool, (timeline->waitSemaphoreValueCount + wait_count) * sizeof(*wait_values) ))) goto failed;
+            memcpy( wait_values, timeline->pWaitSemaphoreValues, timeline->waitSemaphoreValueCount * sizeof(*wait_values) );
+            timeline->pWaitSemaphoreValues = wait_values;
+        }
+
+        for (uint32_t j = 0; j < submit->waitSemaphoreCount; j++)
+        {
+            VkSemaphore *semaphores = (VkSemaphore *)submit->pWaitSemaphores; /* cast away const, it has been copied in the thunks */
+            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore->host.semaphore;
+        }
+
         if (wait_count) /* extra wait semaphores, need to update arrays and counts */
         {
             if (!(wait_semaphores = mem_alloc( &pool, (submit->waitSemaphoreCount + wait_count) * sizeof(*wait_semaphores) ))) goto failed;
@@ -2368,11 +2395,8 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
             }
             submit->waitSemaphoreCount += wait_count;
 
-            if (!(values = mem_alloc( &pool, (timeline->waitSemaphoreValueCount + wait_count) * sizeof(*values) ))) goto failed;
-            memcpy( values, timeline->pWaitSemaphoreValues, timeline->waitSemaphoreValueCount * sizeof(*values) );
-            for (uint32_t j = 0; j < wait_count; j++) values[submit->waitSemaphoreCount + j] = wait_infos[j].value;
+            for (uint32_t j = 0; j < wait_count; j++) wait_values[submit->waitSemaphoreCount + j] = wait_infos[j].value;
             timeline->waitSemaphoreValueCount = submit->waitSemaphoreCount;
-            timeline->pWaitSemaphoreValues = values;
 
             if (device_group)
             {
@@ -2384,6 +2408,27 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
             }
         }
 
+        for (uint32_t j = 0; j < submit->commandBufferCount; j++)
+        {
+            VkCommandBuffer *command_buffers = (VkCommandBuffer *)submit->pCommandBuffers; /* cast away const, chain has been copied in the thunks */
+            struct vulkan_command_buffer *command_buffer = vulkan_command_buffer_from_handle( command_buffers[j] );
+            command_buffers[j] = command_buffer->host.command_buffer;
+        }
+
+        if ((timeline->sType && timeline->signalSemaphoreValueCount) || signal_count)
+        {
+            if (!(signal_values = mem_alloc( &pool, (timeline->signalSemaphoreValueCount + signal_count) * sizeof(*signal_values) ))) goto failed;
+            memcpy( signal_values, timeline->pSignalSemaphoreValues, timeline->signalSemaphoreValueCount * sizeof(*signal_values) );
+            timeline->pSignalSemaphoreValues = signal_values;
+        }
+
+        for (uint32_t j = 0; j < submit->signalSemaphoreCount; j++)
+        {
+            VkSemaphore *semaphores = (VkSemaphore *)submit->pSignalSemaphores; /* cast away const, it has been copied in the thunks */
+            struct vulkan_semaphore *semaphore = vulkan_semaphore_from_handle( semaphores[j] );
+            semaphores[j] = semaphore->host.semaphore;
+        }
+
         if (signal_count) /* extra signal semaphores, need to update arrays and counts */
         {
             if (!(signal_semaphores = mem_alloc( &pool, (submit->signalSemaphoreCount + signal_count) * sizeof(*signal_semaphores) ))) goto failed;
@@ -2392,11 +2437,8 @@ static VkResult win32u_vkQueueSubmit( VkQueue client_queue, uint32_t count, cons
             submit->signalSemaphoreCount += signal_count;
             submit->pSignalSemaphores = signal_semaphores;
 
-            if (!(values = mem_alloc( &pool, submit->signalSemaphoreCount * sizeof(*values) ))) goto failed;
-            memcpy( values, timeline->pSignalSemaphoreValues, timeline->signalSemaphoreValueCount * sizeof(*values) );
-            for (uint32_t j = 0; j < signal_count; j++) values[submit->signalSemaphoreCount + j] = signal_infos[j].value;
+            for (uint32_t j = 0; j < signal_count; j++) signal_values[submit->signalSemaphoreCount + j] = signal_infos[j].value;
             timeline->signalSemaphoreValueCount = submit->signalSemaphoreCount;
-            timeline->pSignalSemaphoreValues = values;
 
             if (device_group)
             {
