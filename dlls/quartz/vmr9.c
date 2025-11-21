@@ -635,7 +635,7 @@ static HRESULT vmr_get_current_image(struct video_window *iface, LONG *size, LON
     char *dst;
     HRESULT hr;
 
-    EnterCriticalSection(&filter->renderer.filter.stream_cs);
+    EnterCriticalSection(&filter->renderer.filter.filter_cs);
     device = filter->allocator_d3d9_dev;
 
     bih = *get_filter_bitmap_header(filter);
@@ -644,7 +644,7 @@ static HRESULT vmr_get_current_image(struct video_window *iface, LONG *size, LON
     if (!image)
     {
         *size = sizeof(BITMAPINFOHEADER) + bih.biSizeImage;
-        LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+        LeaveCriticalSection(&filter->renderer.filter.filter_cs);
         return S_OK;
     }
 
@@ -680,7 +680,7 @@ static HRESULT vmr_get_current_image(struct video_window *iface, LONG *size, LON
 out:
     if (surface) IDirect3DSurface9_Release(surface);
     if (rt) IDirect3DSurface9_Release(rt);
-    LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+    LeaveCriticalSection(&filter->renderer.filter.filter_cs);
     return hr;
 }
 

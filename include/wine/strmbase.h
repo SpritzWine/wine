@@ -146,7 +146,6 @@ struct strmbase_filter
     IUnknown *outer_unk;
     LONG refcount;
     CRITICAL_SECTION filter_cs;
-    CRITICAL_SECTION stream_cs;
 
     FILTER_STATE state;
     IReferenceClock *clock;

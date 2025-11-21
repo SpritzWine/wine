@@ -653,9 +653,9 @@ static HRESULT avi_decompressor_cleanup_stream(struct strmbase_filter *iface)
 
     if (filter->hvid)
     {
-        EnterCriticalSection(&filter->filter.stream_cs);
+        EnterCriticalSection(&filter->filter.filter_cs);
         res = ICDecompressEnd(filter->hvid);
-        LeaveCriticalSection(&filter->filter.stream_cs);
+        LeaveCriticalSection(&filter->filter.filter_cs);
         if (res)
         {
             ERR("ICDecompressEnd() failed, error %Id.\n", res);

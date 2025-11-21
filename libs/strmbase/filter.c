@@ -530,10 +530,6 @@ void strmbase_filter_init(struct strmbase_filter *filter, IUnknown *outer,
         InitializeCriticalSection(&filter->filter_cs);
     if (filter->filter_cs.DebugInfo != (RTL_CRITICAL_SECTION_DEBUG *)-1)
         filter->filter_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": strmbase_filter.filter_cs");
-    if (!InitializeCriticalSectionEx(&filter->stream_cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO))
-        InitializeCriticalSection(&filter->stream_cs);
-    if (filter->stream_cs.DebugInfo != (RTL_CRITICAL_SECTION_DEBUG *)-1)
-        filter->stream_cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": strmbase_filter.stream_cs");
     filter->clsid = *clsid;
     filter->pin_version = 1;
     filter->ops = ops;
@@ -548,7 +544,4 @@ void strmbase_filter_cleanup(struct strmbase_filter *filter)
     if (filter->filter_cs.DebugInfo != (RTL_CRITICAL_SECTION_DEBUG *)-1)
         filter->filter_cs.DebugInfo->Spare[0] = 0;
     DeleteCriticalSection(&filter->filter_cs);
-    if (filter->stream_cs.DebugInfo != (RTL_CRITICAL_SECTION_DEBUG *)-1)
-        filter->stream_cs.DebugInfo->Spare[0] = 0;
-    DeleteCriticalSection(&filter->stream_cs);
 }

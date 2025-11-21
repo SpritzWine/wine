@@ -543,7 +543,7 @@ static HRESULT dsound_render_sink_end_flush(struct strmbase_sink *iface)
 {
     struct dsound_render *filter = impl_from_strmbase_pin(&iface->pin);
 
-    EnterCriticalSection(&filter->filter.stream_cs);
+    EnterCriticalSection(&filter->filter.filter_cs);
     if (filter->eos && filter->filter.state != State_Stopped)
     {
         WaitForSingleObject(filter->render_thread, INFINITE);
@@ -551,7 +551,7 @@ static HRESULT dsound_render_sink_end_flush(struct strmbase_sink *iface)
 
         if (!(filter->render_thread = CreateThread(NULL, 0, render_thread_run, filter, 0, NULL)))
         {
-            LeaveCriticalSection(&filter->filter.stream_cs);
+            LeaveCriticalSection(&filter->filter.filter_cs);
             return HRESULT_FROM_WIN32(GetLastError());
         }
         filter->eos = FALSE;
@@ -571,7 +571,7 @@ static HRESULT dsound_render_sink_end_flush(struct strmbase_sink *iface)
         filter->writepos = filter->buf_size;
     }
 
-    LeaveCriticalSection(&filter->filter.stream_cs);
+    LeaveCriticalSection(&filter->filter.filter_cs);
     return S_OK;
 }
 

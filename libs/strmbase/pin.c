@@ -911,9 +911,9 @@ static HRESULT WINAPI sink_EndOfStream(IPin *iface)
 
     if (pin->pFuncsTable->sink_eos)
     {
-        EnterCriticalSection(&pin->pin.filter->stream_cs);
+        EnterCriticalSection(&pin->pin.filter->filter_cs);
         hr = pin->pFuncsTable->sink_eos(pin);
-        LeaveCriticalSection(&pin->pin.filter->stream_cs);
+        LeaveCriticalSection(&pin->pin.filter->filter_cs);
         return hr;
     }
 
@@ -1124,9 +1124,9 @@ static HRESULT WINAPI MemInputPin_Receive(IMemInputPin *iface, IMediaSample *sam
 
     if (pin->pFuncsTable->pfnReceive)
     {
-        EnterCriticalSection(&pin->pin.filter->stream_cs);
+        EnterCriticalSection(&pin->pin.filter->filter_cs);
         hr = pin->pFuncsTable->pfnReceive(pin, sample);
-        LeaveCriticalSection(&pin->pin.filter->stream_cs);
+        LeaveCriticalSection(&pin->pin.filter->filter_cs);
     }
     return hr;
 }

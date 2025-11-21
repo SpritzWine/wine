@@ -375,9 +375,9 @@ static HRESULT WINAPI BaseRenderer_Receive(struct strmbase_sink *pin, IMediaSamp
         hr = filter->ops->renderer_render(filter, sample);
 
         SetEvent(filter->state_event);
-        LeaveCriticalSection(&filter->filter.stream_cs);
+        LeaveCriticalSection(&filter->filter.filter_cs);
         WaitForMultipleObjects(2, events, FALSE, INFINITE);
-        EnterCriticalSection(&filter->filter.stream_cs);
+        EnterCriticalSection(&filter->filter.filter_cs);
 
         filter->current_sample = NULL;
     }
@@ -477,14 +477,14 @@ static HRESULT sink_end_flush(struct strmbase_sink *iface)
 {
     struct strmbase_renderer *filter = impl_from_IPin(&iface->pin.IPin_iface);
 
-    EnterCriticalSection(&filter->filter.stream_cs);
+    EnterCriticalSection(&filter->filter.filter_cs);
 
     filter->eos = FALSE;
     reset_qos(filter);
     strmbase_passthrough_invalidate_time(&filter->passthrough);
     ResetEvent(filter->flush_event);
 
-    LeaveCriticalSection(&filter->filter.stream_cs);
+    LeaveCriticalSection(&filter->filter.filter_cs);
     return S_OK;
 }
 

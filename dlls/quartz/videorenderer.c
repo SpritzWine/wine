@@ -225,33 +225,33 @@ static HRESULT video_renderer_get_current_image(struct video_window *iface, LONG
     size_t image_size;
     BYTE *sample_data;
 
-    EnterCriticalSection(&filter->renderer.filter.stream_cs);
+    EnterCriticalSection(&filter->renderer.filter.filter_cs);
 
     bih = get_bitmap_header(&filter->renderer.sink.pin.mt);
     image_size = bih->biWidth * bih->biHeight * bih->biBitCount / 8;
 
     if (!image)
     {
-        LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+        LeaveCriticalSection(&filter->renderer.filter.filter_cs);
         *size = sizeof(BITMAPINFOHEADER) + image_size;
         return S_OK;
     }
 
     if (filter->renderer.filter.state != State_Paused)
     {
-        LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+        LeaveCriticalSection(&filter->renderer.filter.filter_cs);
         return VFW_E_NOT_PAUSED;
     }
 
     if (!filter->renderer.current_sample)
     {
-        LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+        LeaveCriticalSection(&filter->renderer.filter.filter_cs);
         return E_UNEXPECTED;
     }
 
     if (*size < sizeof(BITMAPINFOHEADER) + image_size)
     {
-        LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+        LeaveCriticalSection(&filter->renderer.filter.filter_cs);
         return E_OUTOFMEMORY;
     }
 
@@ -259,7 +259,7 @@ static HRESULT video_renderer_get_current_image(struct video_window *iface, LONG
     IMediaSample_GetPointer(filter->renderer.current_sample, &sample_data);
     memcpy((char *)image + sizeof(BITMAPINFOHEADER), sample_data, image_size);
 
-    LeaveCriticalSection(&filter->renderer.filter.stream_cs);
+    LeaveCriticalSection(&filter->renderer.filter.filter_cs);
     return S_OK;
 }
 
