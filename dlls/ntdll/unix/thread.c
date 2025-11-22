@@ -1334,24 +1334,12 @@ static NTSTATUS create_pthread( struct ntdll_thread_data *thread_data, TEB *teb 
 
 
 /***********************************************************************
- *              NtCreateThread   (NTDLL.@)
+ *              create_thread
  */
-NTSTATUS WINAPI NtCreateThread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
-                                HANDLE process, CLIENT_ID *id, CONTEXT *ctx, INITIAL_TEB *teb,
-                                BOOLEAN suspended )
-{
-    FIXME( "%p %d %p %p %p %p %p %d, stub!\n",
-           handle, access, attr, process, id, ctx, teb, suspended );
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-/***********************************************************************
- *              NtCreateThreadEx   (NTDLL.@)
- */
-NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
-                                  HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
-                                  ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
-                                  SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
+static NTSTATUS create_thread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                               HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
+                               ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
+                               SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
 {
     static const ULONG supported_flags = THREAD_CREATE_FLAGS_CREATE_SUSPENDED | THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH |
                                          THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT |
@@ -1480,6 +1468,30 @@ done:
     }
     if (attr_list) status = update_attr_list( attr_list, *handle, &teb->ClientId, teb );
     return status;
+}
+
+/***********************************************************************
+ *              NtCreateThread   (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateThread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                                HANDLE process, CLIENT_ID *id, CONTEXT *ctx, INITIAL_TEB *teb,
+                                BOOLEAN suspended )
+{
+    FIXME( "%p %d %p %p %p %p %p %d, stub!\n",
+           handle, access, attr, process, id, ctx, teb, suspended );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
+ *              NtCreateThreadEx   (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                                  HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
+                                  ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
+                                  SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
+{
+    return create_thread( handle, access, attr, process, start, param, flags,
+                          zero_bits, stack_commit, stack_reserve, attr_list );
 }
 
 
