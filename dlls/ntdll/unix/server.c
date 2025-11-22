@@ -1751,6 +1751,11 @@ void server_init_process_done(void)
     thread_data->syscall_table = KeServiceDescriptorTable;
     thread_data->syscall_trace = TRACE_ON(syscall);
 
+#ifdef __APPLE__
+    /* This must run after signal_init_process() so the syscall dispatcher pointer is present at 0x7ffe1000 */
+    transform_mac_main_thread();
+#endif
+
     /* always send the native TEB */
     if (!(teb = NtCurrentTeb64())) teb = NtCurrentTeb();
 

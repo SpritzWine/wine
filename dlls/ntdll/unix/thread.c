@@ -63,6 +63,8 @@
 #endif
 
 #ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#include <dispatch/dispatch.h>
 #include <mach/mach.h>
 #endif
 #ifdef __FreeBSD__
@@ -1471,6 +1473,7 @@ done:
     return status;
 }
 
+
 /***********************************************************************
  *              NtCreateThread   (NTDLL.@)
  */
@@ -2771,3 +2774,64 @@ NTSTATUS WINAPI NtGetNextThread( HANDLE process, HANDLE thread, ACCESS_MASK acce
     *handle = ret_handle;
     return ret;
 }
+
+
+#ifdef __APPLE__
+static dispatch_semaphore_t main_thread_transformed_semaphore;
+
+static void signal_semaphore_and_start_thread( TEB *teb )
+{
+    dispatch_semaphore_signal( main_thread_transformed_semaphore );
+    start_thread( teb );
+}
+
+
+/***********************************************************************
+ *           run_on_mac_main_thread
+ */
+static NTSTATUS run_on_mac_main_thread( struct ntdll_thread_data *thread_data, TEB *teb )
+{
+    CFRunLoopSourceContext source_context = { 0 };
+    CFRunLoopSourceRef source;
+
+    source_context.perform = (void (*)(void *))signal_semaphore_and_start_thread;
+    source_context.info = teb;
+    source = CFRunLoopSourceCreate( NULL, 0, &source_context );
+    if (!source)
+        return STATUS_NO_MEMORY;
+
+    CFRunLoopAddSource( CFRunLoopGetMain(), source, kCFRunLoopCommonModes );
+    CFRunLoopSourceSignal( source );
+    CFRunLoopWakeUp( CFRunLoopGetMain() );
+    CFRelease( source );
+    return STATUS_SUCCESS;
+}
+
+
+/***********************************************************************
+ *           transform_mac_main_thread
+ *
+ * Transform the process main thread into a Wine thread
+ */
+void transform_mac_main_thread( void )
+{
+    NTSTATUS status;
+    HANDLE handle;
+
+    main_thread_transformed_semaphore = dispatch_semaphore_create( 0 );
+
+    status = create_thread( &handle, THREAD_ALL_ACCESS, NULL, NtCurrentProcess(),
+                            p__wine_mac_run_cfrunloop, NULL,
+                            THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT,
+                            0, 0, 0, NULL, run_on_mac_main_thread );
+    if (!status)
+    {
+        NtClose( handle );
+        dispatch_semaphore_wait( main_thread_transformed_semaphore, DISPATCH_TIME_FOREVER );
+    }
+    else
+        ERR("Failed to transform main thread: %x\n", status);
+
+    dispatch_release( main_thread_transformed_semaphore );
+}
+#endif
