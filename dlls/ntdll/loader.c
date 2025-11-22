@@ -3406,6 +3406,26 @@ NTSTATUS WINAPI __wine_unix_spawnvp( char * const argv[], int wait )
 
 
 /***********************************************************************
+ *              __wine_mac_run_cfrunloop
+ */
+NTSTATUS WINAPI __wine_mac_run_cfrunloop(void)
+{
+    static const WCHAR nameW[] = L"wine_mac_main_thread";
+    THREAD_NAME_INFORMATION info;
+    NTSTATUS status;
+
+    info.ThreadName.Length = info.ThreadName.MaximumLength = lstrlenW( nameW ) * sizeof(WCHAR);
+    info.ThreadName.Buffer = (WCHAR *)nameW;
+    NtSetInformationThread( GetCurrentThread(), ThreadNameInformation, &info, sizeof(info) );
+
+    status = WINE_UNIX_CALL( unix_mac_run_cfrunloop, NULL ); /* Should never return, except on error. */
+
+    ERR("macOS main thread crashed with status %lx, exiting\n", status);
+    for (;;) NtTerminateProcess( GetCurrentProcess(), status );
+}
+
+
+/***********************************************************************
  *           wine_server_call
  */
 unsigned int CDECL wine_server_call( void *req_ptr )
