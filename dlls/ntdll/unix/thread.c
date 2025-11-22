@@ -1339,7 +1339,8 @@ static NTSTATUS create_pthread( struct ntdll_thread_data *thread_data, TEB *teb 
 static NTSTATUS create_thread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
                                HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
                                ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
-                               SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
+                               SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list,
+                               NTSTATUS (*thread_create)( struct ntdll_thread_data *thread_data, TEB *teb ) )
 {
     static const ULONG supported_flags = THREAD_CREATE_FLAGS_CREATE_SUSPENDED | THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH |
                                          THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT |
@@ -1452,7 +1453,7 @@ static NTSTATUS create_thread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIB
     thread_data->param = param;
 
     InterlockedIncrement( &nb_threads );
-    if ((status = create_pthread( thread_data, teb )))
+    if ((status = thread_create( thread_data, teb )))
     {
         InterlockedDecrement( &nb_threads );
         virtual_free_teb( teb );
@@ -1491,7 +1492,7 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATT
                                   SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
 {
     return create_thread( handle, access, attr, process, start, param, flags,
-                          zero_bits, stack_commit, stack_reserve, attr_list );
+                          zero_bits, stack_commit, stack_reserve, attr_list, create_pthread );
 }
 
 
