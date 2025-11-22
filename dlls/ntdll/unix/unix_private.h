@@ -170,6 +170,7 @@ extern void *pKiUserEmulationDispatcher;
 extern void *pLdrInitializeThunk;
 extern void *pRtlUserThreadStart;
 extern void *p__wine_ctrl_routine;
+extern void *p__wine_mac_run_cfrunloop;
 extern SYSTEM_DLL_INIT_BLOCK *pLdrSystemDllInitBlock;
 
 struct _FILE_FS_DEVICE_INFORMATION;
