@@ -1310,6 +1310,29 @@ static NTSTATUS update_attr_list( PS_ATTRIBUTE_LIST *attr, HANDLE thread, const 
     return status;
 }
 
+
+/***********************************************************************
+ *           create_pthread
+ */
+static NTSTATUS create_pthread( struct ntdll_thread_data *thread_data, TEB *teb )
+{
+    pthread_t pthread_id;
+    pthread_attr_t pthread_attr;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    pthread_attr_init( &pthread_attr );
+    pthread_attr_setstack( &pthread_attr, thread_data->kernel_stack, kernel_stack_size );
+    pthread_attr_setguardsize( &pthread_attr, 0 );
+    pthread_attr_setscope( &pthread_attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
+
+    if (pthread_create( &pthread_id, &pthread_attr, (void * (*)(void *))start_thread, teb ))
+        status = STATUS_NO_MEMORY;
+
+    pthread_attr_destroy( &pthread_attr );
+    return status;
+}
+
+
 /***********************************************************************
  *              NtCreateThread   (NTDLL.@)
  */
@@ -1334,8 +1357,6 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATT
                                          THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT |
                                          THREAD_CREATE_FLAGS_BYPASS_PROCESS_FREEZE;
     sigset_t sigset;
-    pthread_t pthread_id;
-    pthread_attr_t pthread_attr;
     data_size_t len;
     struct object_attributes *objattr;
     struct ntdll_thread_data *thread_data;
@@ -1442,18 +1463,12 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATT
     thread_data->start = start;
     thread_data->param = param;
 
-    pthread_attr_init( &pthread_attr );
-    pthread_attr_setstack( &pthread_attr, thread_data->kernel_stack, kernel_stack_size );
-    pthread_attr_setguardsize( &pthread_attr, 0 );
-    pthread_attr_setscope( &pthread_attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
     InterlockedIncrement( &nb_threads );
-    if (pthread_create( &pthread_id, &pthread_attr, (void * (*)(void *))start_thread, teb ))
+    if ((status = create_pthread( thread_data, teb )))
     {
         InterlockedDecrement( &nb_threads );
         virtual_free_teb( teb );
-        status = STATUS_NO_MEMORY;
     }
-    pthread_attr_destroy( &pthread_attr );
 
 done:
     pthread_sigmask( SIG_SETMASK, &sigset, NULL );
