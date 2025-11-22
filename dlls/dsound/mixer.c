@@ -618,7 +618,12 @@ static void DSOUND_MixToPrimary(const DirectSoundDevice *device, float *mix_buff
 
 				/* if the buffer was starting, it must be playing now */
 				if (dsb->state == STATE_STARTING)
+                                {
 					dsb->state = STATE_PLAYING;
+                                        dsb->first_resample = TRUE;
+                                }
+                                else
+                                    dsb->first_resample = FALSE;
 
 				/* mix next buffer into the main buffer */
 				DSOUND_MixOne(dsb, mix_buffer, frames);

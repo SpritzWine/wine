@@ -151,6 +151,7 @@ struct IDirectSoundBufferImpl
     float                       firgain;
     LONG64                      freqAdjustNum,freqAdjustDen;
     LONG64                      freqAccNum;
+    BOOL                        first_resample;
     /* used for mixing */
     DWORD                       sec_mixpos;
     /* Holds a copy of the next 'writelead' bytes, to be used for mixing. This makes it
