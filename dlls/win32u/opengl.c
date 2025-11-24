@@ -2544,6 +2544,59 @@ static void win32u_glImportMemoryWin32NameEXT( GLuint memory, GLuint64 size, GLe
     import_memory( memory, size, handleType, NULL, name );
 }
 
+static void import_semaphore( GLuint semaphore, GLenum handleType, void *handle, const void *name )
+{
+    const struct opengl_funcs *funcs = &display_funcs;
+    D3DKMT_HANDLE local;
+    GLenum err;
+    int fd;
+
+    switch (handleType)
+    {
+        case GL_HANDLE_TYPE_OPAQUE_WIN32_EXT:
+            if (name) handle = open_shared_semaphore_from_name( (const WCHAR *)name );
+            if (!handle) return set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+            local = d3dkmt_open_sync( 0, handle );
+            if (name) NtClose( handle );
+            break;
+        case GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT:
+            if (!handle) return set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+            local = d3dkmt_open_sync( PtrToUlong( handle ), NULL );
+            break;
+        default:
+            return set_gl_error( NtCurrentTeb(), GL_INVALID_ENUM);
+    }
+
+    if ((fd = d3dkmt_object_get_fd( local )) < 0)
+        return set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+
+    d3dkmt_destroy_sync( local );
+
+    set_gl_error( NtCurrentTeb(), funcs->p_glGetError() );
+
+    funcs->p_glImportSemaphoreFdEXT( semaphore, GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd );
+
+    if ((err = funcs->p_glGetError()) != GL_NO_ERROR)
+    {
+        close(fd);
+        set_gl_error( NtCurrentTeb(), err );
+    }
+}
+
+void win32u_glImportSemaphoreWin32HandleEXT( GLuint semaphore, GLenum handleType, void *handle )
+{
+    TRACE( "semaphore %u handleType %#x handle %p\n", semaphore, handleType, handle );
+
+    import_semaphore( semaphore, handleType, handle, NULL );
+}
+
+void win32u_glImportSemaphoreWin32NameEXT( GLuint semaphore, GLenum handleType, const void *name )
+{
+    TRACE( "semaphore %u handleType %#x name %s\n", semaphore, handleType, debugstr_w( name ) );
+
+    import_semaphore( semaphore, handleType, NULL, name );
+}
+
 static void display_funcs_init(void)
 {
     struct egl_platform *egl;
@@ -2650,6 +2703,8 @@ static void display_funcs_init(void)
     display_funcs.p_glGetUnsignedBytevEXT           = win32u_glGetUnsignedBytevEXT;
     display_funcs.p_glImportMemoryWin32HandleEXT    = win32u_glImportMemoryWin32HandleEXT;
     display_funcs.p_glImportMemoryWin32NameEXT      = win32u_glImportMemoryWin32NameEXT;
+    display_funcs.p_glImportSemaphoreWin32HandleEXT = win32u_glImportSemaphoreWin32HandleEXT;
+    display_funcs.p_glImportSemaphoreWin32NameEXT = win32u_glImportSemaphoreWin32NameEXT;
 
     if (!list_empty( &devices_egl ))
     {
