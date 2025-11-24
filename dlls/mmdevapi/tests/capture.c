@@ -575,6 +575,30 @@ static void test_formats(AUDCLNT_SHAREMODE mode, BOOL extensible)
             for (k = 0; k < ARRAY_SIZE(sample_formats); k++) {
                 char format_chr[3];
 
+                fmt.Format.wFormatTag     = extensible ? WAVE_FORMAT_EXTENSIBLE : sample_formats[k][0];
+                fmt.Format.nSamplesPerSec = sampling_rates[i];
+                fmt.Format.wBitsPerSample = sample_formats[k][1];
+                fmt.Format.nChannels      = channel_counts[j];
+                fmt.Format.nBlockAlign    = fmt.Format.nChannels * fmt.Format.wBitsPerSample / 8;
+                fmt.Format.nAvgBytesPerSec= fmt.Format.nBlockAlign * fmt.Format.nSamplesPerSec;
+
+                if (extensible) {
+                    fmt.Samples.wValidBitsPerSample = fmt.Format.wBitsPerSample;
+                    switch (fmt.Format.nChannels) {
+                        case 1: fmt.dwChannelMask = KSAUDIO_SPEAKER_MONO; break;
+                        case 2: fmt.dwChannelMask = KSAUDIO_SPEAKER_STEREO; break;
+                        case 4: fmt.dwChannelMask = KSAUDIO_SPEAKER_SURROUND; break;
+                        case 6: fmt.dwChannelMask = KSAUDIO_SPEAKER_5POINT1; break;
+                        case 8: fmt.dwChannelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND; break;
+                    }
+                    fmt.SubFormat = sample_formats[k][0] == WAVE_FORMAT_PCM ?
+                            KSDATAFORMAT_SUBTYPE_PCM : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+                }
+
+                format_chr[0] = sample_formats[k][0] == WAVE_FORMAT_PCM ? 'P' : 'F';
+                format_chr[1] = extensible ? 'X' : '\0';
+                format_chr[2] = '\0';
+
                 hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_INPROC_SERVER,
                         NULL, (void**)&ac);
                 ok(hr == S_OK, "Activation failed with %08lx\n", hr);
@@ -584,36 +608,15 @@ static void test_formats(AUDCLNT_SHAREMODE mode, BOOL extensible)
                 hr = IAudioClient_GetMixFormat(ac, &pwfx);
                 ok(hr == S_OK, "GetMixFormat failed: %08lx\n", hr);
 
-                fmt.Format.wFormatTag     = extensible ? WAVE_FORMAT_EXTENSIBLE : sample_formats[k][0];
-                fmt.Format.nSamplesPerSec = sampling_rates[i];
-                fmt.Format.wBitsPerSample = sample_formats[k][1];
-                fmt.Format.nChannels      = channel_counts[j];
-                fmt.Format.nBlockAlign    = fmt.Format.nChannels * fmt.Format.wBitsPerSample / 8;
-                fmt.Format.nAvgBytesPerSec= fmt.Format.nBlockAlign * fmt.Format.nSamplesPerSec;
-
                 if (extensible) {
                     WAVEFORMATEXTENSIBLE *pxwfx = (WAVEFORMATEXTENSIBLE*)pwfx;
 
-                    fmt.Samples.wValidBitsPerSample = fmt.Format.wBitsPerSample;
-                    switch (fmt.Format.nChannels) {
-                        case 1: fmt.dwChannelMask = KSAUDIO_SPEAKER_MONO; break;
-                        case 2: fmt.dwChannelMask = KSAUDIO_SPEAKER_STEREO; break;
-                        case 4: fmt.dwChannelMask = KSAUDIO_SPEAKER_SURROUND; break;
-                        case 6: fmt.dwChannelMask = KSAUDIO_SPEAKER_5POINT1; break;
-                        case 8: fmt.dwChannelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND; break;
-                    }
                     /* We don't want to fight with the driver over the speaker configuration,
                      * so just take whatever they give us, if it's valid. */
                     if (fmt.Format.nChannels == pwfx->nChannels && pwfx->wFormatTag == WAVE_FORMAT_EXTENSIBLE
                             && pxwfx->dwChannelMask != 0)
                         fmt.dwChannelMask = ((WAVEFORMATEXTENSIBLE*)pwfx)->dwChannelMask;
-                    fmt.SubFormat = sample_formats[k][0] == WAVE_FORMAT_PCM ?
-                            KSDATAFORMAT_SUBTYPE_PCM : KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
                 }
-
-                format_chr[0] = sample_formats[k][0] == WAVE_FORMAT_PCM ? 'P' : 'F';
-                format_chr[1] = extensible ? 'X' : '\0';
-                format_chr[2] = '\0';
 
                 pwfx2 = (WAVEFORMATEX*)0xDEADF00D;
                 hr = IAudioClient_IsFormatSupported(ac, mode, (WAVEFORMATEX*)&fmt, &pwfx2);
