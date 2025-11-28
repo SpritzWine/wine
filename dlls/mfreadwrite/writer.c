@@ -60,6 +60,7 @@ struct stream
     IMFStreamSink *stream_sink;
     IMFTransform *converter, *encoder;
     MF_SINK_WRITER_STATISTICS stats;
+    struct sink_writer *writer;
     struct list queue; /* struct pending_item. */
 };
 
@@ -187,6 +188,79 @@ static HRESULT stream_get_type(struct stream *stream, IMFMediaType **out_type)
     hr = IMFMediaTypeHandler_GetCurrentMediaType(type_handler, out_type);
 
     IMFMediaTypeHandler_Release(type_handler);
+    return hr;
+}
+
+static HRESULT stream_enumerate_transforms(struct stream *stream, IMFMediaType *input_type, IMFMediaType *output_type,
+        BOOL use_encoder, IMFAttributes *attributes, IMFActivate ***out_activates, UINT32 *out_count)
+{
+    UINT32 flags = MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_LOCALMFT | MFT_ENUM_FLAG_SORTANDFILTER;
+    UINT32 disable_converter = 0, use_hardware_transforms = 0;
+    MFT_REGISTER_TYPE_INFO input_type_info, output_type_info;
+    GUID category;
+    HRESULT hr;
+
+    /* Check writer attributes. */
+    if (attributes)
+    {
+        IMFAttributes_GetUINT32(attributes, &MF_READWRITE_DISABLE_CONVERTERS, &disable_converter);
+        IMFAttributes_GetUINT32(attributes, &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, &use_hardware_transforms);
+        if (use_hardware_transforms)
+            flags |= MFT_ENUM_FLAG_HARDWARE;
+    }
+
+    /* Neither encoder nor converter is allowed, return failure. */
+    if (!use_encoder && disable_converter)
+        return E_FAIL;
+
+    /* Get type infos. */
+    if (FAILED(hr = IMFMediaType_GetMajorType(input_type, &input_type_info.guidMajorType))
+            || FAILED(hr = IMFMediaType_GetGUID(input_type, &MF_MT_SUBTYPE, &input_type_info.guidSubtype)))
+        return hr;
+    if (FAILED(hr = IMFMediaType_GetMajorType(output_type, &output_type_info.guidMajorType))
+            || FAILED(hr = IMFMediaType_GetGUID(output_type, &MF_MT_SUBTYPE, &output_type_info.guidSubtype)))
+        return hr;
+
+    /* Set category according to major type. */
+    if (IsEqualGUID(&output_type_info.guidMajorType, &MFMediaType_Video))
+        category = use_encoder ? MFT_CATEGORY_VIDEO_ENCODER : MFT_CATEGORY_VIDEO_PROCESSOR;
+    else if (IsEqualGUID(&output_type_info.guidMajorType, &MFMediaType_Audio))
+        category = use_encoder ? MFT_CATEGORY_AUDIO_ENCODER : MFT_CATEGORY_AUDIO_EFFECT;
+    else
+        return MF_E_TOPO_CODEC_NOT_FOUND;
+
+    /* Enumerate available transforms. */
+    *out_count = 0;
+    if (FAILED(hr = MFTEnumEx(category, flags,
+            (disable_converter ? &input_type_info : NULL), &output_type_info, out_activates, out_count)))
+        return hr;
+    if (!*out_count)
+        return MF_E_TOPO_CODEC_NOT_FOUND;
+
+    return hr;
+}
+
+static HRESULT stream_create_transforms(struct stream *stream,
+        IMFMediaType *input_type, IMFMediaType *output_type, BOOL use_encoder, IMFAttributes *attributes)
+{
+    IMFActivate **activates;
+    UINT32 count = 0, i;
+    HRESULT hr;
+
+    /* Enumerate available transforms. */
+    if (FAILED(hr = stream_enumerate_transforms(stream, input_type, output_type, use_encoder, attributes, &activates, &count)))
+        return hr;
+    for (i = 0; i < count; i++)
+    {
+        /* TODO: Create transform from activates. */
+        hr = E_NOTIMPL;
+        break;
+    }
+
+    for (i = 0; i < count; ++i)
+        IMFActivate_Release(activates[i]);
+    CoTaskMemFree(activates);
+
     return hr;
 }
 
@@ -372,9 +446,9 @@ static HRESULT WINAPI sink_writer_SetInputMediaType(IMFSinkWriterEx *iface, DWOR
     /* Types are not compatible, create transforms. */
     if (!(flags & MF_MEDIATYPE_EQUAL_FORMAT_DATA))
     {
-        /* TODO: Try only using converter first, then try again with encoder. */
-        FIXME("Not implemented.\n");
-        hr = E_NOTIMPL;
+        /* Try only using converter first, then try again with encoder. */
+        if (FAILED(hr = stream_create_transforms(stream, type, stream_type, FALSE, writer->attributes)))
+            hr = stream_create_transforms(stream, type, stream_type, TRUE, writer->attributes);
     }
 
 done:
