@@ -1772,14 +1772,11 @@ static void test_sink_writer_get_object(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     init_media_type(input_type, video_input_type_nv12_desc, -1);
     hr = IMFSinkWriter_SetInputMediaType(writer, 0, input_type, NULL);
-    todo_wine
     ok(hr == S_OK, "SetInputMediaType returned %#lx.\n", hr);
     IMFMediaType_Release(input_type);
 
     hr = IMFSinkWriterEx_GetTransformForStream(writer_ex, 0, 0, &guid, &transform);
-    todo_wine
     ok(hr == S_OK, "GetTransformForStream returned %#lx.\n", hr);
-    todo_wine
     ok(IsEqualGUID(&guid, &MFT_CATEGORY_VIDEO_ENCODER), "Unexpected guid %s.\n", debugstr_guid(&guid));
     if (hr == S_OK)
         IMFTransform_Release(transform);

@@ -240,10 +240,46 @@ static HRESULT stream_enumerate_transforms(struct stream *stream, IMFMediaType *
     return hr;
 }
 
+static HRESULT stream_set_transform(struct stream *stream, IMFTransform *transform,
+        IMFMediaType *input_type, IMFMediaType *output_type, BOOL use_encoder)
+{
+    IMFMediaType *output_current_type;
+    HRESULT hr;
+
+    /* Set the output type on transform. */
+    if (FAILED(hr = IMFTransform_SetOutputType(transform, 0, output_type, 0))
+            || FAILED(hr = IMFTransform_GetOutputCurrentType(transform, 0, &output_current_type)))
+        return hr;
+
+    /* Set the input type on transform. */
+    if (FAILED(hr = update_media_type(input_type, output_current_type, FALSE))
+            || FAILED(hr = IMFTransform_SetInputType(transform, 0, input_type, 0)))
+    {
+        IMFMediaType_Release(output_current_type);
+        return hr;
+    }
+
+    /* Set the transform to stream. */
+    if (use_encoder)
+    {
+        TRACE("Created encoder %p.\n", transform);
+        stream->encoder = transform;
+    }
+    else
+    {
+        TRACE("Created converter %p.\n", transform);
+        stream->converter = transform;
+    }
+
+    IMFMediaType_Release(output_current_type);
+    return hr;
+}
+
 static HRESULT stream_create_transforms(struct stream *stream,
         IMFMediaType *input_type, IMFMediaType *output_type, BOOL use_encoder, IMFAttributes *attributes)
 {
     IMFActivate **activates;
+    IMFTransform *transform;
     UINT32 count = 0, i;
     HRESULT hr;
 
@@ -252,9 +288,11 @@ static HRESULT stream_create_transforms(struct stream *stream,
         return hr;
     for (i = 0; i < count; i++)
     {
-        /* TODO: Create transform from activates. */
-        hr = E_NOTIMPL;
-        break;
+        if (FAILED(hr = IMFActivate_ActivateObject(activates[i], &IID_IMFTransform, (void **)&transform)))
+            continue;
+        if (SUCCEEDED(hr = stream_set_transform(stream, transform, input_type, output_type, use_encoder)))
+            break;
+        IMFTransform_Release(transform);
     }
 
     for (i = 0; i < count; ++i)
