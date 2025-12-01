@@ -278,6 +278,7 @@ static HRESULT stream_set_transform(struct stream *stream, IMFTransform *transfo
 static HRESULT stream_create_transforms(struct stream *stream,
         IMFMediaType *input_type, IMFMediaType *output_type, BOOL use_encoder, IMFAttributes *attributes)
 {
+    IMFMediaType *encoder_input_type;
     IMFActivate **activates;
     IMFTransform *transform;
     UINT32 count = 0, i;
@@ -292,6 +293,22 @@ static HRESULT stream_create_transforms(struct stream *stream,
             continue;
         if (SUCCEEDED(hr = stream_set_transform(stream, transform, input_type, output_type, use_encoder)))
             break;
+
+        /* Failed to use a single encoder, try using an encoder and a converter. */
+        if (use_encoder && SUCCEEDED(hr = IMFTransform_GetInputAvailableType(transform, 0, 0, &encoder_input_type)))
+        {
+            /* Create the converter with a recursive call. */
+            hr = stream_create_transforms(stream, input_type, encoder_input_type, FALSE, attributes);
+            IMFMediaType_Release(encoder_input_type);
+            if (SUCCEEDED(hr))
+            {
+                /* Converter is already set in the recursive call, set encoder here. */
+                stream->encoder = transform;
+                TRACE("Created encoder %p.", transform);
+                break;
+            }
+        }
+
         IMFTransform_Release(transform);
     }
 
@@ -482,6 +499,7 @@ static HRESULT WINAPI sink_writer_SetInputMediaType(IMFSinkWriterEx *iface, DWOR
     }
 
     /* Types are not compatible, create transforms. */
+    stream_release_transforms(stream);
     if (!(flags & MF_MEDIATYPE_EQUAL_FORMAT_DATA))
     {
         /* Try only using converter first, then try again with encoder. */
