@@ -14,4 +14,4 @@ dlls/kernel32/asm_i386_interlocked.c
 dlls/kernel32/asm_i386_exitprocess.c
 
 # _ftol
-dlls/msvcrt/math.c
+dlls/msvcrt/asm_i386_ftol.c

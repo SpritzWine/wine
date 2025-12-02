@@ -6,6 +6,7 @@ PARENTSRC = ../msvcrt
 DELAYIMPORTS = advapi32 user32
 
 SOURCES = \
+	asm_i386_ftol.c \
 	console.c \
 	cpp.c \
 	ctype.c \

@@ -5,6 +5,7 @@ IMPORTS   = $(MUSL_PE_LIBS) ntdll
 DELAYIMPORTS = advapi32 user32
 
 SOURCES = \
+	asm_i386_ftol.c \
 	concurrency.c \
 	console.c \
 	cpp.c \

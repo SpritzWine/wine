@@ -562,27 +562,6 @@ CREATE_FPU_FUNC1(_CIsqrt, sqrt)
 CREATE_FPU_FUNC1(_CItan, tan)
 CREATE_FPU_FUNC1(_CItanh, tanh)
 
-__ASM_GLOBAL_FUNC(_ftol,
-        "pushl   %ebp\n\t"
-        __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t")
-        __ASM_CFI(".cfi_rel_offset %ebp,0\n\t")
-        "movl    %esp, %ebp\n\t"
-        __ASM_CFI(".cfi_def_cfa_register %ebp\n\t")
-        "subl    $12, %esp\n\t"     /* sizeof(LONGLONG) + 2*sizeof(WORD) */
-        "fnstcw  (%esp)\n\t"
-        "mov     (%esp), %ax\n\t"
-        "or      $0xc00, %ax\n\t"
-        "mov     %ax, 2(%esp)\n\t"
-        "fldcw   2(%esp)\n\t"
-        "fistpq  4(%esp)\n\t"
-        "fldcw   (%esp)\n\t"
-        "movl    4(%esp), %eax\n\t"
-        "movl    8(%esp), %edx\n\t"
-        "leave\n\t"
-        __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
-        __ASM_CFI(".cfi_same_value %ebp\n\t")
-        "ret")
-
 #endif /* __i386__ */
 
 /*********************************************************************
