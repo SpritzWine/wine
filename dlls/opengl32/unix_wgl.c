@@ -542,6 +542,12 @@ static const char *legacy_extensions[] =
     NULL,
 };
 
+static const char *platform_extensions[] =
+{
+    "GL_EXT_memory_object_fd", "GL_EXT_memory_object_win32",
+    NULL
+};
+
 static const char *parse_gl_version( const char *gl_version, int *major, int *minor )
 {
     const char *ptr = gl_version;
@@ -735,6 +741,7 @@ static GLubyte *filter_extensions( struct context *ctx, const char *extensions )
 
     size = strlen( extensions ) + 2;
     for (extra = legacy_extensions; *extra; extra++) size += strlen( *extra ) + 1;
+    for (extra = platform_extensions; *extra; extra+=2) size += strlen( extra[1] + 1 );
     if (!(p = str = malloc( size ))) return NULL;
 
     TRACE( "GL_EXTENSIONS:\n" );
@@ -748,10 +755,22 @@ static GLubyte *filter_extensions( struct context *ctx, const char *extensions )
         memcpy( p, extensions, end - extensions );
         p[end - extensions] = 0;
 
+        for (extra = platform_extensions; *extra; extra += 2)
+        {
+            if (strcmp(p, extra[0]))
+                continue;
+
+            TRACE("Replace platform extension %s with:\n", p);
+
+            size = strlen( extra[1] );
+            memcpy( p, extra[1], size );
+            p[size] = 0;
+        }
+
         if (is_extension_supported( ctx, p ))
         {
             TRACE( "++ %s\n", p );
-            p += end - extensions;
+            p += strlen(p);
             *p++ = ' ';
         }
         else
@@ -1232,6 +1251,7 @@ static void make_context_current( TEB *teb, const struct opengl_funcs *funcs, HD
     if (ctx->major_version >= 3)
     {
         GLint extensions_count;
+        const char **platform_ext;
 
         if (!funcs->p_glGetStringi)
         {
@@ -1242,7 +1262,18 @@ static void make_context_current( TEB *teb, const struct opengl_funcs *funcs, HD
         funcs->p_glGetIntegerv( GL_NUM_EXTENSIONS, &extensions_count );
         size += extensions_count;
         if (!(extensions = malloc( size * sizeof(*extensions) ))) return;
-        for (i = 0; i < extensions_count; i++) extensions[count++] = (const char *)funcs->p_glGetStringi( GL_EXTENSIONS, i );
+        for (i = 0; i < extensions_count; i++)
+        {
+            extensions[count] = (const char *)funcs->p_glGetStringi( GL_EXTENSIONS, i );
+
+            for (platform_ext = platform_extensions; *platform_ext; platform_ext+=2)
+            {
+                if (!strcmp(extensions[count], platform_ext[0]))
+                    extensions[count] = platform_ext[1];
+            }
+
+            count++;
+        }
     }
     else
     {
