@@ -2,4 +2,4 @@
 dlls/kernelbase/asm_x86_64_getprocaddress.c
 
 # GetProcAddress
-dlls/kernel32/module.c
+dlls/kernel32/asm_x86_64_getprocaddress.c
