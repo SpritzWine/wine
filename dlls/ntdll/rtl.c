@@ -892,57 +892,6 @@ DWORD WINAPI RtlComputeCrc32(DWORD dwInitial, const BYTE *pData, INT iLen)
 
 
 /*************************************************************************
- * RtlUlonglongByteSwap    [NTDLL.@]
- *
- * Swap the bytes of an unsigned long long value.
- *
- * PARAMS
- *  i [I] Value to swap bytes of
- *
- * RETURNS
- *  The value with its bytes swapped.
- */
-#ifdef __i386__
-__ASM_FASTCALL_FUNC(RtlUlonglongByteSwap, 8,
-                    "movl 4(%esp),%edx\n\t"
-                    "bswap %edx\n\t"
-                    "movl 8(%esp),%eax\n\t"
-                    "bswap %eax\n\t"
-                    "ret $8")
-#endif
-
-/*************************************************************************
- * RtlUlongByteSwap    [NTDLL.@]
- *
- * Swap the bytes of an unsigned int value.
- *
- * NOTES
- *  ix86 version takes argument in %ecx. Other systems use the inline version.
- */
-#ifdef __i386__
-__ASM_FASTCALL_FUNC(RtlUlongByteSwap, 4,
-                    "movl %ecx,%eax\n\t"
-                    "bswap %eax\n\t"
-                    "ret")
-#endif
-
-/*************************************************************************
- * RtlUshortByteSwap    [NTDLL.@]
- *
- * Swap the bytes of an unsigned short value.
- *
- * NOTES
- *  i386 version takes argument in %cx. Other systems use the inline version.
- */
-#ifdef __i386__
-__ASM_FASTCALL_FUNC(RtlUshortByteSwap, 4,
-                    "movb %ch,%al\n\t"
-                    "movb %cl,%ah\n\t"
-                    "ret")
-#endif
-
-
-/*************************************************************************
  * RtlUniform   [NTDLL.@]
  *
  * Generates a uniform random number

@@ -1,7 +1,7 @@
 # RtlUshortByteSwap@4
 # RtlUlongByteSwap@4
 # RtlUlonglongByteSwap@8
-dlls/ntdll/rtl.c
+dlls/ntdll/asm_i386_rtl.c
 
 # InterlockedCompareExchange@12
 # InterlockedExchange@8
