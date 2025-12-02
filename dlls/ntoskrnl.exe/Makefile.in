@@ -5,6 +5,7 @@ DELAYIMPORTS = rpcrt4 setupapi
 
 SOURCES = \
 	asm_chkstk.c \
+	asm_i386_rtl.c \
 	instr.c \
 	ntoskrnl.c \
 	ntoskrnl.rc \

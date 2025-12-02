@@ -15,3 +15,8 @@ dlls/kernel32/asm_i386_exitprocess.c
 
 # _ftol
 dlls/msvcrt/asm_i386_ftol.c
+
+# RtlUshortByteSwap@4
+# RtlUlongByteSwap@4
+# RtlUlonglongByteSwap@8
+dlls/ntoskrnl.exe/asm_i386_rtl.c
