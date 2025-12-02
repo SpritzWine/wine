@@ -253,6 +253,7 @@ static const char *temp_file_name;
 static char cwd[PATH_MAX];
 static int compile_commands_mode;
 static int silent_rules;
+static int with_lto = 0; /* switch */
 static int input_line;
 static int output_column;
 static FILE *output_file;
@@ -289,6 +290,10 @@ static const char Usage[] =
 
 static void fatal_error( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static void output( const char *format, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+
+static void output_lto_flags_source( struct makefile *make, struct incl_file *source, unsigned int arch,
+                                     int prefer_env );
+static void output_lto_flags_target( struct makefile *make, unsigned int arch, int prefer_env );
 
 /*******************************************************************
  *         fatal_error
@@ -2626,6 +2631,7 @@ static void output_winegcc_command( struct makefile *make, unsigned int arch )
         output_filename( "--winebuild" );
         output_filename( winebuild );
     }
+    output_lto_flags_target( make, arch, 0 /* generic LTO flags */ );
     output_filenames( target_flags[arch] );
     if (native_archs[arch] && !make->disabled[native_archs[arch]])
         output_filenames( hybrid_target_flags[arch] );
@@ -3412,6 +3418,7 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
     output_filenames( defines );
     output_filenames( cflags );
     output_filename( var_cflags );
+    output_lto_flags_source( make, source, arch, 1 /* prefer flags from env */ );
     output( "\n" );
 
     if (make->testdll && strendswith( source->name, ".c" ) &&
@@ -3682,6 +3689,7 @@ static void output_import_lib( struct makefile *make, unsigned int arch )
     output( "\n" );
     output( "\t%s%s -w --implib -o $@", cmd_prefix( "BUILD" ), winebuild );
     if (!delay_load_flags[arch]) output_filename( "--without-dlltool" );
+    output_lto_flags_target( make, arch, 0 /* generic LTO flags */ );
     output_filenames( target_flags[hybrid_arch ? hybrid_arch : arch] );
     if (make->is_win16) output_filename( "-m16" );
     if (hybrid_arch) output_filenames( hybrid_target_flags[hybrid_arch] );
@@ -3715,6 +3723,7 @@ static void output_unix_lib( struct makefile *make )
     output( "\n" );
     output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
     output_filenames( get_expanded_make_var_array( make, "UNIXLDFLAGS" ));
+    output_lto_flags_target( make, arch, 1 /* prefer flags from env */ );
     output_filenames_obj_dir( make, make->unixobj_files );
     output_filenames( unix_libs );
     output_filename( "$(LDFLAGS)" );
@@ -3742,6 +3751,7 @@ static void output_static_lib( struct makefile *make, unsigned int arch )
     output( "\n" );
     output( "\t%s%s -w --staticlib -o $@", cmd_prefix( "BUILD" ), winebuild );
     output_filenames( target_flags[hybrid_arch ? hybrid_arch : arch] );
+    output_lto_flags_target( make, arch, 0 /* generic LTO flags */ );
     output_filenames_obj_dir( make, make->object_files[arch] );
     if (hybrid_arch) output_filenames_obj_dir( make, make->object_files[hybrid_arch] );
     if (!arch) output_filenames_obj_dir( make, make->unixobj_files );
@@ -3862,6 +3872,7 @@ static void output_programs( struct makefile *make )
         output_filenames( deps );
         output( "\n" );
         output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
+        output_lto_flags_target( make, arch, 1 /* prefer flags from env */ );
         output_filenames_obj_dir( make, objs );
         output_filenames( all_libs );
         output_filenames( ldflags );
@@ -4670,6 +4681,9 @@ static int parse_option( const char *opt )
     case 'S':
         silent_rules = 1;
         break;
+    case 'L':
+        with_lto = 1;
+        break;
     default:
         fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
         exit(1);
@@ -4686,6 +4700,47 @@ static unsigned int find_pe_arch( const char *arch )
     unsigned int i;
     for (i = 1; i < archs.count; i++) if (!strcmp( archs.str[i], arch )) return i;
     return 0;
+}
+
+
+/*******************************************************************
+ *         output_lto_flags
+ */
+static void output_lto_flags( int use_lto, int prefer_env )
+{
+    struct strarray lto_flags = empty_strarray;
+    append_lto_flags( &lto_flags, use_lto, prefer_env );
+    output_filenames( lto_flags );
+}
+
+
+/*******************************************************************
+ *         output_lto_flags_source
+ */
+static void output_lto_flags_source( struct makefile *make, struct incl_file *source, unsigned int arch,
+                                     int prefer_env )
+{
+    (void) arch; /* mark as used */
+
+    if (!with_lto) return;
+    if (!make) return;
+    if (!source) return;
+
+    output_lto_flags( with_lto, prefer_env );
+}
+
+
+/*******************************************************************
+ *         output_lto_flags_target
+ */
+static void output_lto_flags_target( struct makefile *make, unsigned int arch, int prefer_env )
+{
+    (void) arch; /* mark as used */
+
+    if (!with_lto) return;
+    if (!make) return;
+
+    output_lto_flags( with_lto, prefer_env );
 }
 
 
