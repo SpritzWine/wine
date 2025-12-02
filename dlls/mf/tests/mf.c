@@ -8806,6 +8806,35 @@ static void test_media_session_scrubbing(void)
     todo_wine
     CHECK_CALLED(test_media_sink_GetStreamSinkCount);
 
+    /* Test that a rate change whilst in the PLAY state is a no-op */
+    hr = IMFRateControl_SetRate(rate_control, FALSE, 0.0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    /* But registers with the sink in the PAUSE state */
+    hr = IMFMediaSession_Pause(session);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = wait_media_event_until_blocking(session, callback, MESessionPaused, 1000, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    PropVariantClear(&propvar);
+
+    SET_EXPECT(test_media_sink_GetPresentationClock);
+    SET_EXPECT(test_media_sink_clock_sink_OnClockSetRate);
+    hr = IMFRateControl_SetRate(rate_control, FALSE, 0.0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = wait_media_event_until_blocking(session, callback, MESessionRateChanged, 1000, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    PropVariantClear(&propvar);
+    todo_wine
+    CHECK_CALLED(test_media_sink_GetPresentationClock);
+
+    /* The set rate call to the sink can happen after receiving the MESessionRateChanged event */
+    hr = WaitForSingleObject(media_sink->set_rate_event, 1000);
+    todo_wine
+    ok(hr == WAIT_OBJECT_0, "Unexpected hr %#lx.\n", hr);
+    CHECK_CALLED(test_media_sink_clock_sink_OnClockSetRate);
+
     /* Release all the used resources */
     IMFAsyncCallback_Release(callback);
     IMFTransform_Release(mft);
