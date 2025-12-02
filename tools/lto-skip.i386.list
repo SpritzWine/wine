@@ -11,7 +11,7 @@ dlls/ntdll/asm_i386_rtl.c
 dlls/kernel32/sync.c
 
 # ExitProcess@4
-dlls/kernel32/process.c
+dlls/kernel32/asm_i386_exitprocess.c
 
 # _ftol
 dlls/msvcrt/math.c
