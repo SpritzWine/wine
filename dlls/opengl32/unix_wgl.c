@@ -143,7 +143,6 @@ struct context
     GLubyte *extensions;           /* extension string */
     char *wow64_version;           /* wow64 GL version override */
     struct buffers *buffers;       /* wow64 buffers map */
-    GLenum gl_error;               /* wrapped GL error */
     const char **extension_array;  /* array of supported extensions */
     size_t extension_count;        /* size of supported extensions */
     BOOL use_pinned_memory;        /* use GL_AMD_pinned_memory to emulate persistent maps */
@@ -2064,6 +2063,19 @@ void wrap_glGetFramebufferParameterivEXT( TEB *teb, GLuint fbo, GLenum pname, GL
     funcs->p_glGetFramebufferParameterivEXT( fbo, pname, params );
 }
 
+GLenum wrap_glGetError( TEB *teb )
+{
+    const struct opengl_funcs *funcs = teb->glTable;
+    GLenum gl_err, prev_err;
+    struct wgl_context *ctx;
+
+    if (!(ctx = &get_current_context( teb, NULL, NULL )->base)) return GL_INVALID_OPERATION;
+    gl_err = funcs->p_glGetError();
+    prev_err = ctx->gl_error;
+    ctx->gl_error = GL_NO_ERROR;
+    return prev_err ? prev_err : gl_err;
+}
+
 NTSTATUS process_attach( void *args )
 {
     struct process_attach_params *params = args;
@@ -2159,28 +2171,6 @@ NTSTATUS return_wow64_string( const void *str, PTR32 *wow64_str )
     if (*wow64_str) return STATUS_SUCCESS;
     *wow64_str = strlen( str ) + 1;
     return STATUS_BUFFER_TOO_SMALL;
-}
-
-GLenum wow64_glGetError( TEB *teb )
-{
-    const struct opengl_funcs *funcs = teb->glTable;
-    GLenum gl_err, prev_err;
-    struct context *ctx;
-
-    if (!(ctx = get_current_context( teb, NULL, NULL ))) return GL_INVALID_OPERATION;
-    gl_err = funcs->p_glGetError();
-    prev_err = ctx->gl_error;
-    ctx->gl_error = GL_NO_ERROR;
-    return prev_err ? prev_err : gl_err;
-}
-
-static void set_gl_error( TEB *teb, GLenum gl_error )
-{
-    const struct opengl_funcs *funcs = teb->glTable;
-    struct context *ctx;
-
-    if (!(ctx = get_current_context( teb, NULL, NULL )) || ctx->gl_error) return;
-    if (!(ctx->gl_error = funcs->p_glGetError())) ctx->gl_error = gl_error;
 }
 
 static struct wgl_handle *get_sync_ptr( TEB *teb, GLsync sync )
