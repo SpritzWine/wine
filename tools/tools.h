@@ -1024,4 +1024,105 @@ static inline struct strarray parse_options( int argc, char **argv, const char *
 #undef OPT_ERR
 }
 
+static inline void append_lto_flags( struct strarray *args, int with_lto, int prefer_env )
+{
+    if (with_lto < 0) return;
+
+    if (prefer_env > 0)
+    {
+        const char *flags = NULL;
+
+        if (with_lto > 0)
+        {
+            static int _init_lto = 0;
+            static const char* _lto = NULL;
+
+            if (!_init_lto)
+            {
+                _lto = getenv( "WINE_LTO_FLAGS" );
+                if (_lto) _lto = (_lto[0]) ? xstrdup( _lto ) : NULL;
+                _init_lto = 1;
+            }
+            flags = _lto;
+        }
+        else
+        {
+            static int _init_lto_skip = 0;
+            static const char* _lto_skip = NULL;
+
+            if (!_init_lto_skip)
+            {
+                _lto_skip = getenv( "WINE_LTO_SKIP_FLAGS" );
+                if (_lto_skip) _lto_skip = (_lto_skip[0]) ? xstrdup( _lto_skip ) : NULL;
+                _init_lto_skip = 1;
+            }
+            flags = _lto_skip;
+        }
+
+        if (flags) {
+            strarray_addall( args, strarray_fromstring( flags, " " ) );
+            return;
+        }
+    }
+
+    strarray_add( args, (with_lto > 0) ? "-flto" : "-fno-lto" );
+}
+
+static inline int var_to_bool( const char *var )
+{
+    if (!var) return 0;
+    if (!( var[0] )) return 0;
+
+    switch (var[0])
+    {
+        /* "1" */
+        case '1':
+            if (!var[1]) return 1;
+            break;
+
+        /* "[Tt]", "[Tt][Rr][Uu][Ee]" */
+        case 'T': /* -fallthrough */
+        case 't':
+            if (!var[1]) return 1;
+
+            if (strlen( var ) != 4) break;
+            if ((var[1] != 'R') && (var[1] != 'r')) break;
+            if ((var[2] != 'U') && (var[2] != 'u')) break;
+            if ((var[3] != 'E') && (var[3] != 'e')) break;
+            return 1;
+
+            break;
+
+        /* "[Yy]", "[Yy][Ee][Ss]" */
+        case 'Y': /* -fallthrough */
+        case 'y':
+            if (!var[1]) return 1;
+
+            if (strlen( var ) != 3) break;
+            if ((var[1] != 'E') && (var[1] != 'e')) break;
+            if ((var[2] != 'S') && (var[2] != 's')) break;
+            return 1;
+
+            break;
+    }
+
+    return 0;
+}
+
+static inline int adjust_verbose_lto( int with_lto, int verbose )
+{
+    const char* lto_debug = NULL;
+
+    if (with_lto < 1) return verbose;
+    if (verbose > 0) return verbose;
+
+    /* no need to cache/preserve environment variable
+       because method is to be called once. */
+
+    lto_debug = getenv( "WINE_LTO_DEBUG" );
+    if (!lto_debug) return verbose;
+
+    return var_to_bool( lto_debug );
+}
+
 #endif /* __WINE_TOOLS_H */
