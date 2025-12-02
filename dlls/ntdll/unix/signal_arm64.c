@@ -1430,7 +1430,7 @@ void signal_init_process(void)
 /***********************************************************************
  *           syscall_dispatcher_return_slowpath
  */
-void syscall_dispatcher_return_slowpath(void)
+void __attribute__((used)) syscall_dispatcher_return_slowpath(void)
 {
     raise( SIGUSR2 );
 }
@@ -1438,7 +1438,7 @@ void syscall_dispatcher_return_slowpath(void)
 /***********************************************************************
  *           init_syscall_frame
  */
-void init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, BOOL suspend, TEB *teb )
+void __attribute__((used)) init_syscall_frame( LPTHREAD_START_ROUTINE entry, void *arg, BOOL suspend, TEB *teb )
 {
     struct syscall_frame *frame = ((struct ntdll_thread_data *)&teb->GdiTebBatch)->syscall_frame;
     CONTEXT *ctx, context = { CONTEXT_ALL };
