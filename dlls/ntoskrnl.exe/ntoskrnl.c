@@ -4211,29 +4211,6 @@ NTSTATUS WINAPI IoCreateFile(HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUT
                           create_options, ea_buffer, ea_length, file_type, parameters, options, NULL);
 }
 
-/**************************************************************************
- *		__chkstk (NTOSKRNL.@)
- */
-#ifdef __x86_64__
-/* Supposed to touch all the stack pages, but we shouldn't need that. */
-__ASM_GLOBAL_FUNC( __chkstk, "ret" );
-#elif defined(__i386__)
-__ASM_GLOBAL_FUNC( _chkstk,
-                   "negl %eax\n\t"
-                   "addl %esp,%eax\n\t"
-                   "xchgl %esp,%eax\n\t"
-                   "movl 0(%eax),%eax\n\t"  /* copy return address from old location */
-                   "movl %eax,0(%esp)\n\t"
-                   "ret" )
-#elif defined(__arm__)
-/* Incoming r4 contains words to allocate, converting to bytes then return */
-__ASM_GLOBAL_FUNC( __chkstk, "lsl r4, r4, #2\n\t"
-                             "bx lr" )
-#elif defined(__aarch64__)
-/* Supposed to touch all the stack pages, but we shouldn't need that. */
-__ASM_GLOBAL_FUNC( __chkstk, "ret" );
-#endif
-
 /*********************************************************************
  *           PsAcquireProcessExitSynchronization    (NTOSKRNL.@)
 */

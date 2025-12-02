@@ -3,4 +3,4 @@
 dlls/winecrt0/setjmp.c
 
 # _chkstk (i386) / __chkstk (others)
-dlls/ntoskrnl.exe/ntoskrnl.c
+dlls/ntoskrnl.exe/asm_chkstk.c
