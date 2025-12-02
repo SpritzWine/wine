@@ -316,6 +316,33 @@ static void WINAPI invoketest_get_testput8(IInvokeTest *iface, int value)
 {
 }
 
+static HRESULT WINAPI invoketest_test_bstr_none(IInvokeTest *iface, BSTR* value, BSTR* retvalue)
+{
+    if (value != NULL && *value != NULL)
+    {
+        *retvalue = SysAllocString(*value);
+    }
+    return S_OK;
+}
+
+static HRESULT WINAPI invoketest_test_bstr_in(IInvokeTest *iface, BSTR* value, BSTR* retvalue)
+{
+    if (value != NULL && *value != NULL)
+    {
+        *retvalue = SysAllocString(*value);
+    }
+    return S_OK;
+}
+
+static HRESULT WINAPI invoketest_test_bstr_out(IInvokeTest *iface, BSTR* value, BSTR* retvalue)
+{
+    if (value != NULL && *value != NULL)
+    {
+        *retvalue = SysAllocString(*value);
+    }
+    return S_OK;
+}
+
 static const IInvokeTestVtbl invoketestvtbl = {
     invoketest_QueryInterface,
     invoketest_AddRef,
@@ -337,6 +364,9 @@ static const IInvokeTestVtbl invoketestvtbl = {
     invoketest_get_testget7,
     invoketest_get_testget8,
     invoketest_get_testput8,
+    invoketest_test_bstr_none,
+    invoketest_test_bstr_in,
+    invoketest_test_bstr_out
 };
 
 static IInvokeTest invoketest = { &invoketestvtbl };
@@ -868,6 +898,26 @@ static void test_invoke_func(ITypeInfo *typeinfo)
     dp.cArgs = 2;
     hres = ITypeInfo_Invoke(typeinfo, &invoketest, 3, DISPATCH_METHOD, &dp, &res, NULL, &i);
     ok(hres == DISP_E_BADPARAMCOUNT, "got 0x%08lx\n", hres);
+
+    V_VT(args) = VT_BSTR;
+    V_BSTR(args) = SysAllocString(L"TestString");
+    dp.cArgs = 1;
+    dp.cNamedArgs = 0;
+
+    hres = ITypeInfo_Invoke(typeinfo, &invoketest, 12, DISPATCH_METHOD, &dp, &res, NULL, &i);
+    ok(hres == S_OK, "got 0x%08lx\n", hres);
+    ok(V_VT(&res) == VT_BSTR, "got %d\n", V_VT(&res));
+    ok(!lstrcmpW(V_BSTR(&res), L"TestString"), "got %ls\n", !lstrcmpW(V_BSTR(&res), L"") ? L"(null)" : V_BSTR(&res));
+
+    hres = ITypeInfo_Invoke(typeinfo, &invoketest, 13, DISPATCH_METHOD, &dp, &res, NULL, &i);
+    ok(hres == S_OK, "got 0x%08lx\n", hres);
+    ok(V_VT(&res) == VT_BSTR, "got %d\n", V_VT(&res));
+    ok(!lstrcmpW(V_BSTR(&res), L"TestString"), "got %ls\n", V_BSTR(&res));
+
+    hres = ITypeInfo_Invoke(typeinfo, &invoketest, 14, DISPATCH_METHOD, &dp, &res, NULL, &i);
+    ok(hres == S_OK, "got 0x%08lx\n", hres);
+    ok(V_VT(&res) == VT_BSTR, "got %d\n", V_VT(&res));
+    ok(V_BSTR(&res) == NULL || !lstrcmpW(V_BSTR(&res), L""), "got %ls\n", V_BSTR(&res));
 }
 
 static WCHAR *create_test_typelib(int res_no)
