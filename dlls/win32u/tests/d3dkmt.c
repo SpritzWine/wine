@@ -4250,7 +4250,7 @@ static struct opengl_device *create_opengl_device( HWND hwnd, LUID *luid )
     ok_ptr( extensions, !=, NULL );
 
     ptr = find_opengl_extension( extensions, "GL_EXT_memory_object_win32" );
-    todo_wine ok_ptr( ptr, !=, NULL );
+    ok_ptr( ptr, !=, NULL );
     ptr = find_opengl_extension( extensions, "GL_EXT_semaphore_win32" );
     ok_ptr( ptr, !=, NULL );
     ptr = find_opengl_extension( extensions, "GL_EXT_win32_keyed_mutex" );
@@ -4274,7 +4274,7 @@ static struct opengl_device *create_opengl_device( HWND hwnd, LUID *luid )
     ok_x4( glGetError(), ==, 0 );
     ok( !IsEqualGUID( &GUID_NULL, &guid ), "got GL_DRIVER_UUID_EXT %s\n", debugstr_guid( &guid ) );
 
-    if (!winetest_platform_is_wine) /* crashes in host drivers */
+    if (find_opengl_extension( extensions, "GL_EXT_memory_object_win32" ) || find_opengl_extension( extensions, "GL_EXT_semaphore_win32" )) /* crashes in host drivers */
     {
         LUID device_luid = {0};
         unsigned int nodes = 0;
