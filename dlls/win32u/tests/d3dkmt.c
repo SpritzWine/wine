@@ -4328,7 +4328,7 @@ static GLuint import_opengl_image( struct opengl_device *dev, UINT width, UINT h
     if (name)
     {
         PFN_glImportMemoryWin32NameEXT p_glImportMemoryWin32NameEXT = (void *)wglGetProcAddress( "glImportMemoryWin32NameEXT" );
-        todo_wine ok_ptr( p_glImportMemoryWin32NameEXT, !=, NULL );
+        ok_ptr( p_glImportMemoryWin32NameEXT, !=, NULL );
         if (!p_glImportMemoryWin32NameEXT) return 0;
 
         p_glCreateMemoryObjectsEXT( 1, &memory );
@@ -4339,7 +4339,7 @@ static GLuint import_opengl_image( struct opengl_device *dev, UINT width, UINT h
     else
     {
         PFN_glImportMemoryWin32HandleEXT p_glImportMemoryWin32HandleEXT = (void *)wglGetProcAddress( "glImportMemoryWin32HandleEXT" );
-        todo_wine ok_ptr( p_glImportMemoryWin32HandleEXT, !=, NULL );
+        ok_ptr( p_glImportMemoryWin32HandleEXT, !=, NULL );
         if (!p_glImportMemoryWin32HandleEXT) return 0;
 
         p_glCreateMemoryObjectsEXT( 1, &memory );
@@ -5701,25 +5701,25 @@ static void test_shared_resources(void)
                     test_import_opengl_image( opengl_imp, resource_size, 1, 1, 1, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, resource_size, 1, 1, 1, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_KMT_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 case 1:
                     test_import_opengl_image( opengl_imp, width_1d, 1, array_1d, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_1d, 1, array_1d, 4, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_KMT_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 case 2:
                     test_import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_KMT_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 case 3:
                     test_import_opengl_image( opengl_imp, width_3d, height_3d, depth_3d, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_3d, height_3d, depth_3d, 4, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_KMT_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 }
             }
@@ -5731,41 +5731,41 @@ static void test_shared_resources(void)
                     test_import_opengl_image( opengl_imp, resource_size, 1, 1, 1, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, resource_size, 1, 1, 1, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, resource_size, 1, 1, 1, name, handle, GL_HANDLE_TYPE_D3D12_TILEPOOL_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, resource_size, 1, 1, 1, name, handle, GL_HANDLE_TYPE_D3D12_RESOURCE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 case 1:
                     test_import_opengl_image( opengl_imp, width_1d, 1, array_1d, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_1d, 1, array_1d, 4, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_1d, 1, array_1d, 4, name, handle, GL_HANDLE_TYPE_D3D12_TILEPOOL_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_1d, 1, array_1d, 4, name, handle, GL_HANDLE_TYPE_D3D12_RESOURCE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 case 2:
                     test_import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_D3D12_TILEPOOL_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_D3D12_RESOURCE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 case 3:
                     test_import_opengl_image( opengl_imp, width_3d, height_3d, depth_3d, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT );
                     ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_3d, height_3d, depth_3d, 4, name, handle, GL_HANDLE_TYPE_D3D11_IMAGE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_3d, height_3d, depth_3d, 4, name, handle, GL_HANDLE_TYPE_D3D12_TILEPOOL_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     test_import_opengl_image( opengl_imp, width_3d, height_3d, depth_3d, 4, name, handle, GL_HANDLE_TYPE_D3D12_RESOURCE_EXT );
-                    ok_x4( glGetError(), ==, 0 );
+                    todo_wine ok_x4( glGetError(), ==, 0 );
                     break;
                 }
             }
@@ -5804,7 +5804,7 @@ static void test_shared_resources(void)
             if (opengl_imp && GET_DIM(test) == 2 && !opengl_imp->broken)
             {
                 gl_img = import_opengl_image( opengl_imp, width_2d, height_2d, 1, 4, name, handle, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT );
-                ok_x4( glGetError(), ==, 0 );
+                todo_wine ok_x4( glGetError(), ==, 0 );
 
                 CloseHandle( handle );
                 status = open_shared_resource( path, &handle );

@@ -26,6 +26,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <dlfcn.h>
+#include <unistd.h>
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -2487,6 +2488,77 @@ static void win32u_glGetUnsignedBytevEXT( GLenum pname, GLubyte *data )
     }
 }
 
+static void import_memory( GLuint memory, GLuint64 size, GLenum handleType, void *handle, const void *name )
+{
+    struct opengl_funcs *funcs = &display_funcs;
+
+    D3DKMT_HANDLE local, mutex, sync;
+    GLenum err;
+    int fd;
+
+    switch (handleType)
+    {
+        case GL_HANDLE_TYPE_OPAQUE_WIN32_EXT:
+            if (name) handle = open_shared_resource_from_name( (const WCHAR *)name );
+            if (!handle)
+            {
+                set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+                return;
+            }
+            local = d3dkmt_open_resource( 0, handle, &mutex, &sync );
+            if (name) NtClose( handle );
+            break;
+        case GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT:
+            if (!handle)
+            {
+                set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+                return;
+            }
+            local = d3dkmt_open_resource( PtrToUlong( handle ), NULL, &mutex, &sync );
+            break;
+        default:
+            set_gl_error( NtCurrentTeb(), GL_INVALID_ENUM );
+            return;
+    }
+
+    if (mutex)
+        d3dkmt_destroy_mutex( mutex );
+    if (sync)
+        d3dkmt_destroy_sync( sync );
+
+    if ((fd = d3dkmt_object_get_fd( local )) < 0)
+    {
+        set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+        return;
+    }
+
+    d3dkmt_destroy_resource( local );
+
+    set_gl_error( NtCurrentTeb(), funcs->p_glGetError() );
+
+    funcs->p_glImportMemoryFdEXT( memory, size, GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd );
+
+    if ((err = funcs->p_glGetError()) != GL_NO_ERROR)
+    {
+        close( fd );
+        set_gl_error( NtCurrentTeb(), err );
+    }
+}
+
+static void win32u_glImportMemoryWin32HandleEXT( GLuint memory, GLuint64 size, GLenum handleType, void *handle )
+{
+    TRACE( "memory %u size %s handleType %#x handle %p\n", memory, wine_dbgstr_longlong( size ), handleType, handle );
+
+    return import_memory( memory, size, handleType, handle, NULL );
+}
+
+static void win32u_glImportMemoryWin32NameEXT( GLuint memory, GLuint64 size, GLenum handleType, const void *name )
+{
+    TRACE( "memory %u size %s handleType %#x name %s\n", memory, wine_dbgstr_longlong( size ), handleType, debugstr_w( name ) );
+
+    return import_memory( memory, size, handleType, NULL, name );
+}
+
 static void display_funcs_init(void)
 {
     struct egl_platform *egl;
@@ -2591,6 +2663,8 @@ static void display_funcs_init(void)
     /* EXT_external_objects_win32 */
     display_funcs.p_glGetIntegerv = win32u_glGetIntegerv;
     display_funcs.p_glGetUnsignedBytevEXT = win32u_glGetUnsignedBytevEXT;
+    display_funcs.p_glImportMemoryWin32HandleEXT = win32u_glImportMemoryWin32HandleEXT;
+    display_funcs.p_glImportMemoryWin32NameEXT = win32u_glImportMemoryWin32NameEXT;
 
     if (!list_empty( &devices_egl ))
     {
