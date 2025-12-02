@@ -2439,6 +2439,54 @@ static const char *win32u_wglQueryCurrentRendererStringWINE( GLenum attribute )
     return query_renderer_string( LIST_ENTRY( ptr, struct egl_platform, entry ), attribute );
 }
 
+static BOOL get_luid( LUID *luid, UINT32 *node_mask )
+{
+    struct opengl_funcs *funcs = &display_funcs;
+    GLint uuid_count = 0;
+    GUID uuid;
+
+    funcs->p_glGetIntegerv( GL_NUM_DEVICE_UUIDS_EXT, &uuid_count );
+    if (!uuid_count)
+        return FALSE;
+
+    funcs->p_glGetUnsignedBytei_vEXT( GL_DEVICE_UUID_EXT, 0, (GLubyte *) &uuid );
+    return get_luid_from_vulkan_uuid(&uuid, luid, node_mask);
+}
+
+#define HOST_GL_FUNC(func) ((typeof(display_funcs.p_##func)) driver_funcs->p_get_proc_address( #func ))
+
+static void win32u_glGetIntegerv( GLenum pname, GLint *data )
+{
+    if (pname == GL_DEVICE_NODE_MASK_EXT)
+    {
+        LUID luid;
+        UINT32 node_mask;
+
+        if (get_luid( &luid, &node_mask ))
+            *data = node_mask;
+    }
+    else
+    {
+        HOST_GL_FUNC(glGetIntegerv)( pname, data );
+    }
+}
+
+static void win32u_glGetUnsignedBytevEXT( GLenum pname, GLubyte *data )
+{
+    if (pname == GL_DEVICE_LUID_EXT)
+    {
+        LUID luid;
+        UINT32 node_mask;
+
+        if (get_luid( &luid, &node_mask ))
+            memcpy( data, &luid, GL_LUID_SIZE_EXT );
+    }
+    else
+    {
+        HOST_GL_FUNC(glGetUnsignedBytevEXT)( pname, data );
+    }
+}
+
 static void display_funcs_init(void)
 {
     struct egl_platform *egl;
@@ -2539,6 +2587,10 @@ static void display_funcs_init(void)
     register_extension( wgl_extensions, ARRAY_SIZE(wgl_extensions), "WGL_EXT_swap_control_tear" );
     display_funcs.p_wglSwapIntervalEXT = win32u_wglSwapIntervalEXT;
     display_funcs.p_wglGetSwapIntervalEXT = win32u_wglGetSwapIntervalEXT;
+
+    /* EXT_external_objects_win32 */
+    display_funcs.p_glGetIntegerv = win32u_glGetIntegerv;
+    display_funcs.p_glGetUnsignedBytevEXT = win32u_glGetUnsignedBytevEXT;
 
     if (!list_empty( &devices_egl ))
     {
