@@ -1,0 +1,17 @@
+# RtlUshortByteSwap@4
+# RtlUlongByteSwap@4
+# RtlUlonglongByteSwap@8
+dlls/ntdll/rtl.c
+
+# InterlockedCompareExchange@12
+# InterlockedExchange@8
+# InterlockedExchangeAdd@8
+# InterlockedIncrement@4
+# InterlockedDecrement@4
+dlls/kernel32/sync.c
+
+# ExitProcess@4
+dlls/kernel32/process.c
+
+# _ftol
+dlls/msvcrt/math.c

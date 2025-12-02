@@ -1,0 +1,6 @@
+# __wine_setjmpex
+# __wine_longjmp
+dlls/winecrt0/setjmp.c
+
+# _chkstk (i386) / __chkstk (others)
+dlls/ntoskrnl.exe/ntoskrnl.c
