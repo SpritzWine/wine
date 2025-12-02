@@ -8,6 +8,7 @@ i386_EXTRADLLFLAGS = -Wl,--image-base,0x7b000000
 x86_64_EXTRADLLFLAGS = -Wl,--image-base,0x174000000
 
 SOURCES = \
+	asm_x86_64_getprocaddress.c \
 	console.c \
 	debug.c \
 	file.c \
