@@ -77,6 +77,7 @@ struct wgl_context
     int                     format;             /* pixel format of the context */
     struct opengl_drawable *draw;               /* currently bound draw surface */
     struct opengl_drawable *read;               /* currently bound read surface */
+    GLenum gl_error;               /* wrapped GL error */
 };
 
 /* interface between opengl32 and win32u */
@@ -128,6 +129,15 @@ struct opengl_funcs
 
     void       *egl_handle;
 };
+
+static inline void set_gl_error( TEB *teb, GLenum gl_error )
+{
+    const struct opengl_funcs *funcs = teb->glTable;
+    struct wgl_context *ctx = teb->glContext;
+
+    if (!ctx || ctx->gl_error) return;
+    if (!(ctx->gl_error = funcs->p_glGetError())) ctx->gl_error = gl_error;
+}
 
 struct egl_platform
 {
