@@ -924,6 +924,7 @@ enable_maintainer_mode
 enable_sast
 enable_silent_rules
 enable_werror
+enable_lto
 with_alsa
 with_capi
 with_coreaudio
@@ -2545,6 +2546,7 @@ Optional Features:
                           Clang
   --enable-silent-rules   use silent build rules (override: "make V=1")
   --enable-werror         treat compilation warnings as errors
+  --enable-lto            build with LTO (EXPERIMENTAL)
   --disable-largefile     omit support for large files
   --disable-year2038      don't support timestamps after 2038
 
@@ -4307,6 +4309,12 @@ fi
 if test ${enable_werror+y}
 then :
   enableval=$enable_werror;
+fi
+
+# Check whether --enable-lto was given.
+if test ${enable_lto+y}
+then :
+  enableval=$enable_lto;
 fi
 
 
@@ -7384,6 +7392,11 @@ do
   esac
 done
 
+if test "x$enable_lto" = xyes
+then
+    as_fn_append EXTRACFLAGS " -D__WINE_LTO_BUILD"
+fi
+
 for wine_arch in $cross_archs $extra_arch
 do
     case $wine_arch in
@@ -7681,6 +7694,11 @@ fi
     eval CFLAGS=\$${wine_arch}_CFLAGS
     eval LDFLAGS=\$${wine_arch}_LDFLAGS
     eval "${wine_arch}_EXTRACFLAGS=\"-D__WINE_PE_BUILD -Wall\""
+
+    if test "x$enable_lto" = xyes
+    then
+        as_fn_append ${wine_arch}_EXTRACFLAGS " -D__WINE_LTO_BUILD"
+    fi
 
     target=""
     set x $CC
@@ -22300,6 +22318,7 @@ printf %s "creating Makefile rules..." >&6
 
 makedep_flags=" -C"
 test "x$enable_silent_rules" = xyes && makedep_flags="$makedep_flags -S"
+test "x$enable_lto" = xyes && makedep_flags="$makedep_flags -L"
 
 wine_srcdir=
 test "$srcdir" = . || wine_srcdir="$srcdir/"
