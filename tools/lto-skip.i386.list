@@ -8,7 +8,7 @@ dlls/ntdll/asm_i386_rtl.c
 # InterlockedExchangeAdd@8
 # InterlockedIncrement@4
 # InterlockedDecrement@4
-dlls/kernel32/sync.c
+dlls/kernel32/asm_i386_interlocked.c
 
 # ExitProcess@4
 dlls/kernel32/asm_i386_exitprocess.c
