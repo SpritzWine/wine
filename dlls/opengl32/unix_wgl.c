@@ -143,7 +143,6 @@ struct context
     GLubyte *extensions;           /* extension string */
     char *wow64_version;           /* wow64 GL version override */
     struct buffers *buffers;       /* wow64 buffers map */
-    GLenum gl_error;               /* wrapped GL error */
     const char **extension_array;  /* array of supported extensions */
     size_t extension_count;        /* size of supported extensions */
     BOOL use_pinned_memory;        /* use GL_AMD_pinned_memory to emulate persistent maps */
@@ -543,6 +542,12 @@ static const char *legacy_extensions[] =
     NULL,
 };
 
+static const char *platform_extensions[] =
+{
+    "GL_EXT_memory_object_fd", "GL_EXT_memory_object_win32",
+    NULL
+};
+
 static const char *parse_gl_version( const char *gl_version, int *major, int *minor )
 {
     const char *ptr = gl_version;
@@ -736,6 +741,7 @@ static GLubyte *filter_extensions( struct context *ctx, const char *extensions )
 
     size = strlen( extensions ) + 2;
     for (extra = legacy_extensions; *extra; extra++) size += strlen( *extra ) + 1;
+    for (extra = platform_extensions; *extra; extra+=2) size += strlen( extra[1] + 1 );
     if (!(p = str = malloc( size ))) return NULL;
 
     TRACE( "GL_EXTENSIONS:\n" );
@@ -749,10 +755,22 @@ static GLubyte *filter_extensions( struct context *ctx, const char *extensions )
         memcpy( p, extensions, end - extensions );
         p[end - extensions] = 0;
 
+        for (extra = platform_extensions; *extra; extra += 2)
+        {
+            if (strcmp(p, extra[0]))
+                continue;
+
+            TRACE("Replace platform extension %s with:\n", p);
+
+            size = strlen( extra[1] );
+            memcpy( p, extra[1], size );
+            p[size] = 0;
+        }
+
         if (is_extension_supported( ctx, p ))
         {
             TRACE( "++ %s\n", p );
-            p += end - extensions;
+            p += strlen(p);
             *p++ = ' ';
         }
         else
@@ -1233,6 +1251,7 @@ static void make_context_current( TEB *teb, const struct opengl_funcs *funcs, HD
     if (ctx->major_version >= 3)
     {
         GLint extensions_count;
+        const char **platform_ext;
 
         if (!funcs->p_glGetStringi)
         {
@@ -1243,7 +1262,18 @@ static void make_context_current( TEB *teb, const struct opengl_funcs *funcs, HD
         funcs->p_glGetIntegerv( GL_NUM_EXTENSIONS, &extensions_count );
         size += extensions_count;
         if (!(extensions = malloc( size * sizeof(*extensions) ))) return;
-        for (i = 0; i < extensions_count; i++) extensions[count++] = (const char *)funcs->p_glGetStringi( GL_EXTENSIONS, i );
+        for (i = 0; i < extensions_count; i++)
+        {
+            extensions[count] = (const char *)funcs->p_glGetStringi( GL_EXTENSIONS, i );
+
+            for (platform_ext = platform_extensions; *platform_ext; platform_ext+=2)
+            {
+                if (!strcmp(extensions[count], platform_ext[0]))
+                    extensions[count] = platform_ext[1];
+            }
+
+            count++;
+        }
     }
     else
     {
@@ -2017,7 +2047,7 @@ void wrap_glGetIntegerv( TEB *teb, GLenum pname, GLint *data )
 {
     const struct opengl_funcs *funcs = teb->glTable;
     if (get_integer( teb, pname, data )) return;
-    funcs->p_glGetIntegerv( pname, data );
+    else funcs->p_glGetIntegerv( pname, data );
 }
 
 void wrap_glGetBooleanv( TEB *teb, GLenum pname, GLboolean *data )
@@ -2033,7 +2063,7 @@ void wrap_glGetDoublev( TEB *teb, GLenum pname, GLdouble *data )
     const struct opengl_funcs *funcs = teb->glTable;
     GLint value;
     if (get_integer( teb, pname, &value )) *data = value;
-    funcs->p_glGetDoublev( pname, data );
+    else funcs->p_glGetDoublev( pname, data );
 }
 
 void wrap_glGetFloatv( TEB *teb, GLenum pname, GLfloat *data )
@@ -2062,6 +2092,19 @@ void wrap_glGetFramebufferParameterivEXT( TEB *teb, GLuint fbo, GLenum pname, GL
         if (get_default_fbo_integer( ctx, draw, read, pname, params )) return;
 
     funcs->p_glGetFramebufferParameterivEXT( fbo, pname, params );
+}
+
+GLenum wrap_glGetError( TEB *teb )
+{
+    const struct opengl_funcs *funcs = teb->glTable;
+    GLenum gl_err, prev_err;
+    struct wgl_context *ctx;
+
+    if (!(ctx = &get_current_context( teb, NULL, NULL )->base)) return GL_INVALID_OPERATION;
+    gl_err = funcs->p_glGetError();
+    prev_err = ctx->gl_error;
+    ctx->gl_error = GL_NO_ERROR;
+    return prev_err ? prev_err : gl_err;
 }
 
 NTSTATUS process_attach( void *args )
@@ -2159,28 +2202,6 @@ NTSTATUS return_wow64_string( const void *str, PTR32 *wow64_str )
     if (*wow64_str) return STATUS_SUCCESS;
     *wow64_str = strlen( str ) + 1;
     return STATUS_BUFFER_TOO_SMALL;
-}
-
-GLenum wow64_glGetError( TEB *teb )
-{
-    const struct opengl_funcs *funcs = teb->glTable;
-    GLenum gl_err, prev_err;
-    struct context *ctx;
-
-    if (!(ctx = get_current_context( teb, NULL, NULL ))) return GL_INVALID_OPERATION;
-    gl_err = funcs->p_glGetError();
-    prev_err = ctx->gl_error;
-    ctx->gl_error = GL_NO_ERROR;
-    return prev_err ? prev_err : gl_err;
-}
-
-static void set_gl_error( TEB *teb, GLenum gl_error )
-{
-    const struct opengl_funcs *funcs = teb->glTable;
-    struct context *ctx;
-
-    if (!(ctx = get_current_context( teb, NULL, NULL )) || ctx->gl_error) return;
-    if (!(ctx->gl_error = funcs->p_glGetError())) ctx->gl_error = gl_error;
 }
 
 static struct wgl_handle *get_sync_ptr( TEB *teb, GLsync sync )

@@ -26,6 +26,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <dlfcn.h>
+#include <unistd.h>
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -2437,6 +2438,125 @@ static const char *win32u_wglQueryCurrentRendererStringWINE( GLenum attribute )
     return query_renderer_string( LIST_ENTRY( ptr, struct egl_platform, entry ), attribute );
 }
 
+static BOOL get_luid( LUID *luid, UINT32 *node_mask )
+{
+    struct opengl_funcs *funcs = &display_funcs;
+    GLint uuid_count = 0;
+    GUID uuid;
+
+    funcs->p_glGetIntegerv( GL_NUM_DEVICE_UUIDS_EXT, &uuid_count );
+    if (!uuid_count)
+        return FALSE;
+
+    funcs->p_glGetUnsignedBytei_vEXT( GL_DEVICE_UUID_EXT, 0, (GLubyte *) &uuid );
+    return get_luid_from_vulkan_uuid(&uuid, luid, node_mask);
+}
+
+#define HOST_GL_FUNC(func) ((typeof(display_funcs.p_##func)) driver_funcs->p_get_proc_address( #func ))
+
+static void win32u_glGetIntegerv( GLenum pname, GLint *data )
+{
+    if (pname == GL_DEVICE_NODE_MASK_EXT)
+    {
+        LUID luid;
+        UINT32 node_mask;
+
+        if (get_luid( &luid, &node_mask ))
+            *data = node_mask;
+    }
+    else
+    {
+        HOST_GL_FUNC(glGetIntegerv)( pname, data );
+    }
+}
+
+static void win32u_glGetUnsignedBytevEXT( GLenum pname, GLubyte *data )
+{
+    if (pname == GL_DEVICE_LUID_EXT)
+    {
+        LUID luid;
+        UINT32 node_mask;
+
+        if (get_luid( &luid, &node_mask ))
+            memcpy( data, &luid, GL_LUID_SIZE_EXT );
+    }
+    else
+    {
+        HOST_GL_FUNC(glGetUnsignedBytevEXT)( pname, data );
+    }
+}
+
+static void import_memory( GLuint memory, GLuint64 size, GLenum handleType, void *handle, const void *name )
+{
+    struct opengl_funcs *funcs = &display_funcs;
+
+    D3DKMT_HANDLE local, mutex, sync;
+    GLenum err;
+    int fd;
+
+    switch (handleType)
+    {
+        case GL_HANDLE_TYPE_OPAQUE_WIN32_EXT:
+            if (name) handle = open_shared_resource_from_name( (const WCHAR *)name );
+            if (!handle)
+            {
+                set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+                return;
+            }
+            local = d3dkmt_open_resource( 0, handle, &mutex, &sync );
+            if (name) NtClose( handle );
+            break;
+        case GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT:
+            if (!handle)
+            {
+                set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+                return;
+            }
+            local = d3dkmt_open_resource( PtrToUlong( handle ), NULL, &mutex, &sync );
+            break;
+        default:
+            set_gl_error( NtCurrentTeb(), GL_INVALID_ENUM );
+            return;
+    }
+
+    if (mutex)
+        d3dkmt_destroy_mutex( mutex );
+    if (sync)
+        d3dkmt_destroy_sync( sync );
+
+    if ((fd = d3dkmt_object_get_fd( local )) < 0)
+    {
+        set_gl_error( NtCurrentTeb(), GL_INVALID_VALUE );
+        return;
+    }
+
+    d3dkmt_destroy_resource( local );
+
+    set_gl_error( NtCurrentTeb(), funcs->p_glGetError() );
+
+    funcs->p_glImportMemoryFdEXT( memory, size, GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd );
+
+    if ((err = funcs->p_glGetError()) != GL_NO_ERROR)
+    {
+        close( fd );
+        set_gl_error( NtCurrentTeb(), err );
+    }
+}
+
+static void win32u_glImportMemoryWin32HandleEXT( GLuint memory, GLuint64 size, GLenum handleType, void *handle )
+{
+    TRACE( "memory %u size %s handleType %#x handle %p\n", memory, wine_dbgstr_longlong( size ), handleType, handle );
+
+    return import_memory( memory, size, handleType, handle, NULL );
+}
+
+static void win32u_glImportMemoryWin32NameEXT( GLuint memory, GLuint64 size, GLenum handleType, const void *name )
+{
+    TRACE( "memory %u size %s handleType %#x name %s\n", memory, wine_dbgstr_longlong( size ), handleType, debugstr_w( name ) );
+
+    return import_memory( memory, size, handleType, NULL, name );
+}
+
 static void display_funcs_init(void)
 {
     struct egl_platform *egl;
@@ -2537,6 +2657,12 @@ static void display_funcs_init(void)
     register_extension( wgl_extensions, ARRAY_SIZE(wgl_extensions), "WGL_EXT_swap_control_tear" );
     display_funcs.p_wglSwapIntervalEXT = win32u_wglSwapIntervalEXT;
     display_funcs.p_wglGetSwapIntervalEXT = win32u_wglGetSwapIntervalEXT;
+
+    /* EXT_external_objects_win32 */
+    display_funcs.p_glGetIntegerv = win32u_glGetIntegerv;
+    display_funcs.p_glGetUnsignedBytevEXT = win32u_glGetUnsignedBytevEXT;
+    display_funcs.p_glImportMemoryWin32HandleEXT = win32u_glImportMemoryWin32HandleEXT;
+    display_funcs.p_glImportMemoryWin32NameEXT = win32u_glImportMemoryWin32NameEXT;
 
     if (!list_empty( &devices_egl ))
     {
