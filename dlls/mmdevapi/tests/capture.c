@@ -37,10 +37,21 @@
 #include "mmdeviceapi.h"
 #include "audioclient.h"
 
-static const unsigned int sampling_rates[] = { 8000, 16000, 22050, 44100, 48000, 96000 };
-static const unsigned int channel_counts[] = { 1, 2, 8 };
-static const unsigned int sample_formats[][2] = { {WAVE_FORMAT_PCM, 8}, {WAVE_FORMAT_PCM, 16},
-                                                  {WAVE_FORMAT_PCM, 32}, {WAVE_FORMAT_IEEE_FLOAT, 32} };
+static const unsigned int *sampling_rates;
+static const unsigned int *channel_counts;
+static const unsigned int (*sample_formats)[2];
+static size_t sampling_rate_count;
+static size_t channel_count_count;
+static size_t sample_format_count;
+
+static const unsigned int sampling_rates_regular[] = { 8000, 44100, 96000 };
+static const unsigned int channel_counts_regular[] = { 1, 2, 8 };
+static const unsigned int sample_formats_regular[][2] = { {WAVE_FORMAT_PCM, 16}, {WAVE_FORMAT_IEEE_FLOAT, 32} };
+
+static const unsigned int sampling_rates_extended[] = { 8000, 11025, 16000, 22050, 44100, 48000, 96000 };
+static const unsigned int channel_counts_extended[] = { 1, 2, 4, 6, 8 };
+static const unsigned int sample_formats_extended[][2] = { {WAVE_FORMAT_PCM, 8}, {WAVE_FORMAT_PCM, 16},
+                                                           {WAVE_FORMAT_PCM, 32}, {WAVE_FORMAT_IEEE_FLOAT, 32} };
 
 #define NULL_PTR_ERR MAKE_HRESULT(SEVERITY_ERROR, FACILITY_WIN32, RPC_X_NULL_REF_POINTER)
 
@@ -570,9 +581,9 @@ static void test_formats(AUDCLNT_SHAREMODE mode, BOOL extensible)
 
     fmt.Format.cbSize = extensible ? sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX) : 0;
 
-    for (i = 0; i < ARRAY_SIZE(sampling_rates); i++) {
-        for (j = 0; j < ARRAY_SIZE(channel_counts); j++) {
-            for (k = 0; k < ARRAY_SIZE(sample_formats); k++) {
+    for (i = 0; i < sampling_rate_count; i++) {
+        for (j = 0; j < channel_count_count; j++) {
+            for (k = 0; k < sample_format_count; k++) {
                 char format_chr[3];
 
                 hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_INPROC_SERVER,
@@ -1244,6 +1255,25 @@ done:
 START_TEST(capture)
 {
     HRESULT hr;
+
+    if (winetest_extended)
+    {
+        sampling_rates = sampling_rates_extended;
+        channel_counts = channel_counts_extended;
+        sample_formats = sample_formats_extended;
+        sampling_rate_count = ARRAY_SIZE(sampling_rates_extended);
+        channel_count_count = ARRAY_SIZE(channel_counts_extended);
+        sample_format_count = ARRAY_SIZE(sample_formats_extended);
+    }
+    else
+    {
+        sampling_rates = sampling_rates_regular;
+        channel_counts = channel_counts_regular;
+        sample_formats = sample_formats_regular;
+        sampling_rate_count = ARRAY_SIZE(sampling_rates_regular);
+        channel_count_count = ARRAY_SIZE(channel_counts_regular);
+        sample_format_count = ARRAY_SIZE(sample_formats_regular);
+    }
 
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
     hr = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER, &IID_IMMDeviceEnumerator, (void**)&mme);
