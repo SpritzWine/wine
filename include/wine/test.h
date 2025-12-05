@@ -61,6 +61,9 @@ extern int winetest_platform_is_wine;
 /* use ANSI escape codes for output coloring */
 extern int winetest_color;
 
+/* run extended tests */
+extern int winetest_extended;
+
 extern LONG winetest_successes;       /* number of successful tests */
 extern LONG winetest_failures;        /* number of failures */
 extern LONG winetest_flaky_failures;  /* number of failures inside flaky block */
@@ -616,6 +619,9 @@ int winetest_mute_threshold = 42;
 /* use ANSI escape codes for output coloring */
 int winetest_color = 0;
 
+/* run extended tests */
+int winetest_extended = 0;
+
 static HANDLE winetest_mutex;
 
 /* passing arguments around */
@@ -881,6 +887,7 @@ int main( int argc, char **argv )
     if (GetEnvironmentVariableA( "WINETEST_REPORT_FLAKY", p, sizeof(p) )) winetest_report_flaky = atoi(p);
     if (GetEnvironmentVariableA( "WINETEST_REPORT_SUCCESS", p, sizeof(p) )) winetest_report_success = atoi(p);
     if (GetEnvironmentVariableA( "WINETEST_TIME", p, sizeof(p) )) winetest_time = atoi(p);
+    if (GetEnvironmentVariableA( "WINETEST_EXTENDED", p, sizeof(p) )) winetest_extended = atoi(p);
     winetest_last_time = winetest_start_time = winetest_get_time();
 
     if (!strcmp( winetest_platform, "windows" )) SetUnhandledExceptionFilter( exc_filter );
