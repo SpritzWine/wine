@@ -2299,6 +2299,17 @@ static IMFMediaSource *create_test_source(BOOL seekable)
     return &source->IMFMediaSource_iface;
 }
 
+struct test_seek_clock_sink
+{
+    IMFClockStateSink IMFClockStateSink_iface;
+    LONG refcount;
+};
+
+static struct test_seek_clock_sink *impl_from_IMFClockStateSink(IMFClockStateSink *iface)
+{
+    return CONTAINING_RECORD(iface, struct test_seek_clock_sink, IMFClockStateSink_iface);
+}
+
 static HRESULT WINAPI test_seek_clock_sink_QueryInterface(IMFClockStateSink *iface, REFIID riid, void **obj)
 {
     if (IsEqualIID(riid, &IID_IMFClockStateSink) ||
@@ -2315,12 +2326,19 @@ static HRESULT WINAPI test_seek_clock_sink_QueryInterface(IMFClockStateSink *ifa
 
 static ULONG WINAPI test_seek_clock_sink_AddRef(IMFClockStateSink *iface)
 {
-   return 2;
+    struct test_seek_clock_sink *clock_sink = impl_from_IMFClockStateSink(iface);
+    return InterlockedIncrement(&clock_sink->refcount);
 }
 
 static ULONG WINAPI test_seek_clock_sink_Release(IMFClockStateSink *iface)
 {
-   return 1;
+    struct test_seek_clock_sink *clock_sink = impl_from_IMFClockStateSink(iface);
+    ULONG refcount = InterlockedDecrement(&clock_sink->refcount);
+
+    if (!refcount)
+        free(clock_sink);
+
+    return refcount;
 }
 
 static HRESULT WINAPI test_seek_clock_sink_OnClockStart(IMFClockStateSink *iface, MFTIME system_time, LONGLONG offset)
@@ -2364,6 +2382,15 @@ static const IMFClockStateSinkVtbl test_seek_clock_sink_vtbl =
    test_seek_clock_sink_OnClockRestart,
    test_seek_clock_sink_OnClockSetRate,
 };
+
+static struct test_seek_clock_sink *create_test_seek_clock_sink(void)
+{
+    struct test_seek_clock_sink *clock_sink = calloc(1, sizeof(*clock_sink));
+    clock_sink->IMFClockStateSink_iface.lpVtbl = &test_seek_clock_sink_vtbl;
+    clock_sink->refcount = 1;
+
+    return clock_sink;
+}
 
 static void test_media_session_events(void)
 {
@@ -6977,7 +7004,7 @@ static void test_media_session_Start(void)
         ATTR_GUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32),
     };
     static const MFTIME allowed_error = 5000000;
-    IMFClockStateSink test_seek_clock_sink = {&test_seek_clock_sink_vtbl};
+    struct test_seek_clock_sink *test_seek_clock_sink;
     struct test_grabber_callback *grabber_callback;
     IMFPresentationClock *presentation_clock;
     enum source_state initial_state;
@@ -7228,7 +7255,8 @@ static void test_media_session_Start(void)
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
         hr = IMFClock_QueryInterface(clock, &IID_IMFPresentationClock, (void **)&presentation_clock);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-        hr = IMFPresentationClock_AddClockStateSink(presentation_clock, &test_seek_clock_sink);
+        test_seek_clock_sink = create_test_seek_clock_sink();
+        hr = IMFPresentationClock_AddClockStateSink(presentation_clock, &test_seek_clock_sink->IMFClockStateSink_iface);
         ok(hr == S_OK, "Failed to add a sink, hr %#lx.\n", hr);
         IMFClock_Release(clock);
 
@@ -7268,8 +7296,9 @@ static void test_media_session_Start(void)
         hr = IMFMediaSource_Shutdown(source);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-        IMFPresentationClock_RemoveClockStateSink(presentation_clock, &test_seek_clock_sink);
+        IMFPresentationClock_RemoveClockStateSink(presentation_clock, &test_seek_clock_sink->IMFClockStateSink_iface);
         IMFPresentationClock_Release(presentation_clock);
+        IMFClockStateSink_Release(&test_seek_clock_sink->IMFClockStateSink_iface);
         IMFAsyncCallback_Release(callback);
         IMFMediaSession_Release(session);
         IMFMediaSource_Release(source);
@@ -8173,7 +8202,7 @@ static void test_media_session_seek(void)
     static const struct object_state_record expected_seek_start_no_pending_request_records = {{SOURCE_STOP, MFT_FLUSH, SOURCE_START, SINK_FLUSH, SINK_ON_CLOCK_START}, 5};
     static const struct object_state_record expected_seek_start_pending_request_records = {{SOURCE_STOP, MFT_FLUSH, SOURCE_START, MFT_PROCESS_OUTPUT, SOURCE_REQUEST_SAMPLE, SINK_FLUSH, SINK_ON_CLOCK_START}, 7};
 
-    IMFClockStateSink test_seek_clock_sink = {&test_seek_clock_sink_vtbl};
+    struct test_seek_clock_sink *test_seek_clock_sink;
     MFT_OUTPUT_STREAM_INFO output_stream_info = {0};
     IMFPresentationClock *presentation_clock;
     struct test_callback *test_callback;
@@ -8227,11 +8256,13 @@ static void test_media_session_seek(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     IMFTopology_Release(topology);
 
+    test_seek_clock_sink = create_test_seek_clock_sink();
+
     hr = IMFMediaSession_GetClock(session, &clock);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     hr = IMFClock_QueryInterface(clock, &IID_IMFPresentationClock, (void **)&presentation_clock);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFPresentationClock_AddClockStateSink(presentation_clock, &test_seek_clock_sink);
+    hr = IMFPresentationClock_AddClockStateSink(presentation_clock, &test_seek_clock_sink->IMFClockStateSink_iface);
     ok(hr == S_OK, "Failed to add a sink, hr %#lx.\n", hr);
     IMFClock_Release(clock);
 
@@ -8416,8 +8447,9 @@ static void test_media_session_seek(void)
     flaky
     compare_object_states(&actual_object_state_record, &expected_seek_start_pending_request_records);
 
-    IMFPresentationClock_RemoveClockStateSink(presentation_clock, &test_seek_clock_sink);
+    IMFPresentationClock_RemoveClockStateSink(presentation_clock, &test_seek_clock_sink->IMFClockStateSink_iface);
     IMFPresentationClock_Release(presentation_clock);
+    IMFClockStateSink_Release(&test_seek_clock_sink->IMFClockStateSink_iface);
     IMFAsyncCallback_Release(callback);
     IMFTransform_Release(mft);
 
