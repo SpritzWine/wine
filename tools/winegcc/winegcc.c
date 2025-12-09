@@ -631,6 +631,11 @@ static struct strarray get_link_args( const char *output_name )
         /* Merge .CRT sections into .rdata */
         strarray_add( &link_args, "-Wl,-merge:.CRT=.rdata" );
 
+        strarray_add( &link_args, "-Wl,-alternatename:__CTOR_LIST__=__wine_spec_dummy_ctor_dtor_list__" );
+        strarray_add( &link_args, "-Wl,-alternatename:__DTOR_LIST__=__wine_spec_dummy_ctor_dtor_list__" );
+        strarray_add( &link_args, "-Wl,-alternatename:___CTOR_LIST__=__wine_spec_dummy_ctor_dtor_list__" );
+        strarray_add( &link_args, "-Wl,-alternatename:___DTOR_LIST__=__wine_spec_dummy_ctor_dtor_list__" );
+
         strarray_addall( &link_args, flags );
         return link_args;
 
