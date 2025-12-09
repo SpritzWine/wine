@@ -5967,6 +5967,18 @@ static GpStatus measure_string_callback(struct gdip_format_string_info *info)
         break;
     }
 
+    switch (info->format->line_align)
+    {
+    case StringAlignmentCenter:
+        bounds->Y = bounds->Y + (info->rect->Height/2) - (bounds->Height/2);
+        break;
+    case StringAlignmentFar:
+        bounds->Y = bounds->Y + info->rect->Height - bounds->Height;
+        break;
+    default:
+        break;
+    }
+
     return Ok;
 }
 
