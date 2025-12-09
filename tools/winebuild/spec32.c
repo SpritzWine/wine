@@ -726,6 +726,21 @@ void output_crt_sections(void)
         output( "%s:\n", asm_name( symbol_name ) );
         output( "\t%s 0\n", get_asm_ptr_keyword() );
     }
+
+    /* When linking on MinGW targets, the linker script creates a __CTOR_LIST__ and a __DTOR_LIST__
+     * symbol for constructor and destructor sections; but MSVC targets don't. To ensure our
+     * runtime library is usable in either cases, we generate a dummy symbol here, and emit a
+     * -alternatename flag in winegcc on MSVC targets, creating aliases from __CTOR_LIST__/
+     * __DTOR_LIST__ to this dummy symbol, so everything works.
+     *
+     * If someone builds on mingw but links on windows, all constructors and destructors will be
+     * lost. That's user error. */
+    output( "\t.section .rdata\n" );
+    output( "\t.globl __wine_spec_dummy_ctor_dtor_list__\n" );
+    output( "\t.balign %u\n", get_ptr_size() );
+    output( "__wine_spec_dummy_ctor_dtor_list__:\n" );
+    output( "\t%s -1\n", get_asm_ptr_keyword() );
+    output( "\t%s 0\n", get_asm_ptr_keyword() );
 }
 
 
