@@ -703,6 +703,32 @@ static void output_load_config(void)
 }
 
 
+void output_crt_sections(void)
+{
+    /* Generate the start/end symbols for .CRT$X?? sections. The start symbol is put into
+     * .CRT$X?A, the end .CRT$X?Z. Since the linker sort .CRT$X?? sections by name, these symbols
+     * will end up at the right location.*/
+    static const char sections[] = "ict";
+    int i;
+    for (i = 0; sections[i]; i++)
+    {
+        char *symbol_name = strmake( "__x%c_a", sections[i] );
+        output( "\t.section .CRT$X%cA\n", toupper( sections[i] ) );
+        output( "\t.globl %s\n", asm_name( symbol_name ) );
+        output( "\t.balign %u\n", get_ptr_size() );
+        output( "%s:\n", asm_name( symbol_name ) );
+        output( "\t%s 0\n", get_asm_ptr_keyword() );
+
+        symbol_name = strmake( "__x%c_z", sections[i] );
+        output( "\t.section .CRT$X%cZ\n", toupper( sections[i] ) );
+        output( "\t.globl %s\n", asm_name( symbol_name ) );
+        output( "\t.balign %u\n", get_ptr_size() );
+        output( "%s:\n", asm_name( symbol_name ) );
+        output( "\t%s 0\n", get_asm_ptr_keyword() );
+    }
+}
+
+
 /*******************************************************************
  *         output_module
  *
@@ -841,6 +867,7 @@ void output_spec32_file( DLLSPEC *spec )
     output_imports( spec );
     if (needs_get_pc_thunk) output_get_pc_thunk();
     output_load_config();
+    output_crt_sections();
     output_resources( spec );
     output_gnu_stack_note();
     close_output_file();
