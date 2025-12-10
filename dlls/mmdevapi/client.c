@@ -388,7 +388,7 @@ static HRESULT validate_wfx(const WAVEFORMATEX *fmt, AUDCLNT_SHAREMODE share_mod
     if (FAILED(ret))
         return ret;
 
-    if (fmt->nSamplesPerSec == 0)
+    if (fmt->nSamplesPerSec == 0 || fmt->nBlockAlign == 0)
         ret = E_INVALIDARG;
 
     switch (fmt->wFormatTag) {
