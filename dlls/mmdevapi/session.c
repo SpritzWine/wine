@@ -34,9 +34,6 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(mmdevapi);
 
-extern void sessions_lock(void);
-extern void sessions_unlock(void);
-
 static WCHAR *duplicate_wstr(const WCHAR *str)
 {
     const WCHAR *source = str ? str : L"";
