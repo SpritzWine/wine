@@ -703,6 +703,8 @@ struct audio_session_wrapper *session_wrapper_create(struct audio_client *client
 {
     struct audio_session_wrapper *ret;
 
+    TRACE("client %p\n", client);
+
     ret = calloc(1, sizeof(struct audio_session_wrapper));
     if (!ret)
         return NULL;
@@ -756,8 +758,10 @@ HRESULT get_audio_session_wrapper(const GUID *guid, IMMDevice *device,
                                   struct audio_session_wrapper **out)
 {
     struct audio_session *session;
-
     const HRESULT hr = get_audio_session(guid, device, 0, &session);
+
+    TRACE("guid %s, device %p, out %p\n", debugstr_guid(guid), device, out);
+
     if (FAILED(hr))
         return hr;
 
