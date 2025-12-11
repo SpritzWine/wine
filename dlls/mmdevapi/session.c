@@ -695,6 +695,7 @@ static struct audio_session *session_create(const GUID *guid, IMMDevice *device,
 
     CoCreateGuid(&ret->grouping_param);
 
+    TRACE("Created session %p\n", ret);
     return ret;
 }
 
@@ -718,6 +719,7 @@ struct audio_session_wrapper *session_wrapper_create(struct audio_client *client
         IAudioClient3_AddRef(&client->IAudioClient3_iface);
     }
 
+    TRACE("Created session wrapper %p\n", ret);
     return ret;
 }
 
@@ -728,7 +730,7 @@ HRESULT get_audio_session(const GUID *guid, IMMDevice *device, UINT channels,
 {
     struct audio_session *session;
 
-    TRACE("(%s, %p, %u, %p)\n", debugstr_guid(guid), device, channels, out);
+    TRACE("guid %s, device %p, channels %u, out %p\n", debugstr_guid(guid), device, channels, out);
 
     *out = NULL;
     LIST_FOR_EACH_ENTRY(session, &sessions, struct audio_session, entry) {
@@ -746,6 +748,7 @@ HRESULT get_audio_session(const GUID *guid, IMMDevice *device, UINT channels,
             return E_OUTOFMEMORY;
     }
 
+    TRACE("Returning session %p\n", *out);
     return S_OK;
 }
 
@@ -764,6 +767,7 @@ HRESULT get_audio_session_wrapper(const GUID *guid, IMMDevice *device,
 
     (*out)->session = session;
 
+    TRACE("Returning session wrapper %p, session %p\n", *out, session);
     return S_OK;
 }
 
