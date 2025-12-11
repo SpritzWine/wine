@@ -64,6 +64,8 @@ static inline struct audio_session_wrapper *impl_from_ISimpleAudioVolume(ISimple
 
 static HRESULT WINAPI control_QueryInterface(IAudioSessionControl2 *iface, REFIID riid, void **ppv)
 {
+    struct audio_session_wrapper *session = impl_from_IAudioSessionControl2(iface);
+
     TRACE("(%p)->(%s, %p)\n", iface, debugstr_guid(riid), ppv);
 
     if (!ppv)
@@ -73,6 +75,10 @@ static HRESULT WINAPI control_QueryInterface(IAudioSessionControl2 *iface, REFII
         IsEqualIID(riid, &IID_IAudioSessionControl) ||
         IsEqualIID(riid, &IID_IAudioSessionControl2))
         *ppv = iface;
+    else if (IsEqualIID(riid, &IID_ISimpleAudioVolume))
+        *ppv = &session->ISimpleAudioVolume_iface;
+    else if (IsEqualIID(riid, &IID_IChannelAudioVolume))
+        *ppv = &session->IChannelAudioVolume_iface;
     else {
         *ppv = NULL;
         return E_NOINTERFACE;
