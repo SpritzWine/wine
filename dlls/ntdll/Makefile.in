@@ -21,6 +21,8 @@ SOURCES = \
 	exception.c \
 	handletable.c \
 	heap.c \
+	initterm.c \
+	initterm_e.c \
 	large_int.c \
 	loader.c \
 	locale.c \
