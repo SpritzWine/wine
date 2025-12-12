@@ -5955,7 +5955,7 @@ static GpStatus measure_string_callback(struct gdip_format_string_info *info)
     if (args->linesfilled)
         (*args->linesfilled)++;
 
-    switch (info->format ? info->format->align : StringAlignmentNear)
+    switch (info->format->align)
     {
     case StringAlignmentCenter:
         bounds->X = bounds->X + (info->rect->Width/2) - (bounds->Width/2);
