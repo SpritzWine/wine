@@ -5794,7 +5794,7 @@ void transform_properties(GpGraphics *graphics, GDIPCONST GpMatrix *matrix, BOOL
 
 struct measure_ranges_args {
     GpRegion **regions;
-    REAL rel_width, rel_height;
+    REAL x, y, rel_width, rel_height;
 };
 
 static GpStatus measure_ranges_callback(struct gdip_format_string_info *info)
@@ -5813,20 +5813,32 @@ static GpStatus measure_ranges_callback(struct gdip_format_string_info *info)
             GpRectF range_rect;
             SIZE range_size;
 
-            range_rect.Y = info->bounds->Y / args->rel_height;
+            switch (info->format->line_align)
+            {
+            case StringAlignmentNear:
+            default:
+                range_rect.Y = args->y + info->rect->Y / args->rel_height;
+                break;
+            case StringAlignmentCenter:
+                range_rect.Y = args->y + (info->rect->Y + (info->rect->Height - info->bounds->Height) / 2) / args->rel_height;
+                break;
+            case StringAlignmentFar:
+                range_rect.Y = args->y + (info->rect->Y + info->rect->Height - info->bounds->Height) / args->rel_height;
+                break;
+            }
             range_rect.Height = info->bounds->Height / args->rel_height;
 
             switch (info->format->align)
             {
             case StringAlignmentNear:
             default:
-                range_rect.X = info->bounds->X / args->rel_width;
+                range_rect.X = args->x + info->rect->X / args->rel_width;
                 break;
             case StringAlignmentCenter:
-                range_rect.X = (info->bounds->X + (info->rect->Width - info->bounds->Width) / 2) / args->rel_width;
+                range_rect.X = args->x + (info->rect->X + (info->rect->Width - info->bounds->Width) / 2) / args->rel_width;
                 break;
             case StringAlignmentFar:
-                range_rect.X = (info->bounds->X + info->rect->Width - info->bounds->Width) / args->rel_width;
+                range_rect.X = args->x + (info->rect->X + info->rect->Width - info->bounds->Width) / args->rel_width;
                 break;
             }
 
@@ -5883,10 +5895,16 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
     margin_x = stringFormat->generic_typographic ? 0.0 : font->emSize / 6.0;
     margin_x *= units_scale(font->unit, graphics->unit, graphics->xres, graphics->printer_display);
     transform_properties(graphics, NULL, TRUE, &args.rel_width, &args.rel_height, NULL);
-    scaled_rect.X = (layoutRect->X + margin_x) * args.rel_width;
-    scaled_rect.Y = layoutRect->Y * args.rel_height;
+    scaled_rect.X = margin_x * args.rel_width;
+    scaled_rect.Y = 0.0;
     scaled_rect.Width = layoutRect->Width * args.rel_width;
     scaled_rect.Height = layoutRect->Height * args.rel_height;
+    if (scaled_rect.Width >= 0.5)
+    {
+        scaled_rect.Width -= margin_x * 2.0 * args.rel_width;
+        if (scaled_rect.Width < 0.5) /* doesn't fit */
+            scaled_rect.Width = 0.0;
+    }
 
     if (scaled_rect.Width >= 1 << 23) scaled_rect.Width = 1 << 23;
     if (scaled_rect.Height >= 1 << 23) scaled_rect.Height = 1 << 23;
@@ -5907,6 +5925,8 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
         }
     }
 
+    args.x = layoutRect->X;
+    args.y = layoutRect->Y;
     args.regions = regions;
 
     gdi_transform_acquire(graphics);
