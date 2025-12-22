@@ -893,35 +893,27 @@ static void InternetSetFilePointer_test(const char *host, const char *path)
     SetLastError(0xdeadbeef);
     res = InternetReadFile(hor, buf, 1024, &count);
     err = !res ? GetLastError() : NO_ERROR;
-    todo_wine
     ok(!res, "InternetReadFile succeeded unexpectedly\n");
-    todo_wine
     ok(err == ERROR_NOACCESS, "InternetReadFile unexpected error %lu\n", err);
 
     SetLastError(0xdeadbeef);
     res = InternetReadFile(hor, buf, 1024, &count);
     err = !res ? GetLastError() : NO_ERROR;
-    todo_wine
     ok(!res, "InternetReadFile succeeded unexpectedly\n");
-    todo_wine
     ok(err == ERROR_INTERNET_INCORRECT_HANDLE_STATE, "InternetReadFile unexpected error %lu\n", err);
 
     SetLastError(0xdeadbeef);
     pos = InternetSetFilePointer(hor, 0, NULL, FILE_BEGIN, 0);
     err = pos == INVALID_SET_FILE_POINTER ? GetLastError() : NO_ERROR;
     expected = pos == INVALID_SET_FILE_POINTER && err == ERROR_INTERNET_INVALID_OPERATION;
-    todo_wine
     ok(expected, "Expected position %#x. Got %#lx. GetLastError() %lu\n", INVALID_SET_FILE_POINTER, pos, err);
 
     count = 0;
     SetLastError(0xdeadbeef);
     res = InternetQueryDataAvailable(hor, &count, 0x0, 0x0);
     err = !res ? GetLastError() : NO_ERROR;
-    todo_wine
     ok(!res, "InternetQueryDataAvailable succeeded unexpectedly\n");
-    todo_wine
     ok(err == ERROR_INTERNET_INCORRECT_HANDLE_STATE, "InternetQueryDataAvailable unexpected error %lu\n", err);
-    todo_wine
     ok(count == 0, "InternetQueryDataAvailable unexpected count: %lu\n", count);
 
     size = ARRAY_SIZE(buf);
