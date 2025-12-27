@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -166,7 +167,7 @@ static void token_dump( struct object *obj, int verbose )
 {
     struct token *token = (struct token *)obj;
     assert( obj->ops == &token_ops );
-    fprintf( stderr, "Token id=%d.%u primary=%u impersonation level=%d\n", token->token_id.high_part,
+    TRACE( "Token id=%d.%u primary=%u impersonation level=%d\n", token->token_id.high_part,
              token->token_id.low_part, token->primary, token->impersonation_level );
 }
 

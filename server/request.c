@@ -55,6 +55,7 @@
 #include "wincon.h"
 #include "winternl.h"
 
+#include "debug.h"
 #include "file.h"
 #include "process.h"
 #include "thread.h"
@@ -415,14 +416,14 @@ int receive_fd( struct process *process )
         if (!thread || thread->process != process || thread->state == TERMINATED)
         {
             if (debug_level)
-                fprintf( stderr, "%04x: *fd* %d <- %d bad thread id\n",
+                TRACE( "%04x: *fd* %d <- %d bad thread id\n",
                          data.tid, data.fd, fd );
             close( fd );
         }
         else
         {
             if (debug_level)
-                fprintf( stderr, "%04x: *fd* %d <- %d\n",
+                TRACE( "%04x: *fd* %d <- %d\n",
                          thread->id, data.fd, fd );
             thread_add_inflight_fd( thread, data.fd, fd );
         }
@@ -436,7 +437,7 @@ int receive_fd( struct process *process )
     }
     else if (ret > 0)
     {
-        fprintf( stderr, "Protocol error: process %04x: partial recvmsg %d for fd\n",
+        TRACE( "Protocol error: process %04x: partial recvmsg %d for fd\n",
                  process->id, ret );
         if (fd != -1) close( fd );
         kill_process( process, 1 );
@@ -445,7 +446,7 @@ int receive_fd( struct process *process )
     {
         if (errno != EWOULDBLOCK && (EWOULDBLOCK == EAGAIN || errno != EAGAIN))
         {
-            fprintf( stderr, "Protocol error: process %04x: ", process->id );
+            TRACE( "Protocol error: process %04x: ", process->id );
             perror( "recvmsg" );
             kill_process( process, 1 );
         }
@@ -481,7 +482,7 @@ int send_client_fd( struct process *process, int fd, obj_handle_t handle )
     msghdr.msg_controllen = cmsg->cmsg_len;
 
     if (debug_level)
-        fprintf( stderr, "%04x: *fd* %04x -> %d\n", current ? current->id : process->id, handle, fd );
+        TRACE( "%04x: *fd* %04x -> %d\n", current ? current->id : process->id, handle, fd );
 
     ret = sendmsg( get_unix_fd( process->msg_fd ), &msghdr, 0 );
 
@@ -489,7 +490,7 @@ int send_client_fd( struct process *process, int fd, obj_handle_t handle )
 
     if (ret >= 0)
     {
-        fprintf( stderr, "Protocol error: process %04x: partial sendmsg %d\n", process->id, ret );
+        TRACE( "Protocol error: process %04x: partial sendmsg %d\n", process->id, ret );
         kill_process( process, 1 );
     }
     else if (errno == EPIPE)
@@ -498,7 +499,7 @@ int send_client_fd( struct process *process, int fd, obj_handle_t handle )
     }
     else
     {
-        fprintf( stderr, "Protocol error: process %04x: ", process->id );
+        TRACE( "Protocol error: process %04x: ", process->id );
         perror( "sendmsg" );
         kill_process( process, 1 );
     }
@@ -529,7 +530,7 @@ static void master_socket_dump( struct object *obj, int verbose )
 {
     struct master_socket *sock = (struct master_socket *)obj;
     assert( obj->ops == &master_socket_ops );
-    fprintf( stderr, "Master socket fd=%p\n", sock->fd );
+    TRACE( "Master socket fd=%p\n", sock->fd );
 }
 
 static void master_socket_destroy( struct object *obj )
@@ -550,7 +551,7 @@ static void master_socket_poll_event( struct fd *fd, int event )
     if (event & (POLLERR | POLLHUP))
     {
         /* this is not supposed to happen */
-        fprintf( stderr, "wineserver: Error on master socket\n" );
+        TRACE( "wineserver: Error on master socket\n" );
         set_fd_events( sock->fd, -1 );
     }
     else if (event & POLLIN)
@@ -780,7 +781,7 @@ static void acquire_lock(void)
         if (stat( server_socket_name, &st ) != -1 &&   /* there is a leftover socket */
             stat( "core", &st ) != -1 && st.st_size)   /* and there is a non-empty core file */
         {
-            fprintf( stderr,
+            TRACE(
                      "Warning: a previous instance of the wine server seems to have crashed.\n"
                      "Please run 'gdb %s %s/core',\n"
                      "type 'backtrace' at the gdb prompt and report the results. Thanks.\n\n",
@@ -907,7 +908,7 @@ static void close_socket_timeout( void *arg )
 {
     master_timeout = NULL;
     flush_registry();
-    if (debug_level) fprintf( stderr, "wineserver: exiting (pid=%ld)\n", (long) getpid() );
+    if (debug_level) TRACE( "exiting (pid=%ld)\n", (long) getpid() );
 
 #ifdef DEBUG_OBJECTS
     close_objects();  /* shut down everything properly */

@@ -25,6 +25,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -290,7 +291,7 @@ static struct hook *get_next_hook( struct thread *thread, struct hook *hook, int
 static void hook_table_dump( struct object *obj, int verbose )
 {
     /* struct hook_table *table = (struct hook_table *)obj; */
-    fprintf( stderr, "Hook table\n" );
+    TRACE( "Hook table\n" );
 }
 
 static void hook_table_destroy( struct object *obj )

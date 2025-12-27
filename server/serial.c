@@ -39,6 +39,7 @@
 #include <utime.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -167,7 +168,7 @@ static void serial_dump( struct object *obj, int verbose )
 {
     struct serial *serial = (struct serial *)obj;
     assert( obj->ops == &serial_ops );
-    fprintf( stderr, "Port fd=%p mask=%x\n", serial->fd, serial->eventmask );
+    TRACE( "Port fd=%p mask=%x\n", serial->fd, serial->eventmask );
 }
 
 static struct serial *get_serial_obj( struct process *process, obj_handle_t handle, unsigned int access )

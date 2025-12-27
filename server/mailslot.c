@@ -37,6 +37,7 @@
 #include <sys/filio.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -303,7 +304,7 @@ static void mailslot_dump( struct object *obj, int verbose )
     struct mailslot *mailslot = (struct mailslot *) obj;
 
     assert( obj->ops == &mailslot_ops );
-    fprintf( stderr, "Mailslot max_msgsize=%d read_timeout=%s\n",
+    TRACE( "Mailslot max_msgsize=%d read_timeout=%s\n",
              mailslot->max_msgsize, get_timeout_str(mailslot->read_timeout) );
 }
 
@@ -534,7 +535,7 @@ static void mailslot_device_file_dump( struct object *obj, int verbose )
 {
     struct mailslot_device_file *file = (struct mailslot_device_file *)obj;
 
-    fprintf( stderr, "File on mailslot device %p\n", file->device );
+    TRACE( "File on mailslot device %p\n", file->device );
 }
 
 static struct fd *mailslot_device_file_get_fd( struct object *obj )
@@ -592,7 +593,7 @@ static struct mailslot *create_mailslot( struct object *root,
 
 static void mail_writer_dump( struct object *obj, int verbose )
 {
-    fprintf( stderr, "Mailslot writer\n" );
+    TRACE( "Mailslot writer\n" );
 }
 
 static void mail_writer_destroy( struct object *obj)

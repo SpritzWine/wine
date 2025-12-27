@@ -24,6 +24,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -198,7 +199,7 @@ static void dxgk_shared_sync_dump( struct object *obj, int verbose )
 {
     struct dxgk_shared_sync *shared = (struct dxgk_shared_sync *)obj;
     assert( obj->ops == &dxgk_shared_sync_ops );
-    fprintf( stderr, "DxgkSync sync=%p\n", shared->sync );
+    TRACE( "DxgkSync sync=%p\n", shared->sync );
 }
 
 static void dxgk_shared_sync_destroy( struct object *obj )
@@ -265,7 +266,7 @@ static void dxgk_shared_resource_dump( struct object *obj, int verbose )
 {
     struct dxgk_shared_resource *shared = (struct dxgk_shared_resource *)obj;
     assert( obj->ops == &dxgk_shared_resource_ops );
-    fprintf( stderr, "DxgkResource resource=%p mutex=%p sync=%p\n", shared->resource,
+    TRACE( "DxgkResource resource=%p mutex=%p sync=%p\n", shared->resource,
              shared->mutex, shared->sync );
 }
 
@@ -373,7 +374,7 @@ static void d3dkmt_object_dump( struct object *obj, int verbose )
     struct d3dkmt_object *object = (struct d3dkmt_object *)obj;
     assert( obj->ops == &d3dkmt_object_ops );
 
-    fprintf( stderr, "type=%#x global=%#x\n", object->type, object->global );
+    TRACE( "type=%#x global=%#x\n", object->type, object->global );
 }
 
 static struct fd *d3dkmt_object_get_fd( struct object *obj )
@@ -422,7 +423,7 @@ static void d3dkmt_mutex_dump( struct object *obj, int verbose )
     struct d3dkmt_mutex *mutex = (struct d3dkmt_mutex *)obj;
     assert( obj->ops == &d3dkmt_mutex_ops );
 
-    fprintf( stderr, "d3dkmt mutex global=%#x\n", mutex->base.global );
+    TRACE( "d3dkmt mutex global=%#x\n", mutex->base.global );
 }
 
 static void d3dkmt_mutex_destroy( struct object *obj )

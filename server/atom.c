@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 
@@ -225,16 +226,16 @@ static void atom_table_dump( struct object *obj, int verbose )
     struct atom_table *table = (struct atom_table *)obj;
     assert( obj->ops == &atom_table_ops );
 
-    fprintf( stderr, "Atom table size=%d\n", table->count );
+    TRACE( "Atom table size=%d\n", table->count );
     if (!verbose) return;
     for (i = 0; i < table->count; i++)
     {
         struct atom_entry *entry = table->atoms[i];
         if (!entry) continue;
-        fprintf( stderr, "  %04x: ref=%d hash=%d \"",
+        TRACE( "  %04x: ref=%d hash=%d \"",
                  entry->atom, entry->count, entry->hash );
         dump_strW( entry->str, entry->len, stderr, "\"\"");
-        fprintf( stderr, "\"\n" );
+        TRACE( "\"\n" );
     }
 }
 

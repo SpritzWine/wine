@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -121,7 +122,7 @@ static void completion_wait_dump( struct object *obj, int verbose )
     struct completion_wait *wait = (struct completion_wait *)obj;
 
     assert( obj->ops == &completion_wait_ops );
-    fprintf( stderr, "Completion wait completion=%p\n", wait->completion );
+    TRACE( "Completion wait completion=%p\n", wait->completion );
 }
 
 static int completion_wait_signaled( struct object *obj, struct wait_queue_entry *entry )
@@ -202,7 +203,7 @@ static void completion_dump( struct object *obj, int verbose )
     struct completion *completion = (struct completion *) obj;
 
     assert( obj->ops == &completion_ops );
-    fprintf( stderr, "Completion depth=%u\n", completion->depth );
+    TRACE( "Completion depth=%u\n", completion->depth );
 }
 
 static struct object *completion_get_sync( struct object *obj )

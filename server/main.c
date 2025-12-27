@@ -40,6 +40,7 @@
 #include "thread.h"
 #include "request.h"
 #include "unicode.h"
+#include "debug.h"
 
 /* command-line options */
 int debug_level = 0;
@@ -95,7 +96,7 @@ static void option_callback( int optc, char *optarg )
             master_socket_timeout = TIMEOUT_INFINITE;
         break;
     case 'v':
-        fprintf( stderr, "%s\n", PACKAGE_STRING );
+        TRACE( "%s\n", PACKAGE_STRING );
         exit(0);
     case 'w':
         wait_for_lock();
@@ -259,7 +260,7 @@ int main( int argc, char *argv[] )
     sock_init();
     open_master_socket();
 
-    if (debug_level) fprintf( stderr, "wineserver: starting (pid=%ld)\n", (long) getpid() );
+    if (debug_level) TRACE( "wineserver: starting (pid=%ld)\n", (long) getpid() );
     set_current_time();
     init_signals();
     init_memory();

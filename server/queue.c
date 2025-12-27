@@ -28,6 +28,7 @@
 #include <poll.h>
 #include <limits.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -1299,7 +1300,7 @@ static void msg_queue_dump( struct object *obj, int verbose )
 {
     struct msg_queue *queue = (struct msg_queue *)obj;
     queue_shm_t *queue_shm = queue->shared;
-    fprintf( stderr, "Msg queue bits=%x mask=%x\n",
+    TRACE( "Msg queue bits=%x mask=%x\n",
              queue_shm->wake_bits, queue_shm->wake_mask );
 }
 
@@ -1363,7 +1364,7 @@ static void thread_input_dump( struct object *obj, int verbose )
 {
     struct thread_input *input = (struct thread_input *)obj;
     input_shm_t *input_shm = input->shared;
-    fprintf( stderr, "Thread input focus=%08x capture=%08x active=%08x\n",
+    TRACE( "Thread input focus=%08x capture=%08x active=%08x\n",
              input_shm->focus, input_shm->capture, input_shm->active );
 }
 
@@ -2970,7 +2971,7 @@ void post_win_event( struct thread *thread, unsigned int event,
             msg->data_size = sizeof(*data) + module_size;
 
             if (debug_level > 1)
-                fprintf( stderr, "post_win_event: tid %04x event %04x win %08x object_id %d child_id %d\n",
+                TRACE( "post_win_event: tid %04x event %04x win %08x object_id %d child_id %d\n",
                          get_thread_id(thread), event, win, object_id, child_id );
             list_add_tail( &thread->queue->msg_list[SEND_MESSAGE], &msg->entry );
             set_queue_bits( thread->queue, QS_SENDMESSAGE );

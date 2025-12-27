@@ -47,6 +47,7 @@
 #include <mach/thread_act.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -250,9 +251,9 @@ void init_threading(void)
         setrlimit( RLIMIT_NICE, &rlimit );
         if (rlimit.rlim_max <= 40) nice_limit = 20 - rlimit.rlim_max;
         else if (rlimit.rlim_max == -1) nice_limit = -20;
-        if (nice_limit >= 0 && debug_level) fprintf(stderr, "wine: RLIMIT_NICE is <= 20, unable to use setpriority safely\n");
+        if (nice_limit >= 0 && debug_level) TRACE( "wine: RLIMIT_NICE is <= 20, unable to use setpriority safely\n");
     }
-    if (nice_limit < 0 && debug_level) fprintf(stderr, "wine: Using setpriority to control niceness in the [%d,%d] range\n", nice_limit, -nice_limit );
+    if (nice_limit < 0 && debug_level) TRACE( "wine: Using setpriority to control niceness in the [%d,%d] range\n", nice_limit, -nice_limit );
 }
 
 static void apply_thread_priority( struct thread *thread )
@@ -462,7 +463,7 @@ static void dump_context( struct object *obj, int verbose )
     struct context *context = (struct context *)obj;
     assert( obj->ops == &context_ops );
 
-    fprintf( stderr, "context flags=%x/%x\n",
+    TRACE( "context flags=%x/%x\n",
              context->regs[CTX_NATIVE].flags, context->regs[CTX_WOW].flags );
 }
 
@@ -669,7 +670,7 @@ static void dump_thread( struct object *obj, int verbose )
     struct thread *thread = (struct thread *)obj;
     assert( obj->ops == &thread_ops );
 
-    fprintf( stderr, "Thread id=%04x unix pid=%d unix tid=%d state=%d\n",
+    TRACE( "Thread id=%04x unix pid=%d unix tid=%d state=%d\n",
              thread->id, thread->unix_pid, thread->unix_tid, thread->state );
 }
 
@@ -693,7 +694,7 @@ static void dump_thread_apc( struct object *obj, int verbose )
     struct thread_apc *apc = (struct thread_apc *)obj;
     assert( obj->ops == &thread_apc_ops );
 
-    fprintf( stderr, "APC owner=%p type=%u\n", apc->owner, apc->call.type );
+    TRACE( "APC owner=%p type=%u\n", apc->owner, apc->call.type );
 }
 
 static struct object *thread_apc_get_sync( struct object *obj )
@@ -1237,7 +1238,7 @@ int wake_thread( struct thread *thread )
 
         cookie = thread->wait->cookie;
         signaled = end_wait( thread, signaled );
-        if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
+        if (debug_level) TRACE( "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
         if (cookie && send_thread_wakeup( thread, cookie, signaled ) == -1) /* error */
         {
             if (!count) count = -1;
@@ -1262,7 +1263,7 @@ int wake_thread_queue_entry( struct wait_queue_entry *entry )
 
     cookie = wait->cookie;
     signaled = end_wait( thread, entry - wait->queues );
-    if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
+    if (debug_level) TRACE( "%04x: *wakeup* signaled=%d\n", thread->id, signaled );
 
     if (!cookie || send_thread_wakeup( thread, cookie, signaled ) != -1)
         wake_thread( thread );  /* check other waits too */
@@ -1281,7 +1282,7 @@ static void thread_timeout( void *ptr )
     if (thread->wait != wait) return; /* not the top-level wait, ignore it */
     if (is_thread_suspended( thread )) return;  /* suspended, ignore it */
 
-    if (debug_level) fprintf( stderr, "%04x: *wakeup* signaled=TIMEOUT\n", thread->id );
+    if (debug_level) TRACE( "%04x: *wakeup* signaled=TIMEOUT\n", thread->id );
     end_wait( thread, STATUS_TIMEOUT );
 
     assert( cookie );
@@ -1612,7 +1613,7 @@ void kill_thread( struct thread *thread, int violent_death )
     thread->exit_time = current_time;
     if (current == thread) current = NULL;
     if (debug_level)
-        fprintf( stderr,"%04x: *killed* exit_code=%d\n",
+        TRACE("%04x: *killed* exit_code=%d\n",
                  thread->id, thread->exit_code );
     if (thread->wait)
     {

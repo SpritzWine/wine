@@ -59,16 +59,16 @@ static data_size_t cur_size;
 
 static void dump_new_process_request( const struct new_process_request *req )
 {
-    fprintf( stderr, " token=%04x", req->token );
-    fprintf( stderr, ", debug=%04x", req->debug );
-    fprintf( stderr, ", parent_process=%04x", req->parent_process );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", socket_fd=%d", req->socket_fd );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", machine=%04x", req->machine );
-    fprintf( stderr, ", info_size=%u", req->info_size );
-    fprintf( stderr, ", handles_size=%u", req->handles_size );
-    fprintf( stderr, ", jobs_size=%u", req->jobs_size );
+    TRACE_RAW( " token=%04x", req->token );
+    TRACE_RAW( ", debug=%04x", req->debug );
+    TRACE_RAW( ", parent_process=%04x", req->parent_process );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", socket_fd=%d", req->socket_fd );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", machine=%04x", req->machine );
+    TRACE_RAW( ", info_size=%u", req->info_size );
+    TRACE_RAW( ", handles_size=%u", req->handles_size );
+    TRACE_RAW( ", jobs_size=%u", req->jobs_size );
     dump_varargs_object_attributes( ", objattr=", cur_size );
     dump_varargs_uints( ", handles=", min( cur_size, req->handles_size ));
     dump_varargs_uints( ", jobs=", min( cur_size, req->jobs_size ));
@@ -78,35 +78,35 @@ static void dump_new_process_request( const struct new_process_request *req )
 
 static void dump_new_process_reply( const struct new_process_reply *req )
 {
-    fprintf( stderr, " info=%04x", req->info );
-    fprintf( stderr, ", pid=%04x", req->pid );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " info=%04x", req->info );
+    TRACE_RAW( ", pid=%04x", req->pid );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_get_new_process_info_request( const struct get_new_process_info_request *req )
 {
-    fprintf( stderr, " info=%04x", req->info );
+    TRACE_RAW( " info=%04x", req->info );
 }
 
 static void dump_get_new_process_info_reply( const struct get_new_process_info_reply *req )
 {
-    fprintf( stderr, " success=%d", req->success );
-    fprintf( stderr, ", exit_code=%d", req->exit_code );
+    TRACE_RAW( " success=%d", req->success );
+    TRACE_RAW( ", exit_code=%d", req->exit_code );
 }
 
 static void dump_new_thread_request( const struct new_thread_request *req )
 {
-    fprintf( stderr, " process=%04x", req->process );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", request_fd=%d", req->request_fd );
+    TRACE_RAW( " process=%04x", req->process );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", request_fd=%d", req->request_fd );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_new_thread_reply( const struct new_thread_reply *req )
 {
-    fprintf( stderr, " tid=%04x", req->tid );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " tid=%04x", req->tid );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_get_startup_info_request( const struct get_startup_info_request *req )
@@ -115,8 +115,8 @@ static void dump_get_startup_info_request( const struct get_startup_info_request
 
 static void dump_get_startup_info_reply( const struct get_startup_info_reply *req )
 {
-    fprintf( stderr, " info_size=%u", req->info_size );
-    fprintf( stderr, ", machine=%04x", req->machine );
+    TRACE_RAW( " info_size=%u", req->info_size );
+    TRACE_RAW( ", machine=%04x", req->machine );
     dump_varargs_startup_info( ", info=", min( cur_size, req->info_size ));
     dump_varargs_unicode_str( ", env=", cur_size );
 }
@@ -129,115 +129,115 @@ static void dump_init_process_done_request( const struct init_process_done_reque
 
 static void dump_init_process_done_reply( const struct init_process_done_reply *req )
 {
-    fprintf( stderr, " suspend=%d", req->suspend );
+    TRACE_RAW( " suspend=%d", req->suspend );
 }
 
 static void dump_init_first_thread_request( const struct init_first_thread_request *req )
 {
-    fprintf( stderr, " unix_pid=%d", req->unix_pid );
-    fprintf( stderr, ", unix_tid=%d", req->unix_tid );
-    fprintf( stderr, ", debug_level=%d", req->debug_level );
-    fprintf( stderr, ", reply_fd=%d", req->reply_fd );
-    fprintf( stderr, ", wait_fd=%d", req->wait_fd );
+    TRACE_RAW( " unix_pid=%d", req->unix_pid );
+    TRACE_RAW( ", unix_tid=%d", req->unix_tid );
+    TRACE_RAW( ", debug_level=%d", req->debug_level );
+    TRACE_RAW( ", reply_fd=%d", req->reply_fd );
+    TRACE_RAW( ", wait_fd=%d", req->wait_fd );
 }
 
 static void dump_init_first_thread_reply( const struct init_first_thread_reply *req )
 {
-    fprintf( stderr, " pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
+    TRACE_RAW( " pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
     dump_timeout( ", server_start=", &req->server_start );
-    fprintf( stderr, ", session_id=%08x", req->session_id );
-    fprintf( stderr, ", inproc_device=%04x", req->inproc_device );
-    fprintf( stderr, ", info_size=%u", req->info_size );
+    TRACE_RAW( ", session_id=%08x", req->session_id );
+    TRACE_RAW( ", inproc_device=%04x", req->inproc_device );
+    TRACE_RAW( ", info_size=%u", req->info_size );
     dump_varargs_ushorts( ", machines=", cur_size );
 }
 
 static void dump_init_thread_request( const struct init_thread_request *req )
 {
-    fprintf( stderr, " unix_tid=%d", req->unix_tid );
-    fprintf( stderr, ", reply_fd=%d", req->reply_fd );
-    fprintf( stderr, ", wait_fd=%d", req->wait_fd );
+    TRACE_RAW( " unix_tid=%d", req->unix_tid );
+    TRACE_RAW( ", reply_fd=%d", req->reply_fd );
+    TRACE_RAW( ", wait_fd=%d", req->wait_fd );
     dump_uint64( ", teb=", &req->teb );
     dump_uint64( ", entry=", &req->entry );
 }
 
 static void dump_init_thread_reply( const struct init_thread_reply *req )
 {
-    fprintf( stderr, " suspend=%d", req->suspend );
+    TRACE_RAW( " suspend=%d", req->suspend );
 }
 
 static void dump_terminate_process_request( const struct terminate_process_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", exit_code=%d", req->exit_code );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", exit_code=%d", req->exit_code );
 }
 
 static void dump_terminate_process_reply( const struct terminate_process_reply *req )
 {
-    fprintf( stderr, " self=%d", req->self );
+    TRACE_RAW( " self=%d", req->self );
 }
 
 static void dump_terminate_thread_request( const struct terminate_thread_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", exit_code=%d", req->exit_code );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", exit_code=%d", req->exit_code );
 }
 
 static void dump_terminate_thread_reply( const struct terminate_thread_reply *req )
 {
-    fprintf( stderr, " self=%d", req->self );
+    TRACE_RAW( " self=%d", req->self );
 }
 
 static void dump_get_process_info_request( const struct get_process_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_process_info_reply( const struct get_process_info_reply *req )
 {
-    fprintf( stderr, " pid=%04x", req->pid );
-    fprintf( stderr, ", ppid=%04x", req->ppid );
+    TRACE_RAW( " pid=%04x", req->pid );
+    TRACE_RAW( ", ppid=%04x", req->ppid );
     dump_uint64( ", affinity=", &req->affinity );
     dump_uint64( ", peb=", &req->peb );
     dump_timeout( ", start_time=", &req->start_time );
     dump_timeout( ", end_time=", &req->end_time );
-    fprintf( stderr, ", session_id=%08x", req->session_id );
-    fprintf( stderr, ", exit_code=%d", req->exit_code );
-    fprintf( stderr, ", priority=%04x", req->priority );
-    fprintf( stderr, ", base_priority=%04x", req->base_priority );
-    fprintf( stderr, ", disable_boost=%04x", req->disable_boost );
-    fprintf( stderr, ", machine=%04x", req->machine );
+    TRACE_RAW( ", session_id=%08x", req->session_id );
+    TRACE_RAW( ", exit_code=%d", req->exit_code );
+    TRACE_RAW( ", priority=%04x", req->priority );
+    TRACE_RAW( ", base_priority=%04x", req->base_priority );
+    TRACE_RAW( ", disable_boost=%04x", req->disable_boost );
+    TRACE_RAW( ", machine=%04x", req->machine );
     dump_varargs_pe_image_info( ", image=", cur_size );
 }
 
 static void dump_get_process_debug_info_request( const struct get_process_debug_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_process_debug_info_reply( const struct get_process_debug_info_reply *req )
 {
-    fprintf( stderr, " debug=%04x", req->debug );
-    fprintf( stderr, ", debug_children=%d", req->debug_children );
+    TRACE_RAW( " debug=%04x", req->debug );
+    TRACE_RAW( ", debug_children=%d", req->debug_children );
     dump_varargs_pe_image_info( ", image=", cur_size );
 }
 
 static void dump_get_process_image_name_request( const struct get_process_image_name_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", pid=%04x", req->pid );
-    fprintf( stderr, ", win32=%d", req->win32 );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", pid=%04x", req->pid );
+    TRACE_RAW( ", win32=%d", req->win32 );
 }
 
 static void dump_get_process_image_name_reply( const struct get_process_image_name_reply *req )
 {
-    fprintf( stderr, " len=%u", req->len );
+    TRACE_RAW( " len=%u", req->len );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_get_process_vm_counters_request( const struct get_process_vm_counters_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_process_vm_counters_reply( const struct get_process_vm_counters_reply *req )
@@ -252,99 +252,99 @@ static void dump_get_process_vm_counters_reply( const struct get_process_vm_coun
 
 static void dump_set_process_info_request( const struct set_process_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", affinity=", &req->affinity );
-    fprintf( stderr, ", priority=%d", req->priority );
-    fprintf( stderr, ", base_priority=%d", req->base_priority );
-    fprintf( stderr, ", disable_boost=%d", req->disable_boost );
-    fprintf( stderr, ", token=%04x", req->token );
-    fprintf( stderr, ", mask=%d", req->mask );
+    TRACE_RAW( ", priority=%d", req->priority );
+    TRACE_RAW( ", base_priority=%d", req->base_priority );
+    TRACE_RAW( ", disable_boost=%d", req->disable_boost );
+    TRACE_RAW( ", token=%04x", req->token );
+    TRACE_RAW( ", mask=%d", req->mask );
 }
 
 static void dump_get_thread_info_request( const struct get_thread_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", access=%08x", req->access );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", access=%08x", req->access );
 }
 
 static void dump_get_thread_info_reply( const struct get_thread_info_reply *req )
 {
-    fprintf( stderr, " pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
+    TRACE_RAW( " pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
     dump_uint64( ", teb=", &req->teb );
     dump_uint64( ", entry_point=", &req->entry_point );
     dump_uint64( ", affinity=", &req->affinity );
-    fprintf( stderr, ", exit_code=%d", req->exit_code );
-    fprintf( stderr, ", priority=%d", req->priority );
-    fprintf( stderr, ", base_priority=%d", req->base_priority );
-    fprintf( stderr, ", suspend_count=%d", req->suspend_count );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", desc_len=%u", req->desc_len );
+    TRACE_RAW( ", exit_code=%d", req->exit_code );
+    TRACE_RAW( ", priority=%d", req->priority );
+    TRACE_RAW( ", base_priority=%d", req->base_priority );
+    TRACE_RAW( ", suspend_count=%d", req->suspend_count );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", desc_len=%u", req->desc_len );
     dump_varargs_unicode_str( ", desc=", cur_size );
 }
 
 static void dump_get_thread_times_request( const struct get_thread_times_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_thread_times_reply( const struct get_thread_times_reply *req )
 {
     dump_timeout( " creation_time=", &req->creation_time );
     dump_timeout( ", exit_time=", &req->exit_time );
-    fprintf( stderr, ", unix_pid=%d", req->unix_pid );
-    fprintf( stderr, ", unix_tid=%d", req->unix_tid );
+    TRACE_RAW( ", unix_pid=%d", req->unix_pid );
+    TRACE_RAW( ", unix_tid=%d", req->unix_tid );
 }
 
 static void dump_set_thread_info_request( const struct set_thread_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", priority=%d", req->priority );
-    fprintf( stderr, ", base_priority=%d", req->base_priority );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", priority=%d", req->priority );
+    TRACE_RAW( ", base_priority=%d", req->base_priority );
     dump_uint64( ", affinity=", &req->affinity );
     dump_uint64( ", entry_point=", &req->entry_point );
-    fprintf( stderr, ", token=%04x", req->token );
-    fprintf( stderr, ", disable_boost=%d", req->disable_boost );
-    fprintf( stderr, ", mask=%08x", req->mask );
+    TRACE_RAW( ", token=%04x", req->token );
+    TRACE_RAW( ", disable_boost=%d", req->disable_boost );
+    TRACE_RAW( ", mask=%08x", req->mask );
     dump_varargs_unicode_str( ", desc=", cur_size );
 }
 
 static void dump_suspend_thread_request( const struct suspend_thread_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_suspend_thread_reply( const struct suspend_thread_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
 }
 
 static void dump_resume_thread_request( const struct resume_thread_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_resume_thread_reply( const struct resume_thread_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
 }
 
 static void dump_queue_apc_request( const struct queue_apc_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", reserve_handle=%04x", req->reserve_handle );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", reserve_handle=%04x", req->reserve_handle );
     dump_varargs_apc_call( ", call=", cur_size );
 }
 
 static void dump_queue_apc_reply( const struct queue_apc_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", self=%d", req->self );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", self=%d", req->self );
 }
 
 static void dump_get_apc_result_request( const struct get_apc_result_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_apc_result_reply( const struct get_apc_result_reply *req )
@@ -354,90 +354,90 @@ static void dump_get_apc_result_reply( const struct get_apc_result_reply *req )
 
 static void dump_close_handle_request( const struct close_handle_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_handle_info_request( const struct set_handle_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%d", req->flags );
-    fprintf( stderr, ", mask=%d", req->mask );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%d", req->flags );
+    TRACE_RAW( ", mask=%d", req->mask );
 }
 
 static void dump_set_handle_info_reply( const struct set_handle_info_reply *req )
 {
-    fprintf( stderr, " old_flags=%d", req->old_flags );
+    TRACE_RAW( " old_flags=%d", req->old_flags );
 }
 
 static void dump_dup_handle_request( const struct dup_handle_request *req )
 {
-    fprintf( stderr, " src_process=%04x", req->src_process );
-    fprintf( stderr, ", src_handle=%04x", req->src_handle );
-    fprintf( stderr, ", dst_process=%04x", req->dst_process );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " src_process=%04x", req->src_process );
+    TRACE_RAW( ", src_handle=%04x", req->src_handle );
+    TRACE_RAW( ", dst_process=%04x", req->dst_process );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", options=%08x", req->options );
 }
 
 static void dump_dup_handle_reply( const struct dup_handle_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_allocate_reserve_object_request( const struct allocate_reserve_object_request *req )
 {
-    fprintf( stderr, " type=%d", req->type );
+    TRACE_RAW( " type=%d", req->type );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_allocate_reserve_object_reply( const struct allocate_reserve_object_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_compare_objects_request( const struct compare_objects_request *req )
 {
-    fprintf( stderr, " first=%04x", req->first );
-    fprintf( stderr, ", second=%04x", req->second );
+    TRACE_RAW( " first=%04x", req->first );
+    TRACE_RAW( ", second=%04x", req->second );
 }
 
 static void dump_set_object_permanence_request( const struct set_object_permanence_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", permanent=%d", req->permanent );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", permanent=%d", req->permanent );
 }
 
 static void dump_open_process_request( const struct open_process_request *req )
 {
-    fprintf( stderr, " pid=%04x", req->pid );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " pid=%04x", req->pid );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
 }
 
 static void dump_open_process_reply( const struct open_process_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_thread_request( const struct open_thread_request *req )
 {
-    fprintf( stderr, " tid=%04x", req->tid );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " tid=%04x", req->tid );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
 }
 
 static void dump_open_thread_reply( const struct open_thread_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_select_request( const struct select_request *req )
 {
-    fprintf( stderr, " flags=%d", req->flags );
+    TRACE_RAW( " flags=%d", req->flags );
     dump_uint64( ", cookie=", &req->cookie );
     dump_abstime( ", timeout=", &req->timeout );
-    fprintf( stderr, ", size=%u", req->size );
-    fprintf( stderr, ", prev_apc=%04x", req->prev_apc );
+    TRACE_RAW( ", size=%u", req->size );
+    TRACE_RAW( ", prev_apc=%04x", req->prev_apc );
     dump_varargs_apc_result( ", result=", cur_size );
     dump_varargs_select_op( ", data=", min( cur_size, req->size ));
     dump_varargs_contexts( ", contexts=", cur_size );
@@ -445,254 +445,254 @@ static void dump_select_request( const struct select_request *req )
 
 static void dump_select_reply( const struct select_reply *req )
 {
-    fprintf( stderr, " apc_handle=%04x", req->apc_handle );
-    fprintf( stderr, ", signaled=%d", req->signaled );
+    TRACE_RAW( " apc_handle=%04x", req->apc_handle );
+    TRACE_RAW( ", signaled=%d", req->signaled );
     dump_varargs_apc_call( ", call=", cur_size );
     dump_varargs_contexts( ", contexts=", cur_size );
 }
 
 static void dump_create_event_request( const struct create_event_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", manual_reset=%d", req->manual_reset );
-    fprintf( stderr, ", initial_state=%d", req->initial_state );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", manual_reset=%d", req->manual_reset );
+    TRACE_RAW( ", initial_state=%d", req->initial_state );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_event_reply( const struct create_event_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_event_op_request( const struct event_op_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", op=%d", req->op );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", op=%d", req->op );
 }
 
 static void dump_event_op_reply( const struct event_op_reply *req )
 {
-    fprintf( stderr, " state=%d", req->state );
+    TRACE_RAW( " state=%d", req->state );
 }
 
 static void dump_query_event_request( const struct query_event_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_event_reply( const struct query_event_reply *req )
 {
-    fprintf( stderr, " manual_reset=%d", req->manual_reset );
-    fprintf( stderr, ", state=%d", req->state );
+    TRACE_RAW( " manual_reset=%d", req->manual_reset );
+    TRACE_RAW( ", state=%d", req->state );
 }
 
 static void dump_open_event_request( const struct open_event_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_event_reply( const struct open_event_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_create_keyed_event_request( const struct create_keyed_event_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
+    TRACE_RAW( " access=%08x", req->access );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_keyed_event_reply( const struct create_keyed_event_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_keyed_event_request( const struct open_keyed_event_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_keyed_event_reply( const struct open_keyed_event_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_create_mutex_request( const struct create_mutex_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", owned=%d", req->owned );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", owned=%d", req->owned );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_mutex_reply( const struct create_mutex_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_release_mutex_request( const struct release_mutex_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_release_mutex_reply( const struct release_mutex_reply *req )
 {
-    fprintf( stderr, " prev_count=%08x", req->prev_count );
+    TRACE_RAW( " prev_count=%08x", req->prev_count );
 }
 
 static void dump_open_mutex_request( const struct open_mutex_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_mutex_reply( const struct open_mutex_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_mutex_request( const struct query_mutex_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_mutex_reply( const struct query_mutex_reply *req )
 {
-    fprintf( stderr, " count=%08x", req->count );
-    fprintf( stderr, ", owned=%d", req->owned );
-    fprintf( stderr, ", abandoned=%d", req->abandoned );
+    TRACE_RAW( " count=%08x", req->count );
+    TRACE_RAW( ", owned=%d", req->owned );
+    TRACE_RAW( ", abandoned=%d", req->abandoned );
 }
 
 static void dump_create_semaphore_request( const struct create_semaphore_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", initial=%08x", req->initial );
-    fprintf( stderr, ", max=%08x", req->max );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", initial=%08x", req->initial );
+    TRACE_RAW( ", max=%08x", req->max );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_semaphore_reply( const struct create_semaphore_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_release_semaphore_request( const struct release_semaphore_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", count=%08x", req->count );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", count=%08x", req->count );
 }
 
 static void dump_release_semaphore_reply( const struct release_semaphore_reply *req )
 {
-    fprintf( stderr, " prev_count=%08x", req->prev_count );
+    TRACE_RAW( " prev_count=%08x", req->prev_count );
 }
 
 static void dump_query_semaphore_request( const struct query_semaphore_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_semaphore_reply( const struct query_semaphore_reply *req )
 {
-    fprintf( stderr, " current=%08x", req->current );
-    fprintf( stderr, ", max=%08x", req->max );
+    TRACE_RAW( " current=%08x", req->current );
+    TRACE_RAW( ", max=%08x", req->max );
 }
 
 static void dump_open_semaphore_request( const struct open_semaphore_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_semaphore_reply( const struct open_semaphore_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_create_file_request( const struct create_file_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", sharing=%08x", req->sharing );
-    fprintf( stderr, ", create=%d", req->create );
-    fprintf( stderr, ", options=%08x", req->options );
-    fprintf( stderr, ", attrs=%08x", req->attrs );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", sharing=%08x", req->sharing );
+    TRACE_RAW( ", create=%d", req->create );
+    TRACE_RAW( ", options=%08x", req->options );
+    TRACE_RAW( ", attrs=%08x", req->attrs );
     dump_varargs_object_attributes( ", objattr=", cur_size );
     dump_varargs_string( ", filename=", cur_size );
 }
 
 static void dump_create_file_reply( const struct create_file_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_file_object_request( const struct open_file_object_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
-    fprintf( stderr, ", sharing=%08x", req->sharing );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( ", sharing=%08x", req->sharing );
+    TRACE_RAW( ", options=%08x", req->options );
     dump_varargs_unicode_str( ", filename=", cur_size );
 }
 
 static void dump_open_file_object_reply( const struct open_file_object_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_alloc_file_handle_request( const struct alloc_file_handle_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", fd=%d", req->fd );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", fd=%d", req->fd );
 }
 
 static void dump_alloc_file_handle_reply( const struct alloc_file_handle_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_handle_unix_name_request( const struct get_handle_unix_name_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_handle_unix_name_reply( const struct get_handle_unix_name_reply *req )
 {
-    fprintf( stderr, " name_len=%u", req->name_len );
+    TRACE_RAW( " name_len=%u", req->name_len );
     dump_varargs_string( ", name=", cur_size );
 }
 
 static void dump_get_handle_fd_request( const struct get_handle_fd_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_handle_fd_reply( const struct get_handle_fd_reply *req )
 {
-    fprintf( stderr, " type=%d", req->type );
-    fprintf( stderr, ", cacheable=%d", req->cacheable );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " type=%d", req->type );
+    TRACE_RAW( ", cacheable=%d", req->cacheable );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", options=%08x", req->options );
 }
 
 static void dump_get_directory_cache_entry_request( const struct get_directory_cache_entry_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_directory_cache_entry_reply( const struct get_directory_cache_entry_reply *req )
 {
-    fprintf( stderr, " entry=%d", req->entry );
+    TRACE_RAW( " entry=%d", req->entry );
     dump_varargs_ints( ", free=", cur_size );
 }
 
@@ -703,13 +703,13 @@ static void dump_flush_request( const struct flush_request *req )
 
 static void dump_flush_reply( const struct flush_reply *req )
 {
-    fprintf( stderr, " event=%04x", req->event );
+    TRACE_RAW( " event=%04x", req->event );
 }
 
 static void dump_get_file_info_request( const struct get_file_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", info_class=%08x", req->info_class );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", info_class=%08x", req->info_class );
 }
 
 static void dump_get_file_info_reply( const struct get_file_info_reply *req )
@@ -719,124 +719,124 @@ static void dump_get_file_info_reply( const struct get_file_info_reply *req )
 
 static void dump_get_volume_info_request( const struct get_volume_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_async_data( ", async=", &req->async );
-    fprintf( stderr, ", info_class=%08x", req->info_class );
+    TRACE_RAW( ", info_class=%08x", req->info_class );
 }
 
 static void dump_get_volume_info_reply( const struct get_volume_info_reply *req )
 {
-    fprintf( stderr, " wait=%04x", req->wait );
+    TRACE_RAW( " wait=%04x", req->wait );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_lock_file_request( const struct lock_file_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", offset=", &req->offset );
     dump_uint64( ", count=", &req->count );
-    fprintf( stderr, ", shared=%d", req->shared );
-    fprintf( stderr, ", wait=%d", req->wait );
+    TRACE_RAW( ", shared=%d", req->shared );
+    TRACE_RAW( ", wait=%d", req->wait );
 }
 
 static void dump_lock_file_reply( const struct lock_file_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", overlapped=%d", req->overlapped );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", overlapped=%d", req->overlapped );
 }
 
 static void dump_unlock_file_request( const struct unlock_file_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", offset=", &req->offset );
     dump_uint64( ", count=", &req->count );
 }
 
 static void dump_recv_socket_request( const struct recv_socket_request *req )
 {
-    fprintf( stderr, " oob=%d", req->oob );
+    TRACE_RAW( " oob=%d", req->oob );
     dump_async_data( ", async=", &req->async );
-    fprintf( stderr, ", force_async=%d", req->force_async );
+    TRACE_RAW( ", force_async=%d", req->force_async );
 }
 
 static void dump_recv_socket_reply( const struct recv_socket_reply *req )
 {
-    fprintf( stderr, " wait=%04x", req->wait );
-    fprintf( stderr, ", options=%08x", req->options );
-    fprintf( stderr, ", nonblocking=%d", req->nonblocking );
+    TRACE_RAW( " wait=%04x", req->wait );
+    TRACE_RAW( ", options=%08x", req->options );
+    TRACE_RAW( ", nonblocking=%d", req->nonblocking );
 }
 
 static void dump_send_socket_request( const struct send_socket_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
+    TRACE_RAW( " flags=%08x", req->flags );
     dump_async_data( ", async=", &req->async );
 }
 
 static void dump_send_socket_reply( const struct send_socket_reply *req )
 {
-    fprintf( stderr, " wait=%04x", req->wait );
-    fprintf( stderr, ", options=%08x", req->options );
-    fprintf( stderr, ", nonblocking=%d", req->nonblocking );
+    TRACE_RAW( " wait=%04x", req->wait );
+    TRACE_RAW( ", options=%08x", req->options );
+    TRACE_RAW( ", nonblocking=%d", req->nonblocking );
 }
 
 static void dump_socket_get_events_request( const struct socket_get_events_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", event=%04x", req->event );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", event=%04x", req->event );
 }
 
 static void dump_socket_get_events_reply( const struct socket_get_events_reply *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
+    TRACE_RAW( " flags=%08x", req->flags );
     dump_varargs_uints( ", status=", cur_size );
 }
 
 static void dump_socket_send_icmp_id_request( const struct socket_send_icmp_id_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", icmp_id=%04x", req->icmp_id );
-    fprintf( stderr, ", icmp_seq=%04x", req->icmp_seq );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", icmp_id=%04x", req->icmp_id );
+    TRACE_RAW( ", icmp_seq=%04x", req->icmp_seq );
 }
 
 static void dump_socket_get_icmp_id_request( const struct socket_get_icmp_id_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", icmp_seq=%04x", req->icmp_seq );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", icmp_seq=%04x", req->icmp_seq );
 }
 
 static void dump_socket_get_icmp_id_reply( const struct socket_get_icmp_id_reply *req )
 {
-    fprintf( stderr, " icmp_id=%04x", req->icmp_id );
+    TRACE_RAW( " icmp_id=%04x", req->icmp_id );
 }
 
 static void dump_get_next_console_request_request( const struct get_next_console_request_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", signal=%d", req->signal );
-    fprintf( stderr, ", read=%d", req->read );
-    fprintf( stderr, ", status=%08x", req->status );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", signal=%d", req->signal );
+    TRACE_RAW( ", read=%d", req->read );
+    TRACE_RAW( ", status=%08x", req->status );
     dump_varargs_bytes( ", out_data=", cur_size );
 }
 
 static void dump_get_next_console_request_reply( const struct get_next_console_request_reply *req )
 {
-    fprintf( stderr, " code=%08x", req->code );
-    fprintf( stderr, ", output=%08x", req->output );
-    fprintf( stderr, ", out_size=%u", req->out_size );
+    TRACE_RAW( " code=%08x", req->code );
+    TRACE_RAW( ", output=%08x", req->output );
+    TRACE_RAW( ", out_size=%u", req->out_size );
     dump_varargs_bytes( ", in_data=", cur_size );
 }
 
 static void dump_read_directory_changes_request( const struct read_directory_changes_request *req )
 {
-    fprintf( stderr, " filter=%08x", req->filter );
-    fprintf( stderr, ", subtree=%d", req->subtree );
-    fprintf( stderr, ", want_data=%d", req->want_data );
+    TRACE_RAW( " filter=%08x", req->filter );
+    TRACE_RAW( ", subtree=%d", req->subtree );
+    TRACE_RAW( ", want_data=%d", req->want_data );
     dump_async_data( ", async=", &req->async );
 }
 
 static void dump_read_change_request( const struct read_change_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_read_change_reply( const struct read_change_reply *req )
@@ -846,45 +846,45 @@ static void dump_read_change_reply( const struct read_change_reply *req )
 
 static void dump_create_mapping_request( const struct create_mapping_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", file_access=%08x", req->file_access );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", file_access=%08x", req->file_access );
     dump_uint64( ", size=", &req->size );
-    fprintf( stderr, ", file_handle=%04x", req->file_handle );
+    TRACE_RAW( ", file_handle=%04x", req->file_handle );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_mapping_reply( const struct create_mapping_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_mapping_request( const struct open_mapping_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_mapping_reply( const struct open_mapping_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_mapping_info_request( const struct get_mapping_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", access=%08x", req->access );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", access=%08x", req->access );
 }
 
 static void dump_get_mapping_info_reply( const struct get_mapping_info_reply *req )
 {
     dump_uint64( " size=", &req->size );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", shared_file=%04x", req->shared_file );
-    fprintf( stderr, ", name_len=%u", req->name_len );
-    fprintf( stderr, ", total=%u", req->total );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", shared_file=%04x", req->shared_file );
+    TRACE_RAW( ", name_len=%u", req->name_len );
+    TRACE_RAW( ", total=%u", req->total );
     dump_varargs_pe_image_info( ", image=", cur_size );
     dump_varargs_unicode_str( ", name=", min( cur_size, req->name_len ));
     dump_varargs_string( ", exp_name=", cur_size );
@@ -892,7 +892,7 @@ static void dump_get_mapping_info_reply( const struct get_mapping_info_reply *re
 
 static void dump_get_image_map_address_request( const struct get_image_map_address_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_image_map_address_reply( const struct get_image_map_address_reply *req )
@@ -902,8 +902,8 @@ static void dump_get_image_map_address_reply( const struct get_image_map_address
 
 static void dump_map_view_request( const struct map_view_request *req )
 {
-    fprintf( stderr, " mapping=%04x", req->mapping );
-    fprintf( stderr, ", access=%08x", req->access );
+    TRACE_RAW( " mapping=%04x", req->mapping );
+    TRACE_RAW( ", access=%08x", req->access );
     dump_uint64( ", base=", &req->base );
     dump_uint64( ", size=", &req->size );
     dump_uint64( ", start=", &req->start );
@@ -911,12 +911,12 @@ static void dump_map_view_request( const struct map_view_request *req )
 
 static void dump_map_image_view_request( const struct map_image_view_request *req )
 {
-    fprintf( stderr, " mapping=%04x", req->mapping );
+    TRACE_RAW( " mapping=%04x", req->mapping );
     dump_uint64( ", base=", &req->base );
     dump_uint64( ", size=", &req->size );
     dump_uint64( ", offset=", &req->offset );
-    fprintf( stderr, ", entry=%08x", req->entry );
-    fprintf( stderr, ", machine=%04x", req->machine );
+    TRACE_RAW( ", entry=%08x", req->entry );
+    TRACE_RAW( ", machine=%04x", req->machine );
 }
 
 static void dump_map_builtin_view_request( const struct map_builtin_view_request *req )
@@ -927,7 +927,7 @@ static void dump_map_builtin_view_request( const struct map_builtin_view_request
 
 static void dump_get_image_view_info_request( const struct get_image_view_info_request *req )
 {
-    fprintf( stderr, " process=%04x", req->process );
+    TRACE_RAW( " process=%04x", req->process );
     dump_uint64( ", addr=", &req->addr );
 }
 
@@ -951,7 +951,7 @@ static void dump_get_mapping_committed_range_request( const struct get_mapping_c
 static void dump_get_mapping_committed_range_reply( const struct get_mapping_committed_range_reply *req )
 {
     dump_uint64( " size=", &req->size );
-    fprintf( stderr, ", committed=%d", req->committed );
+    TRACE_RAW( ", committed=%d", req->committed );
 }
 
 static void dump_add_mapping_committed_range_request( const struct add_mapping_committed_range_request *req )
@@ -969,13 +969,13 @@ static void dump_is_same_mapping_request( const struct is_same_mapping_request *
 
 static void dump_get_mapping_filename_request( const struct get_mapping_filename_request *req )
 {
-    fprintf( stderr, " process=%04x", req->process );
+    TRACE_RAW( " process=%04x", req->process );
     dump_uint64( ", addr=", &req->addr );
 }
 
 static void dump_get_mapping_filename_reply( const struct get_mapping_filename_reply *req )
 {
-    fprintf( stderr, " len=%u", req->len );
+    TRACE_RAW( " len=%u", req->len );
     dump_varargs_unicode_str( ", filename=", cur_size );
 }
 
@@ -985,82 +985,82 @@ static void dump_list_processes_request( const struct list_processes_request *re
 
 static void dump_list_processes_reply( const struct list_processes_reply *req )
 {
-    fprintf( stderr, " info_size=%u", req->info_size );
-    fprintf( stderr, ", process_count=%d", req->process_count );
-    fprintf( stderr, ", total_thread_count=%d", req->total_thread_count );
-    fprintf( stderr, ", total_name_len=%u", req->total_name_len );
+    TRACE_RAW( " info_size=%u", req->info_size );
+    TRACE_RAW( ", process_count=%d", req->process_count );
+    TRACE_RAW( ", total_thread_count=%d", req->total_thread_count );
+    TRACE_RAW( ", total_name_len=%u", req->total_name_len );
     dump_varargs_process_info( ", data=", min( cur_size, req->info_size ));
 }
 
 static void dump_create_debug_obj_request( const struct create_debug_obj_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", flags=%08x", req->flags );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_debug_obj_reply( const struct create_debug_obj_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_wait_debug_event_request( const struct wait_debug_event_request *req )
 {
-    fprintf( stderr, " debug=%04x", req->debug );
+    TRACE_RAW( " debug=%04x", req->debug );
 }
 
 static void dump_wait_debug_event_reply( const struct wait_debug_event_reply *req )
 {
-    fprintf( stderr, " pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
+    TRACE_RAW( " pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
     dump_varargs_debug_event( ", event=", cur_size );
 }
 
 static void dump_queue_exception_event_request( const struct queue_exception_event_request *req )
 {
-    fprintf( stderr, " first=%d", req->first );
-    fprintf( stderr, ", code=%08x", req->code );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " first=%d", req->first );
+    TRACE_RAW( ", code=%08x", req->code );
+    TRACE_RAW( ", flags=%08x", req->flags );
     dump_uint64( ", record=", &req->record );
     dump_uint64( ", address=", &req->address );
-    fprintf( stderr, ", len=%u", req->len );
+    TRACE_RAW( ", len=%u", req->len );
     dump_varargs_uints64( ", params=", min( cur_size, req->len ));
 }
 
 static void dump_queue_exception_event_reply( const struct queue_exception_event_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_exception_status_request( const struct get_exception_status_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_continue_debug_event_request( const struct continue_debug_event_request *req )
 {
-    fprintf( stderr, " debug=%04x", req->debug );
-    fprintf( stderr, ", pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
-    fprintf( stderr, ", status=%08x", req->status );
+    TRACE_RAW( " debug=%04x", req->debug );
+    TRACE_RAW( ", pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
+    TRACE_RAW( ", status=%08x", req->status );
 }
 
 static void dump_debug_process_request( const struct debug_process_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", debug=%04x", req->debug );
-    fprintf( stderr, ", attach=%d", req->attach );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", debug=%04x", req->debug );
+    TRACE_RAW( ", attach=%d", req->attach );
 }
 
 static void dump_set_debug_obj_info_request( const struct set_debug_obj_info_request *req )
 {
-    fprintf( stderr, " debug=%04x", req->debug );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " debug=%04x", req->debug );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_read_process_memory_request( const struct read_process_memory_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", addr=", &req->addr );
 }
 
@@ -1071,237 +1071,237 @@ static void dump_read_process_memory_reply( const struct read_process_memory_rep
 
 static void dump_write_process_memory_request( const struct write_process_memory_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", addr=", &req->addr );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_write_process_memory_reply( const struct write_process_memory_reply *req )
 {
-    fprintf( stderr, " written=%u", req->written );
+    TRACE_RAW( " written=%u", req->written );
 }
 
 static void dump_create_key_request( const struct create_key_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", options=%08x", req->options );
     dump_varargs_object_attributes( ", objattr=", cur_size );
     dump_varargs_unicode_str( ", class=", cur_size );
 }
 
 static void dump_create_key_reply( const struct create_key_reply *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
 }
 
 static void dump_open_key_request( const struct open_key_request *req )
 {
-    fprintf( stderr, " parent=%04x", req->parent );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " parent=%04x", req->parent );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_key_reply( const struct open_key_reply *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
 }
 
 static void dump_delete_key_request( const struct delete_key_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
 }
 
 static void dump_flush_key_request( const struct flush_key_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
 }
 
 static void dump_enum_key_request( const struct enum_key_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
-    fprintf( stderr, ", index=%d", req->index );
-    fprintf( stderr, ", info_class=%d", req->info_class );
+    TRACE_RAW( " hkey=%04x", req->hkey );
+    TRACE_RAW( ", index=%d", req->index );
+    TRACE_RAW( ", info_class=%d", req->info_class );
 }
 
 static void dump_enum_key_reply( const struct enum_key_reply *req )
 {
-    fprintf( stderr, " subkeys=%d", req->subkeys );
-    fprintf( stderr, ", max_subkey=%d", req->max_subkey );
-    fprintf( stderr, ", max_class=%d", req->max_class );
-    fprintf( stderr, ", values=%d", req->values );
-    fprintf( stderr, ", max_value=%d", req->max_value );
-    fprintf( stderr, ", max_data=%d", req->max_data );
+    TRACE_RAW( " subkeys=%d", req->subkeys );
+    TRACE_RAW( ", max_subkey=%d", req->max_subkey );
+    TRACE_RAW( ", max_class=%d", req->max_class );
+    TRACE_RAW( ", values=%d", req->values );
+    TRACE_RAW( ", max_value=%d", req->max_value );
+    TRACE_RAW( ", max_data=%d", req->max_data );
     dump_timeout( ", modif=", &req->modif );
-    fprintf( stderr, ", total=%u", req->total );
-    fprintf( stderr, ", namelen=%u", req->namelen );
+    TRACE_RAW( ", total=%u", req->total );
+    TRACE_RAW( ", namelen=%u", req->namelen );
     dump_varargs_unicode_str( ", name=", min( cur_size, req->namelen ));
     dump_varargs_unicode_str( ", class=", cur_size );
 }
 
 static void dump_set_key_value_request( const struct set_key_value_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
-    fprintf( stderr, ", type=%d", req->type );
-    fprintf( stderr, ", namelen=%u", req->namelen );
+    TRACE_RAW( " hkey=%04x", req->hkey );
+    TRACE_RAW( ", type=%d", req->type );
+    TRACE_RAW( ", namelen=%u", req->namelen );
     dump_varargs_unicode_str( ", name=", min( cur_size, req->namelen ));
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_get_key_value_request( const struct get_key_value_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_get_key_value_reply( const struct get_key_value_reply *req )
 {
-    fprintf( stderr, " type=%d", req->type );
-    fprintf( stderr, ", total=%u", req->total );
+    TRACE_RAW( " type=%d", req->type );
+    TRACE_RAW( ", total=%u", req->total );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_enum_key_value_request( const struct enum_key_value_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
-    fprintf( stderr, ", index=%d", req->index );
-    fprintf( stderr, ", info_class=%d", req->info_class );
+    TRACE_RAW( " hkey=%04x", req->hkey );
+    TRACE_RAW( ", index=%d", req->index );
+    TRACE_RAW( ", info_class=%d", req->info_class );
 }
 
 static void dump_enum_key_value_reply( const struct enum_key_value_reply *req )
 {
-    fprintf( stderr, " type=%d", req->type );
-    fprintf( stderr, ", total=%u", req->total );
-    fprintf( stderr, ", namelen=%u", req->namelen );
+    TRACE_RAW( " type=%d", req->type );
+    TRACE_RAW( ", total=%u", req->total );
+    TRACE_RAW( ", namelen=%u", req->namelen );
     dump_varargs_unicode_str( ", name=", min( cur_size, req->namelen ));
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_delete_key_value_request( const struct delete_key_value_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_load_registry_request( const struct load_registry_request *req )
 {
-    fprintf( stderr, " file=%04x", req->file );
+    TRACE_RAW( " file=%04x", req->file );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_unload_registry_request( const struct unload_registry_request *req )
 {
-    fprintf( stderr, " parent=%04x", req->parent );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " parent=%04x", req->parent );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_save_registry_request( const struct save_registry_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
-    fprintf( stderr, ", file=%04x", req->file );
+    TRACE_RAW( " hkey=%04x", req->hkey );
+    TRACE_RAW( ", file=%04x", req->file );
 }
 
 static void dump_set_registry_notification_request( const struct set_registry_notification_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
-    fprintf( stderr, ", event=%04x", req->event );
-    fprintf( stderr, ", subtree=%d", req->subtree );
-    fprintf( stderr, ", filter=%08x", req->filter );
+    TRACE_RAW( " hkey=%04x", req->hkey );
+    TRACE_RAW( ", event=%04x", req->event );
+    TRACE_RAW( ", subtree=%d", req->subtree );
+    TRACE_RAW( ", filter=%08x", req->filter );
 }
 
 static void dump_rename_key_request( const struct rename_key_request *req )
 {
-    fprintf( stderr, " hkey=%04x", req->hkey );
+    TRACE_RAW( " hkey=%04x", req->hkey );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_create_timer_request( const struct create_timer_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", manual=%d", req->manual );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", manual=%d", req->manual );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_timer_reply( const struct create_timer_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_timer_request( const struct open_timer_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_timer_reply( const struct open_timer_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_timer_request( const struct set_timer_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_timeout( ", expire=", &req->expire );
     dump_uint64( ", callback=", &req->callback );
     dump_uint64( ", arg=", &req->arg );
-    fprintf( stderr, ", period=%d", req->period );
+    TRACE_RAW( ", period=%d", req->period );
 }
 
 static void dump_set_timer_reply( const struct set_timer_reply *req )
 {
-    fprintf( stderr, " signaled=%d", req->signaled );
+    TRACE_RAW( " signaled=%d", req->signaled );
 }
 
 static void dump_cancel_timer_request( const struct cancel_timer_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_cancel_timer_reply( const struct cancel_timer_reply *req )
 {
-    fprintf( stderr, " signaled=%d", req->signaled );
+    TRACE_RAW( " signaled=%d", req->signaled );
 }
 
 static void dump_get_timer_info_request( const struct get_timer_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_timer_info_reply( const struct get_timer_info_reply *req )
 {
     dump_timeout( " when=", &req->when );
-    fprintf( stderr, ", signaled=%d", req->signaled );
+    TRACE_RAW( ", signaled=%d", req->signaled );
 }
 
 static void dump_get_thread_context_request( const struct get_thread_context_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", context=%04x", req->context );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", native_flags=%08x", req->native_flags );
-    fprintf( stderr, ", machine=%04x", req->machine );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", context=%04x", req->context );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", native_flags=%08x", req->native_flags );
+    TRACE_RAW( ", machine=%04x", req->machine );
 }
 
 static void dump_get_thread_context_reply( const struct get_thread_context_reply *req )
 {
-    fprintf( stderr, " self=%d", req->self );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " self=%d", req->self );
+    TRACE_RAW( ", handle=%04x", req->handle );
     dump_varargs_contexts( ", contexts=", cur_size );
 }
 
 static void dump_set_thread_context_request( const struct set_thread_context_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", native_flags=%08x", req->native_flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", native_flags=%08x", req->native_flags );
     dump_varargs_contexts( ", contexts=", cur_size );
 }
 
 static void dump_set_thread_context_reply( const struct set_thread_context_reply *req )
 {
-    fprintf( stderr, " self=%d", req->self );
+    TRACE_RAW( " self=%d", req->self );
 }
 
 static void dump_add_atom_request( const struct add_atom_request *req )
@@ -1311,12 +1311,12 @@ static void dump_add_atom_request( const struct add_atom_request *req )
 
 static void dump_add_atom_reply( const struct add_atom_reply *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
 }
 
 static void dump_delete_atom_request( const struct delete_atom_request *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
 }
 
 static void dump_find_atom_request( const struct find_atom_request *req )
@@ -1326,19 +1326,19 @@ static void dump_find_atom_request( const struct find_atom_request *req )
 
 static void dump_find_atom_reply( const struct find_atom_reply *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
 }
 
 static void dump_get_atom_information_request( const struct get_atom_information_request *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
 }
 
 static void dump_get_atom_information_reply( const struct get_atom_information_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
-    fprintf( stderr, ", pinned=%d", req->pinned );
-    fprintf( stderr, ", total=%u", req->total );
+    TRACE_RAW( " count=%d", req->count );
+    TRACE_RAW( ", pinned=%d", req->pinned );
+    TRACE_RAW( ", total=%u", req->total );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
@@ -1349,17 +1349,17 @@ static void dump_add_user_atom_request( const struct add_user_atom_request *req 
 
 static void dump_add_user_atom_reply( const struct add_user_atom_reply *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
 }
 
 static void dump_get_user_atom_name_request( const struct get_user_atom_name_request *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
 }
 
 static void dump_get_user_atom_name_reply( const struct get_user_atom_name_reply *req )
 {
-    fprintf( stderr, " total=%u", req->total );
+    TRACE_RAW( " total=%u", req->total );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
@@ -1369,8 +1369,8 @@ static void dump_get_msg_queue_handle_request( const struct get_msg_queue_handle
 
 static void dump_get_msg_queue_handle_reply( const struct get_msg_queue_handle_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", idle_event=%04x", req->idle_event );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", idle_event=%04x", req->idle_event );
 }
 
 static void dump_get_msg_queue_request( const struct get_msg_queue_request *req )
@@ -1384,50 +1384,50 @@ static void dump_get_msg_queue_reply( const struct get_msg_queue_reply *req )
 
 static void dump_set_queue_fd_request( const struct set_queue_fd_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_queue_mask_request( const struct set_queue_mask_request *req )
 {
-    fprintf( stderr, " wake_mask=%08x", req->wake_mask );
-    fprintf( stderr, ", changed_mask=%08x", req->changed_mask );
-    fprintf( stderr, ", poll_events=%d", req->poll_events );
+    TRACE_RAW( " wake_mask=%08x", req->wake_mask );
+    TRACE_RAW( ", changed_mask=%08x", req->changed_mask );
+    TRACE_RAW( ", poll_events=%d", req->poll_events );
 }
 
 static void dump_set_queue_mask_reply( const struct set_queue_mask_reply *req )
 {
-    fprintf( stderr, " wake_bits=%08x", req->wake_bits );
-    fprintf( stderr, ", changed_bits=%08x", req->changed_bits );
+    TRACE_RAW( " wake_bits=%08x", req->wake_bits );
+    TRACE_RAW( ", changed_bits=%08x", req->changed_bits );
 }
 
 static void dump_get_queue_status_request( const struct get_queue_status_request *req )
 {
-    fprintf( stderr, " clear_bits=%08x", req->clear_bits );
+    TRACE_RAW( " clear_bits=%08x", req->clear_bits );
 }
 
 static void dump_get_queue_status_reply( const struct get_queue_status_reply *req )
 {
-    fprintf( stderr, " wake_bits=%08x", req->wake_bits );
-    fprintf( stderr, ", changed_bits=%08x", req->changed_bits );
+    TRACE_RAW( " wake_bits=%08x", req->wake_bits );
+    TRACE_RAW( ", changed_bits=%08x", req->changed_bits );
 }
 
 static void dump_get_process_idle_event_request( const struct get_process_idle_event_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_process_idle_event_reply( const struct get_process_idle_event_reply *req )
 {
-    fprintf( stderr, " event=%04x", req->event );
+    TRACE_RAW( " event=%04x", req->event );
 }
 
 static void dump_send_message_request( const struct send_message_request *req )
 {
-    fprintf( stderr, " id=%04x", req->id );
-    fprintf( stderr, ", type=%d", req->type );
-    fprintf( stderr, ", flags=%d", req->flags );
-    fprintf( stderr, ", win=%08x", req->win );
-    fprintf( stderr, ", msg=%08x", req->msg );
+    TRACE_RAW( " id=%04x", req->id );
+    TRACE_RAW( ", type=%d", req->type );
+    TRACE_RAW( ", flags=%d", req->flags );
+    TRACE_RAW( ", win=%08x", req->win );
+    TRACE_RAW( ", msg=%08x", req->msg );
     dump_uint64( ", wparam=", &req->wparam );
     dump_uint64( ", lparam=", &req->lparam );
     dump_timeout( ", timeout=", &req->timeout );
@@ -1436,67 +1436,67 @@ static void dump_send_message_request( const struct send_message_request *req )
 
 static void dump_post_quit_message_request( const struct post_quit_message_request *req )
 {
-    fprintf( stderr, " exit_code=%d", req->exit_code );
+    TRACE_RAW( " exit_code=%d", req->exit_code );
 }
 
 static void dump_send_hardware_message_request( const struct send_hardware_message_request *req )
 {
-    fprintf( stderr, " win=%08x", req->win );
+    TRACE_RAW( " win=%08x", req->win );
     dump_hw_input( ", input=", &req->input );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( ", flags=%08x", req->flags );
     dump_varargs_bytes( ", report=", cur_size );
 }
 
 static void dump_send_hardware_message_reply( const struct send_hardware_message_reply *req )
 {
-    fprintf( stderr, " wait=%d", req->wait );
-    fprintf( stderr, ", prev_x=%d", req->prev_x );
-    fprintf( stderr, ", prev_y=%d", req->prev_y );
-    fprintf( stderr, ", new_x=%d", req->new_x );
-    fprintf( stderr, ", new_y=%d", req->new_y );
+    TRACE_RAW( " wait=%d", req->wait );
+    TRACE_RAW( ", prev_x=%d", req->prev_x );
+    TRACE_RAW( ", prev_y=%d", req->prev_y );
+    TRACE_RAW( ", new_x=%d", req->new_x );
+    TRACE_RAW( ", new_y=%d", req->new_y );
 }
 
 static void dump_get_message_request( const struct get_message_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", get_win=%08x", req->get_win );
-    fprintf( stderr, ", get_first=%08x", req->get_first );
-    fprintf( stderr, ", get_last=%08x", req->get_last );
-    fprintf( stderr, ", hw_id=%08x", req->hw_id );
-    fprintf( stderr, ", wake_mask=%08x", req->wake_mask );
-    fprintf( stderr, ", changed_mask=%08x", req->changed_mask );
-    fprintf( stderr, ", internal=%08x", req->internal );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", get_win=%08x", req->get_win );
+    TRACE_RAW( ", get_first=%08x", req->get_first );
+    TRACE_RAW( ", get_last=%08x", req->get_last );
+    TRACE_RAW( ", hw_id=%08x", req->hw_id );
+    TRACE_RAW( ", wake_mask=%08x", req->wake_mask );
+    TRACE_RAW( ", changed_mask=%08x", req->changed_mask );
+    TRACE_RAW( ", internal=%08x", req->internal );
 }
 
 static void dump_get_message_reply( const struct get_message_reply *req )
 {
-    fprintf( stderr, " win=%08x", req->win );
-    fprintf( stderr, ", msg=%08x", req->msg );
+    TRACE_RAW( " win=%08x", req->win );
+    TRACE_RAW( ", msg=%08x", req->msg );
     dump_uint64( ", wparam=", &req->wparam );
     dump_uint64( ", lparam=", &req->lparam );
-    fprintf( stderr, ", type=%d", req->type );
-    fprintf( stderr, ", x=%d", req->x );
-    fprintf( stderr, ", y=%d", req->y );
-    fprintf( stderr, ", time=%08x", req->time );
-    fprintf( stderr, ", total=%u", req->total );
+    TRACE_RAW( ", type=%d", req->type );
+    TRACE_RAW( ", x=%d", req->x );
+    TRACE_RAW( ", y=%d", req->y );
+    TRACE_RAW( ", time=%08x", req->time );
+    TRACE_RAW( ", total=%u", req->total );
     dump_varargs_message_data( ", data=", cur_size );
 }
 
 static void dump_reply_message_request( const struct reply_message_request *req )
 {
-    fprintf( stderr, " remove=%d", req->remove );
+    TRACE_RAW( " remove=%d", req->remove );
     dump_uint64( ", result=", &req->result );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_accept_hardware_message_request( const struct accept_hardware_message_request *req )
 {
-    fprintf( stderr, " hw_id=%08x", req->hw_id );
+    TRACE_RAW( " hw_id=%08x", req->hw_id );
 }
 
 static void dump_get_message_reply_request( const struct get_message_reply_request *req )
 {
-    fprintf( stderr, " cancel=%d", req->cancel );
+    TRACE_RAW( " cancel=%d", req->cancel );
 }
 
 static void dump_get_message_reply_reply( const struct get_message_reply_reply *req )
@@ -1507,9 +1507,9 @@ static void dump_get_message_reply_reply( const struct get_message_reply_reply *
 
 static void dump_set_win_timer_request( const struct set_win_timer_request *req )
 {
-    fprintf( stderr, " win=%08x", req->win );
-    fprintf( stderr, ", msg=%08x", req->msg );
-    fprintf( stderr, ", rate=%08x", req->rate );
+    TRACE_RAW( " win=%08x", req->win );
+    TRACE_RAW( ", msg=%08x", req->msg );
+    TRACE_RAW( ", rate=%08x", req->rate );
     dump_uint64( ", id=", &req->id );
     dump_uint64( ", lparam=", &req->lparam );
 }
@@ -1521,62 +1521,62 @@ static void dump_set_win_timer_reply( const struct set_win_timer_reply *req )
 
 static void dump_kill_win_timer_request( const struct kill_win_timer_request *req )
 {
-    fprintf( stderr, " win=%08x", req->win );
+    TRACE_RAW( " win=%08x", req->win );
     dump_uint64( ", id=", &req->id );
-    fprintf( stderr, ", msg=%08x", req->msg );
+    TRACE_RAW( ", msg=%08x", req->msg );
 }
 
 static void dump_is_window_hung_request( const struct is_window_hung_request *req )
 {
-    fprintf( stderr, " win=%08x", req->win );
+    TRACE_RAW( " win=%08x", req->win );
 }
 
 static void dump_is_window_hung_reply( const struct is_window_hung_reply *req )
 {
-    fprintf( stderr, " is_hung=%d", req->is_hung );
+    TRACE_RAW( " is_hung=%d", req->is_hung );
 }
 
 static void dump_get_serial_info_request( const struct get_serial_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%d", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%d", req->flags );
 }
 
 static void dump_get_serial_info_reply( const struct get_serial_info_reply *req )
 {
-    fprintf( stderr, " eventmask=%08x", req->eventmask );
-    fprintf( stderr, ", pending_write=%08x", req->pending_write );
+    TRACE_RAW( " eventmask=%08x", req->eventmask );
+    TRACE_RAW( ", pending_write=%08x", req->pending_write );
 }
 
 static void dump_set_serial_info_request( const struct set_serial_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%d", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%d", req->flags );
 }
 
 static void dump_cancel_sync_request( const struct cancel_sync_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", iosb=", &req->iosb );
 }
 
 static void dump_register_async_request( const struct register_async_request *req )
 {
-    fprintf( stderr, " type=%d", req->type );
+    TRACE_RAW( " type=%d", req->type );
     dump_async_data( ", async=", &req->async );
-    fprintf( stderr, ", count=%d", req->count );
+    TRACE_RAW( ", count=%d", req->count );
 }
 
 static void dump_cancel_async_request( const struct cancel_async_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", iosb=", &req->iosb );
-    fprintf( stderr, ", only_thread=%d", req->only_thread );
+    TRACE_RAW( ", only_thread=%d", req->only_thread );
 }
 
 static void dump_cancel_async_reply( const struct cancel_async_reply *req )
 {
-    fprintf( stderr, " cancel_handle=%04x", req->cancel_handle );
+    TRACE_RAW( " cancel_handle=%04x", req->cancel_handle );
 }
 
 static void dump_get_async_result_request( const struct get_async_result_request *req )
@@ -1591,15 +1591,15 @@ static void dump_get_async_result_reply( const struct get_async_result_reply *re
 
 static void dump_set_async_direct_result_request( const struct set_async_direct_result_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", information=", &req->information );
-    fprintf( stderr, ", status=%08x", req->status );
-    fprintf( stderr, ", mark_pending=%d", req->mark_pending );
+    TRACE_RAW( ", status=%08x", req->status );
+    TRACE_RAW( ", mark_pending=%d", req->mark_pending );
 }
 
 static void dump_set_async_direct_result_reply( const struct set_async_direct_result_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_read_request( const struct read_request *req )
@@ -1610,8 +1610,8 @@ static void dump_read_request( const struct read_request *req )
 
 static void dump_read_reply( const struct read_reply *req )
 {
-    fprintf( stderr, " wait=%04x", req->wait );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " wait=%04x", req->wait );
+    TRACE_RAW( ", options=%08x", req->options );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
@@ -1624,9 +1624,9 @@ static void dump_write_request( const struct write_request *req )
 
 static void dump_write_reply( const struct write_reply *req )
 {
-    fprintf( stderr, " wait=%04x", req->wait );
-    fprintf( stderr, ", options=%08x", req->options );
-    fprintf( stderr, ", size=%u", req->size );
+    TRACE_RAW( " wait=%04x", req->wait );
+    TRACE_RAW( ", options=%08x", req->options );
+    TRACE_RAW( ", size=%u", req->size );
 }
 
 static void dump_ioctl_request( const struct ioctl_request *req )
@@ -1638,122 +1638,122 @@ static void dump_ioctl_request( const struct ioctl_request *req )
 
 static void dump_ioctl_reply( const struct ioctl_reply *req )
 {
-    fprintf( stderr, " wait=%04x", req->wait );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " wait=%04x", req->wait );
+    TRACE_RAW( ", options=%08x", req->options );
     dump_varargs_bytes( ", out_data=", cur_size );
 }
 
 static void dump_set_irp_result_request( const struct set_irp_result_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", status=%08x", req->status );
-    fprintf( stderr, ", size=%u", req->size );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", status=%08x", req->status );
+    TRACE_RAW( ", size=%u", req->size );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_create_named_pipe_request( const struct create_named_pipe_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", options=%08x", req->options );
-    fprintf( stderr, ", sharing=%08x", req->sharing );
-    fprintf( stderr, ", disposition=%08x", req->disposition );
-    fprintf( stderr, ", maxinstances=%08x", req->maxinstances );
-    fprintf( stderr, ", outsize=%08x", req->outsize );
-    fprintf( stderr, ", insize=%08x", req->insize );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", options=%08x", req->options );
+    TRACE_RAW( ", sharing=%08x", req->sharing );
+    TRACE_RAW( ", disposition=%08x", req->disposition );
+    TRACE_RAW( ", maxinstances=%08x", req->maxinstances );
+    TRACE_RAW( ", outsize=%08x", req->outsize );
+    TRACE_RAW( ", insize=%08x", req->insize );
     dump_timeout( ", timeout=", &req->timeout );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( ", flags=%08x", req->flags );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_named_pipe_reply( const struct create_named_pipe_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", created=%d", req->created );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", created=%d", req->created );
 }
 
 static void dump_set_named_pipe_info_request( const struct set_named_pipe_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_create_window_request( const struct create_window_request *req )
 {
-    fprintf( stderr, " parent=%08x", req->parent );
-    fprintf( stderr, ", owner=%08x", req->owner );
-    fprintf( stderr, ", atom=%04x", req->atom );
+    TRACE_RAW( " parent=%08x", req->parent );
+    TRACE_RAW( ", owner=%08x", req->owner );
+    TRACE_RAW( ", atom=%04x", req->atom );
     dump_uint64( ", class_instance=", &req->class_instance );
     dump_uint64( ", instance=", &req->instance );
-    fprintf( stderr, ", dpi_context=%08x", req->dpi_context );
-    fprintf( stderr, ", style=%08x", req->style );
-    fprintf( stderr, ", ex_style=%08x", req->ex_style );
+    TRACE_RAW( ", dpi_context=%08x", req->dpi_context );
+    TRACE_RAW( ", style=%08x", req->style );
+    TRACE_RAW( ", ex_style=%08x", req->ex_style );
     dump_varargs_unicode_str( ", class=", cur_size );
 }
 
 static void dump_create_window_reply( const struct create_window_reply *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", parent=%08x", req->parent );
-    fprintf( stderr, ", owner=%08x", req->owner );
-    fprintf( stderr, ", extra=%d", req->extra );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", parent=%08x", req->parent );
+    TRACE_RAW( ", owner=%08x", req->owner );
+    TRACE_RAW( ", extra=%d", req->extra );
     dump_uint64( ", class_ptr=", &req->class_ptr );
 }
 
 static void dump_destroy_window_request( const struct destroy_window_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_get_desktop_window_request( const struct get_desktop_window_request *req )
 {
-    fprintf( stderr, " force=%d", req->force );
+    TRACE_RAW( " force=%d", req->force );
 }
 
 static void dump_get_desktop_window_reply( const struct get_desktop_window_reply *req )
 {
-    fprintf( stderr, " top_window=%08x", req->top_window );
-    fprintf( stderr, ", msg_window=%08x", req->msg_window );
+    TRACE_RAW( " top_window=%08x", req->top_window );
+    TRACE_RAW( ", msg_window=%08x", req->msg_window );
 }
 
 static void dump_set_window_owner_request( const struct set_window_owner_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", owner=%08x", req->owner );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", owner=%08x", req->owner );
 }
 
 static void dump_set_window_owner_reply( const struct set_window_owner_reply *req )
 {
-    fprintf( stderr, " full_owner=%08x", req->full_owner );
-    fprintf( stderr, ", prev_owner=%08x", req->prev_owner );
+    TRACE_RAW( " full_owner=%08x", req->full_owner );
+    TRACE_RAW( ", prev_owner=%08x", req->prev_owner );
 }
 
 static void dump_get_window_info_request( const struct get_window_info_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", offset=%d", req->offset );
-    fprintf( stderr, ", size=%u", req->size );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", offset=%d", req->offset );
+    TRACE_RAW( ", size=%u", req->size );
 }
 
 static void dump_get_window_info_reply( const struct get_window_info_reply *req )
 {
-    fprintf( stderr, " last_active=%08x", req->last_active );
-    fprintf( stderr, ", is_unicode=%d", req->is_unicode );
+    TRACE_RAW( " last_active=%08x", req->last_active );
+    TRACE_RAW( ", is_unicode=%d", req->is_unicode );
     dump_uint64( ", info=", &req->info );
 }
 
 static void dump_init_window_info_request( const struct init_window_info_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", style=%08x", req->style );
-    fprintf( stderr, ", ex_style=%08x", req->ex_style );
-    fprintf( stderr, ", is_unicode=%d", req->is_unicode );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", style=%08x", req->style );
+    TRACE_RAW( ", ex_style=%08x", req->ex_style );
+    TRACE_RAW( ", is_unicode=%d", req->is_unicode );
 }
 
 static void dump_set_window_info_request( const struct set_window_info_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", offset=%d", req->offset );
-    fprintf( stderr, ", size=%u", req->size );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", offset=%d", req->offset );
+    TRACE_RAW( ", size=%u", req->size );
     dump_uint64( ", new_info=", &req->new_info );
 }
 
@@ -1764,93 +1764,93 @@ static void dump_set_window_info_reply( const struct set_window_info_reply *req 
 
 static void dump_set_parent_request( const struct set_parent_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", parent=%08x", req->parent );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", parent=%08x", req->parent );
 }
 
 static void dump_set_parent_reply( const struct set_parent_reply *req )
 {
-    fprintf( stderr, " old_parent=%08x", req->old_parent );
-    fprintf( stderr, ", full_parent=%08x", req->full_parent );
+    TRACE_RAW( " old_parent=%08x", req->old_parent );
+    TRACE_RAW( ", full_parent=%08x", req->full_parent );
 }
 
 static void dump_get_window_parents_request( const struct get_window_parents_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_get_window_parents_reply( const struct get_window_parents_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
     dump_varargs_user_handles( ", parents=", cur_size );
 }
 
 static void dump_get_window_list_request( const struct get_window_list_request *req )
 {
-    fprintf( stderr, " desktop=%04x", req->desktop );
-    fprintf( stderr, ", handle=%08x", req->handle );
-    fprintf( stderr, ", tid=%04x", req->tid );
-    fprintf( stderr, ", children=%d", req->children );
+    TRACE_RAW( " desktop=%04x", req->desktop );
+    TRACE_RAW( ", handle=%08x", req->handle );
+    TRACE_RAW( ", tid=%04x", req->tid );
+    TRACE_RAW( ", children=%d", req->children );
 }
 
 static void dump_get_window_list_reply( const struct get_window_list_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
     dump_varargs_user_handles( ", windows=", cur_size );
 }
 
 static void dump_get_class_windows_request( const struct get_class_windows_request *req )
 {
-    fprintf( stderr, " parent=%08x", req->parent );
-    fprintf( stderr, ", child=%08x", req->child );
-    fprintf( stderr, ", atom=%04x", req->atom );
+    TRACE_RAW( " parent=%08x", req->parent );
+    TRACE_RAW( ", child=%08x", req->child );
+    TRACE_RAW( ", atom=%04x", req->atom );
     dump_varargs_unicode_str( ", class=", cur_size );
 }
 
 static void dump_get_class_windows_reply( const struct get_class_windows_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
     dump_varargs_user_handles( ", children=", cur_size );
 }
 
 static void dump_get_window_children_from_point_request( const struct get_window_children_from_point_request *req )
 {
-    fprintf( stderr, " parent=%08x", req->parent );
-    fprintf( stderr, ", x=%d", req->x );
-    fprintf( stderr, ", y=%d", req->y );
-    fprintf( stderr, ", dpi=%d", req->dpi );
+    TRACE_RAW( " parent=%08x", req->parent );
+    TRACE_RAW( ", x=%d", req->x );
+    TRACE_RAW( ", y=%d", req->y );
+    TRACE_RAW( ", dpi=%d", req->dpi );
 }
 
 static void dump_get_window_children_from_point_reply( const struct get_window_children_from_point_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
     dump_varargs_user_handles( ", children=", cur_size );
 }
 
 static void dump_get_window_tree_request( const struct get_window_tree_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_get_window_tree_reply( const struct get_window_tree_reply *req )
 {
-    fprintf( stderr, " parent=%08x", req->parent );
-    fprintf( stderr, ", owner=%08x", req->owner );
-    fprintf( stderr, ", next_sibling=%08x", req->next_sibling );
-    fprintf( stderr, ", prev_sibling=%08x", req->prev_sibling );
-    fprintf( stderr, ", first_sibling=%08x", req->first_sibling );
-    fprintf( stderr, ", last_sibling=%08x", req->last_sibling );
-    fprintf( stderr, ", first_child=%08x", req->first_child );
-    fprintf( stderr, ", last_child=%08x", req->last_child );
+    TRACE_RAW( " parent=%08x", req->parent );
+    TRACE_RAW( ", owner=%08x", req->owner );
+    TRACE_RAW( ", next_sibling=%08x", req->next_sibling );
+    TRACE_RAW( ", prev_sibling=%08x", req->prev_sibling );
+    TRACE_RAW( ", first_sibling=%08x", req->first_sibling );
+    TRACE_RAW( ", last_sibling=%08x", req->last_sibling );
+    TRACE_RAW( ", first_child=%08x", req->first_child );
+    TRACE_RAW( ", last_child=%08x", req->last_child );
 }
 
 static void dump_set_window_pos_request( const struct set_window_pos_request *req )
 {
-    fprintf( stderr, " swp_flags=%04x", req->swp_flags );
-    fprintf( stderr, ", paint_flags=%04x", req->paint_flags );
-    fprintf( stderr, ", monitor_dpi=%08x", req->monitor_dpi );
-    fprintf( stderr, ", handle=%08x", req->handle );
-    fprintf( stderr, ", previous=%08x", req->previous );
+    TRACE_RAW( " swp_flags=%04x", req->swp_flags );
+    TRACE_RAW( ", paint_flags=%04x", req->paint_flags );
+    TRACE_RAW( ", monitor_dpi=%08x", req->monitor_dpi );
+    TRACE_RAW( ", handle=%08x", req->handle );
+    TRACE_RAW( ", previous=%08x", req->previous );
     dump_rectangle( ", window=", &req->window );
     dump_rectangle( ", client=", &req->client );
     dump_varargs_rectangles( ", valid=", cur_size );
@@ -1858,16 +1858,16 @@ static void dump_set_window_pos_request( const struct set_window_pos_request *re
 
 static void dump_set_window_pos_reply( const struct set_window_pos_reply *req )
 {
-    fprintf( stderr, " new_style=%08x", req->new_style );
-    fprintf( stderr, ", new_ex_style=%08x", req->new_ex_style );
-    fprintf( stderr, ", surface_win=%08x", req->surface_win );
+    TRACE_RAW( " new_style=%08x", req->new_style );
+    TRACE_RAW( ", new_ex_style=%08x", req->new_ex_style );
+    TRACE_RAW( ", surface_win=%08x", req->surface_win );
 }
 
 static void dump_get_window_rectangles_request( const struct get_window_rectangles_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", relative=%d", req->relative );
-    fprintf( stderr, ", dpi=%d", req->dpi );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", relative=%d", req->relative );
+    TRACE_RAW( ", dpi=%d", req->dpi );
 }
 
 static void dump_get_window_rectangles_reply( const struct get_window_rectangles_reply *req )
@@ -1878,111 +1878,111 @@ static void dump_get_window_rectangles_reply( const struct get_window_rectangles
 
 static void dump_get_window_text_request( const struct get_window_text_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_get_window_text_reply( const struct get_window_text_reply *req )
 {
-    fprintf( stderr, " length=%u", req->length );
+    TRACE_RAW( " length=%u", req->length );
     dump_varargs_unicode_str( ", text=", cur_size );
 }
 
 static void dump_set_window_text_request( const struct set_window_text_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
     dump_varargs_unicode_str( ", text=", cur_size );
 }
 
 static void dump_get_windows_offset_request( const struct get_windows_offset_request *req )
 {
-    fprintf( stderr, " from=%08x", req->from );
-    fprintf( stderr, ", to=%08x", req->to );
-    fprintf( stderr, ", dpi=%d", req->dpi );
+    TRACE_RAW( " from=%08x", req->from );
+    TRACE_RAW( ", to=%08x", req->to );
+    TRACE_RAW( ", dpi=%d", req->dpi );
 }
 
 static void dump_get_windows_offset_reply( const struct get_windows_offset_reply *req )
 {
-    fprintf( stderr, " x=%d", req->x );
-    fprintf( stderr, ", y=%d", req->y );
-    fprintf( stderr, ", mirror=%d", req->mirror );
+    TRACE_RAW( " x=%d", req->x );
+    TRACE_RAW( ", y=%d", req->y );
+    TRACE_RAW( ", mirror=%d", req->mirror );
 }
 
 static void dump_get_visible_region_request( const struct get_visible_region_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_get_visible_region_reply( const struct get_visible_region_reply *req )
 {
-    fprintf( stderr, " top_win=%08x", req->top_win );
+    TRACE_RAW( " top_win=%08x", req->top_win );
     dump_rectangle( ", top_rect=", &req->top_rect );
     dump_rectangle( ", win_rect=", &req->win_rect );
-    fprintf( stderr, ", paint_flags=%08x", req->paint_flags );
-    fprintf( stderr, ", total_size=%u", req->total_size );
+    TRACE_RAW( ", paint_flags=%08x", req->paint_flags );
+    TRACE_RAW( ", total_size=%u", req->total_size );
     dump_varargs_rectangles( ", region=", cur_size );
 }
 
 static void dump_get_window_region_request( const struct get_window_region_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", surface=%d", req->surface );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", surface=%d", req->surface );
 }
 
 static void dump_get_window_region_reply( const struct get_window_region_reply *req )
 {
     dump_rectangle( " visible_rect=", &req->visible_rect );
-    fprintf( stderr, ", total_size=%u", req->total_size );
+    TRACE_RAW( ", total_size=%u", req->total_size );
     dump_varargs_rectangles( ", region=", cur_size );
 }
 
 static void dump_set_window_region_request( const struct set_window_region_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", redraw=%d", req->redraw );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", redraw=%d", req->redraw );
     dump_varargs_rectangles( ", region=", cur_size );
 }
 
 static void dump_get_update_region_request( const struct get_update_region_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", from_child=%08x", req->from_child );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", from_child=%08x", req->from_child );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_get_update_region_reply( const struct get_update_region_reply *req )
 {
-    fprintf( stderr, " child=%08x", req->child );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", total_size=%u", req->total_size );
+    TRACE_RAW( " child=%08x", req->child );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", total_size=%u", req->total_size );
     dump_varargs_rectangles( ", region=", cur_size );
 }
 
 static void dump_update_window_zorder_request( const struct update_window_zorder_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
+    TRACE_RAW( " window=%08x", req->window );
     dump_rectangle( ", rect=", &req->rect );
 }
 
 static void dump_redraw_window_request( const struct redraw_window_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", flags=%08x", req->flags );
     dump_varargs_rectangles( ", region=", cur_size );
 }
 
 static void dump_set_window_property_request( const struct set_window_property_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
+    TRACE_RAW( " window=%08x", req->window );
     dump_uint64( ", data=", &req->data );
-    fprintf( stderr, ", atom=%04x", req->atom );
+    TRACE_RAW( ", atom=%04x", req->atom );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_remove_window_property_request( const struct remove_window_property_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", atom=%04x", req->atom );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", atom=%04x", req->atom );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
@@ -1993,8 +1993,8 @@ static void dump_remove_window_property_reply( const struct remove_window_proper
 
 static void dump_get_window_property_request( const struct get_window_property_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", atom=%04x", req->atom );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", atom=%04x", req->atom );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
@@ -2005,50 +2005,50 @@ static void dump_get_window_property_reply( const struct get_window_property_rep
 
 static void dump_get_window_properties_request( const struct get_window_properties_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
+    TRACE_RAW( " window=%08x", req->window );
 }
 
 static void dump_get_window_properties_reply( const struct get_window_properties_reply *req )
 {
-    fprintf( stderr, " total=%d", req->total );
+    TRACE_RAW( " total=%d", req->total );
     dump_varargs_properties( ", props=", cur_size );
 }
 
 static void dump_create_winstation_request( const struct create_winstation_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_create_winstation_reply( const struct create_winstation_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_winstation_request( const struct open_winstation_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_winstation_reply( const struct open_winstation_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_close_winstation_request( const struct close_winstation_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_winstation_monitors_request( const struct set_winstation_monitors_request *req )
 {
-    fprintf( stderr, " increment=%d", req->increment );
+    TRACE_RAW( " increment=%d", req->increment );
     dump_varargs_monitor_infos( ", infos=", cur_size );
 }
 
@@ -2063,89 +2063,89 @@ static void dump_get_process_winstation_request( const struct get_process_winsta
 
 static void dump_get_process_winstation_reply( const struct get_process_winstation_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_process_winstation_request( const struct set_process_winstation_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_enum_winstation_request( const struct enum_winstation_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_enum_winstation_reply( const struct enum_winstation_reply *req )
 {
-    fprintf( stderr, " count=%u", req->count );
-    fprintf( stderr, ", total=%u", req->total );
+    TRACE_RAW( " count=%u", req->count );
+    TRACE_RAW( ", total=%u", req->total );
     dump_varargs_unicode_strings( ", names=", cur_size );
 }
 
 static void dump_create_desktop_request( const struct create_desktop_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_create_desktop_reply( const struct create_desktop_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_desktop_request( const struct open_desktop_request *req )
 {
-    fprintf( stderr, " winsta=%04x", req->winsta );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " winsta=%04x", req->winsta );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_desktop_reply( const struct open_desktop_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_input_desktop_request( const struct open_input_desktop_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
 }
 
 static void dump_open_input_desktop_reply( const struct open_input_desktop_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_input_desktop_request( const struct set_input_desktop_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_close_desktop_request( const struct close_desktop_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_thread_desktop_request( const struct get_thread_desktop_request *req )
 {
-    fprintf( stderr, " tid=%04x", req->tid );
+    TRACE_RAW( " tid=%04x", req->tid );
 }
 
 static void dump_get_thread_desktop_reply( const struct get_thread_desktop_reply *req )
 {
     dump_obj_locator( " locator=", &req->locator );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_set_thread_desktop_request( const struct set_thread_desktop_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_thread_desktop_reply( const struct set_thread_desktop_reply *req )
@@ -2155,55 +2155,55 @@ static void dump_set_thread_desktop_reply( const struct set_thread_desktop_reply
 
 static void dump_set_user_object_info_request( const struct set_user_object_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", obj_flags=%08x", req->obj_flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", obj_flags=%08x", req->obj_flags );
 }
 
 static void dump_set_user_object_info_reply( const struct set_user_object_info_reply *req )
 {
-    fprintf( stderr, " is_desktop=%d", req->is_desktop );
-    fprintf( stderr, ", old_obj_flags=%08x", req->old_obj_flags );
+    TRACE_RAW( " is_desktop=%d", req->is_desktop );
+    TRACE_RAW( ", old_obj_flags=%08x", req->old_obj_flags );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_register_hotkey_request( const struct register_hotkey_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", id=%d", req->id );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", vkey=%08x", req->vkey );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", id=%d", req->id );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", vkey=%08x", req->vkey );
 }
 
 static void dump_register_hotkey_reply( const struct register_hotkey_reply *req )
 {
-    fprintf( stderr, " replaced=%d", req->replaced );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", vkey=%08x", req->vkey );
+    TRACE_RAW( " replaced=%d", req->replaced );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", vkey=%08x", req->vkey );
 }
 
 static void dump_unregister_hotkey_request( const struct unregister_hotkey_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", id=%d", req->id );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", id=%d", req->id );
 }
 
 static void dump_unregister_hotkey_reply( const struct unregister_hotkey_reply *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", vkey=%08x", req->vkey );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", vkey=%08x", req->vkey );
 }
 
 static void dump_attach_thread_input_request( const struct attach_thread_input_request *req )
 {
-    fprintf( stderr, " tid_from=%04x", req->tid_from );
-    fprintf( stderr, ", tid_to=%04x", req->tid_to );
-    fprintf( stderr, ", attach=%d", req->attach );
+    TRACE_RAW( " tid_from=%04x", req->tid_from );
+    TRACE_RAW( ", tid_to=%04x", req->tid_to );
+    TRACE_RAW( ", attach=%d", req->attach );
 }
 
 static void dump_get_thread_input_request( const struct get_thread_input_request *req )
 {
-    fprintf( stderr, " tid=%04x", req->tid );
+    TRACE_RAW( " tid=%04x", req->tid );
 }
 
 static void dump_get_thread_input_reply( const struct get_thread_input_reply *req )
@@ -2217,196 +2217,196 @@ static void dump_get_last_input_time_request( const struct get_last_input_time_r
 
 static void dump_get_last_input_time_reply( const struct get_last_input_time_reply *req )
 {
-    fprintf( stderr, " time=%08x", req->time );
+    TRACE_RAW( " time=%08x", req->time );
 }
 
 static void dump_get_key_state_request( const struct get_key_state_request *req )
 {
-    fprintf( stderr, " async=%d", req->async );
-    fprintf( stderr, ", key=%d", req->key );
+    TRACE_RAW( " async=%d", req->async );
+    TRACE_RAW( ", key=%d", req->key );
 }
 
 static void dump_get_key_state_reply( const struct get_key_state_reply *req )
 {
-    fprintf( stderr, " state=%02x", req->state );
+    TRACE_RAW( " state=%02x", req->state );
 }
 
 static void dump_set_key_state_request( const struct set_key_state_request *req )
 {
-    fprintf( stderr, " async=%d", req->async );
+    TRACE_RAW( " async=%d", req->async );
     dump_varargs_bytes( ", keystate=", cur_size );
 }
 
 static void dump_set_foreground_window_request( const struct set_foreground_window_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", internal=%d", req->internal );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", internal=%d", req->internal );
 }
 
 static void dump_set_foreground_window_reply( const struct set_foreground_window_reply *req )
 {
-    fprintf( stderr, " previous=%08x", req->previous );
-    fprintf( stderr, ", send_msg_old=%d", req->send_msg_old );
-    fprintf( stderr, ", send_msg_new=%d", req->send_msg_new );
+    TRACE_RAW( " previous=%08x", req->previous );
+    TRACE_RAW( ", send_msg_old=%d", req->send_msg_old );
+    TRACE_RAW( ", send_msg_new=%d", req->send_msg_new );
 }
 
 static void dump_set_focus_window_request( const struct set_focus_window_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_set_focus_window_reply( const struct set_focus_window_reply *req )
 {
-    fprintf( stderr, " previous=%08x", req->previous );
+    TRACE_RAW( " previous=%08x", req->previous );
 }
 
 static void dump_set_active_window_request( const struct set_active_window_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_set_active_window_reply( const struct set_active_window_reply *req )
 {
-    fprintf( stderr, " previous=%08x", req->previous );
+    TRACE_RAW( " previous=%08x", req->previous );
 }
 
 static void dump_set_capture_window_request( const struct set_capture_window_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_set_capture_window_reply( const struct set_capture_window_reply *req )
 {
-    fprintf( stderr, " previous=%08x", req->previous );
-    fprintf( stderr, ", full_handle=%08x", req->full_handle );
+    TRACE_RAW( " previous=%08x", req->previous );
+    TRACE_RAW( ", full_handle=%08x", req->full_handle );
 }
 
 static void dump_set_caret_window_request( const struct set_caret_window_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", width=%d", req->width );
-    fprintf( stderr, ", height=%d", req->height );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", width=%d", req->width );
+    TRACE_RAW( ", height=%d", req->height );
 }
 
 static void dump_set_caret_window_reply( const struct set_caret_window_reply *req )
 {
-    fprintf( stderr, " previous=%08x", req->previous );
+    TRACE_RAW( " previous=%08x", req->previous );
     dump_rectangle( ", old_rect=", &req->old_rect );
-    fprintf( stderr, ", old_hide=%d", req->old_hide );
-    fprintf( stderr, ", old_state=%d", req->old_state );
+    TRACE_RAW( ", old_hide=%d", req->old_hide );
+    TRACE_RAW( ", old_state=%d", req->old_state );
 }
 
 static void dump_set_caret_info_request( const struct set_caret_info_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", handle=%08x", req->handle );
-    fprintf( stderr, ", x=%d", req->x );
-    fprintf( stderr, ", y=%d", req->y );
-    fprintf( stderr, ", hide=%d", req->hide );
-    fprintf( stderr, ", state=%d", req->state );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", handle=%08x", req->handle );
+    TRACE_RAW( ", x=%d", req->x );
+    TRACE_RAW( ", y=%d", req->y );
+    TRACE_RAW( ", hide=%d", req->hide );
+    TRACE_RAW( ", state=%d", req->state );
 }
 
 static void dump_set_caret_info_reply( const struct set_caret_info_reply *req )
 {
-    fprintf( stderr, " full_handle=%08x", req->full_handle );
+    TRACE_RAW( " full_handle=%08x", req->full_handle );
     dump_rectangle( ", old_rect=", &req->old_rect );
-    fprintf( stderr, ", old_hide=%d", req->old_hide );
-    fprintf( stderr, ", old_state=%d", req->old_state );
+    TRACE_RAW( ", old_hide=%d", req->old_hide );
+    TRACE_RAW( ", old_state=%d", req->old_state );
 }
 
 static void dump_set_hook_request( const struct set_hook_request *req )
 {
-    fprintf( stderr, " id=%d", req->id );
-    fprintf( stderr, ", pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
-    fprintf( stderr, ", event_min=%d", req->event_min );
-    fprintf( stderr, ", event_max=%d", req->event_max );
+    TRACE_RAW( " id=%d", req->id );
+    TRACE_RAW( ", pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
+    TRACE_RAW( ", event_min=%d", req->event_min );
+    TRACE_RAW( ", event_max=%d", req->event_max );
     dump_uint64( ", proc=", &req->proc );
-    fprintf( stderr, ", flags=%d", req->flags );
-    fprintf( stderr, ", unicode=%d", req->unicode );
+    TRACE_RAW( ", flags=%d", req->flags );
+    TRACE_RAW( ", unicode=%d", req->unicode );
     dump_varargs_unicode_str( ", module=", cur_size );
 }
 
 static void dump_set_hook_reply( const struct set_hook_reply *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_remove_hook_request( const struct remove_hook_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
     dump_uint64( ", proc=", &req->proc );
-    fprintf( stderr, ", id=%d", req->id );
+    TRACE_RAW( ", id=%d", req->id );
 }
 
 static void dump_start_hook_chain_request( const struct start_hook_chain_request *req )
 {
-    fprintf( stderr, " id=%d", req->id );
-    fprintf( stderr, ", event=%d", req->event );
-    fprintf( stderr, ", window=%08x", req->window );
-    fprintf( stderr, ", object_id=%d", req->object_id );
-    fprintf( stderr, ", child_id=%d", req->child_id );
+    TRACE_RAW( " id=%d", req->id );
+    TRACE_RAW( ", event=%d", req->event );
+    TRACE_RAW( ", window=%08x", req->window );
+    TRACE_RAW( ", object_id=%d", req->object_id );
+    TRACE_RAW( ", child_id=%d", req->child_id );
 }
 
 static void dump_start_hook_chain_reply( const struct start_hook_chain_reply *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
-    fprintf( stderr, ", unicode=%d", req->unicode );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
+    TRACE_RAW( ", unicode=%d", req->unicode );
     dump_uint64( ", proc=", &req->proc );
     dump_varargs_unicode_str( ", module=", cur_size );
 }
 
 static void dump_finish_hook_chain_request( const struct finish_hook_chain_request *req )
 {
-    fprintf( stderr, " id=%d", req->id );
+    TRACE_RAW( " id=%d", req->id );
 }
 
 static void dump_get_hook_info_request( const struct get_hook_info_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", get_next=%d", req->get_next );
-    fprintf( stderr, ", event=%d", req->event );
-    fprintf( stderr, ", window=%08x", req->window );
-    fprintf( stderr, ", object_id=%d", req->object_id );
-    fprintf( stderr, ", child_id=%d", req->child_id );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", get_next=%d", req->get_next );
+    TRACE_RAW( ", event=%d", req->event );
+    TRACE_RAW( ", window=%08x", req->window );
+    TRACE_RAW( ", object_id=%d", req->object_id );
+    TRACE_RAW( ", child_id=%d", req->child_id );
 }
 
 static void dump_get_hook_info_reply( const struct get_hook_info_reply *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", id=%d", req->id );
-    fprintf( stderr, ", pid=%04x", req->pid );
-    fprintf( stderr, ", tid=%04x", req->tid );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", id=%d", req->id );
+    TRACE_RAW( ", pid=%04x", req->pid );
+    TRACE_RAW( ", tid=%04x", req->tid );
     dump_uint64( ", proc=", &req->proc );
-    fprintf( stderr, ", unicode=%d", req->unicode );
+    TRACE_RAW( ", unicode=%d", req->unicode );
     dump_varargs_unicode_str( ", module=", cur_size );
 }
 
 static void dump_create_class_request( const struct create_class_request *req )
 {
-    fprintf( stderr, " local=%d", req->local );
-    fprintf( stderr, ", atom=%04x", req->atom );
-    fprintf( stderr, ", style=%08x", req->style );
+    TRACE_RAW( " local=%d", req->local );
+    TRACE_RAW( ", atom=%04x", req->atom );
+    TRACE_RAW( ", style=%08x", req->style );
     dump_uint64( ", instance=", &req->instance );
     dump_uint64( ", client_ptr=", &req->client_ptr );
-    fprintf( stderr, ", cls_extra=%d", req->cls_extra );
-    fprintf( stderr, ", win_extra=%d", req->win_extra );
-    fprintf( stderr, ", name_offset=%u", req->name_offset );
+    TRACE_RAW( ", cls_extra=%d", req->cls_extra );
+    TRACE_RAW( ", win_extra=%d", req->win_extra );
+    TRACE_RAW( ", name_offset=%u", req->name_offset );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_create_class_reply( const struct create_class_reply *req )
 {
     dump_obj_locator( " locator=", &req->locator );
-    fprintf( stderr, ", atom=%04x", req->atom );
+    TRACE_RAW( ", atom=%04x", req->atom );
 }
 
 static void dump_destroy_class_request( const struct destroy_class_request *req )
 {
-    fprintf( stderr, " atom=%04x", req->atom );
+    TRACE_RAW( " atom=%04x", req->atom );
     dump_uint64( ", instance=", &req->instance );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
@@ -2418,9 +2418,9 @@ static void dump_destroy_class_reply( const struct destroy_class_reply *req )
 
 static void dump_set_class_info_request( const struct set_class_info_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", offset=%d", req->offset );
-    fprintf( stderr, ", size=%u", req->size );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", offset=%d", req->offset );
+    TRACE_RAW( ", size=%u", req->size );
     dump_uint64( ", new_info=", &req->new_info );
 }
 
@@ -2431,9 +2431,9 @@ static void dump_set_class_info_reply( const struct set_class_info_reply *req )
 
 static void dump_get_class_info_request( const struct get_class_info_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", offset=%d", req->offset );
-    fprintf( stderr, ", size=%u", req->size );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", offset=%d", req->offset );
+    TRACE_RAW( ", size=%u", req->size );
 }
 
 static void dump_get_class_info_reply( const struct get_class_info_reply *req )
@@ -2443,12 +2443,12 @@ static void dump_get_class_info_reply( const struct get_class_info_reply *req )
 
 static void dump_open_clipboard_request( const struct open_clipboard_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
+    TRACE_RAW( " window=%08x", req->window );
 }
 
 static void dump_open_clipboard_reply( const struct open_clipboard_reply *req )
 {
-    fprintf( stderr, " owner=%08x", req->owner );
+    TRACE_RAW( " owner=%08x", req->owner );
 }
 
 static void dump_close_clipboard_request( const struct close_clipboard_request *req )
@@ -2457,8 +2457,8 @@ static void dump_close_clipboard_request( const struct close_clipboard_request *
 
 static void dump_close_clipboard_reply( const struct close_clipboard_reply *req )
 {
-    fprintf( stderr, " viewer=%08x", req->viewer );
-    fprintf( stderr, ", owner=%08x", req->owner );
+    TRACE_RAW( " viewer=%08x", req->viewer );
+    TRACE_RAW( ", owner=%08x", req->owner );
 }
 
 static void dump_empty_clipboard_request( const struct empty_clipboard_request *req )
@@ -2467,63 +2467,63 @@ static void dump_empty_clipboard_request( const struct empty_clipboard_request *
 
 static void dump_set_clipboard_data_request( const struct set_clipboard_data_request *req )
 {
-    fprintf( stderr, " format=%08x", req->format );
-    fprintf( stderr, ", lcid=%08x", req->lcid );
+    TRACE_RAW( " format=%08x", req->format );
+    TRACE_RAW( ", lcid=%08x", req->lcid );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_set_clipboard_data_reply( const struct set_clipboard_data_reply *req )
 {
-    fprintf( stderr, " seqno=%08x", req->seqno );
+    TRACE_RAW( " seqno=%08x", req->seqno );
 }
 
 static void dump_get_clipboard_data_request( const struct get_clipboard_data_request *req )
 {
-    fprintf( stderr, " format=%08x", req->format );
-    fprintf( stderr, ", render=%d", req->render );
-    fprintf( stderr, ", cached=%d", req->cached );
-    fprintf( stderr, ", seqno=%08x", req->seqno );
+    TRACE_RAW( " format=%08x", req->format );
+    TRACE_RAW( ", render=%d", req->render );
+    TRACE_RAW( ", cached=%d", req->cached );
+    TRACE_RAW( ", seqno=%08x", req->seqno );
 }
 
 static void dump_get_clipboard_data_reply( const struct get_clipboard_data_reply *req )
 {
-    fprintf( stderr, " from=%08x", req->from );
-    fprintf( stderr, ", owner=%08x", req->owner );
-    fprintf( stderr, ", seqno=%08x", req->seqno );
-    fprintf( stderr, ", total=%u", req->total );
+    TRACE_RAW( " from=%08x", req->from );
+    TRACE_RAW( ", owner=%08x", req->owner );
+    TRACE_RAW( ", seqno=%08x", req->seqno );
+    TRACE_RAW( ", total=%u", req->total );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_get_clipboard_formats_request( const struct get_clipboard_formats_request *req )
 {
-    fprintf( stderr, " format=%08x", req->format );
+    TRACE_RAW( " format=%08x", req->format );
 }
 
 static void dump_get_clipboard_formats_reply( const struct get_clipboard_formats_reply *req )
 {
-    fprintf( stderr, " count=%08x", req->count );
+    TRACE_RAW( " count=%08x", req->count );
     dump_varargs_uints( ", formats=", cur_size );
 }
 
 static void dump_enum_clipboard_formats_request( const struct enum_clipboard_formats_request *req )
 {
-    fprintf( stderr, " previous=%08x", req->previous );
+    TRACE_RAW( " previous=%08x", req->previous );
 }
 
 static void dump_enum_clipboard_formats_reply( const struct enum_clipboard_formats_reply *req )
 {
-    fprintf( stderr, " format=%08x", req->format );
+    TRACE_RAW( " format=%08x", req->format );
 }
 
 static void dump_release_clipboard_request( const struct release_clipboard_request *req )
 {
-    fprintf( stderr, " owner=%08x", req->owner );
+    TRACE_RAW( " owner=%08x", req->owner );
 }
 
 static void dump_release_clipboard_reply( const struct release_clipboard_reply *req )
 {
-    fprintf( stderr, " viewer=%08x", req->viewer );
-    fprintf( stderr, ", owner=%08x", req->owner );
+    TRACE_RAW( " viewer=%08x", req->viewer );
+    TRACE_RAW( ", owner=%08x", req->owner );
 }
 
 static void dump_get_clipboard_info_request( const struct get_clipboard_info_request *req )
@@ -2532,222 +2532,222 @@ static void dump_get_clipboard_info_request( const struct get_clipboard_info_req
 
 static void dump_get_clipboard_info_reply( const struct get_clipboard_info_reply *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
-    fprintf( stderr, ", owner=%08x", req->owner );
-    fprintf( stderr, ", viewer=%08x", req->viewer );
-    fprintf( stderr, ", seqno=%08x", req->seqno );
+    TRACE_RAW( " window=%08x", req->window );
+    TRACE_RAW( ", owner=%08x", req->owner );
+    TRACE_RAW( ", viewer=%08x", req->viewer );
+    TRACE_RAW( ", seqno=%08x", req->seqno );
 }
 
 static void dump_set_clipboard_viewer_request( const struct set_clipboard_viewer_request *req )
 {
-    fprintf( stderr, " viewer=%08x", req->viewer );
-    fprintf( stderr, ", previous=%08x", req->previous );
+    TRACE_RAW( " viewer=%08x", req->viewer );
+    TRACE_RAW( ", previous=%08x", req->previous );
 }
 
 static void dump_set_clipboard_viewer_reply( const struct set_clipboard_viewer_reply *req )
 {
-    fprintf( stderr, " old_viewer=%08x", req->old_viewer );
-    fprintf( stderr, ", owner=%08x", req->owner );
+    TRACE_RAW( " old_viewer=%08x", req->old_viewer );
+    TRACE_RAW( ", owner=%08x", req->owner );
 }
 
 static void dump_add_clipboard_listener_request( const struct add_clipboard_listener_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
+    TRACE_RAW( " window=%08x", req->window );
 }
 
 static void dump_remove_clipboard_listener_request( const struct remove_clipboard_listener_request *req )
 {
-    fprintf( stderr, " window=%08x", req->window );
+    TRACE_RAW( " window=%08x", req->window );
 }
 
 static void dump_create_token_request( const struct create_token_request *req )
 {
     dump_luid( " token_id=", &req->token_id );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", primary=%d", req->primary );
-    fprintf( stderr, ", impersonation_level=%d", req->impersonation_level );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", primary=%d", req->primary );
+    TRACE_RAW( ", impersonation_level=%d", req->impersonation_level );
     dump_abstime( ", expire=", &req->expire );
-    fprintf( stderr, ", group_count=%d", req->group_count );
-    fprintf( stderr, ", primary_group=%d", req->primary_group );
-    fprintf( stderr, ", priv_count=%d", req->priv_count );
+    TRACE_RAW( ", group_count=%d", req->group_count );
+    TRACE_RAW( ", primary_group=%d", req->primary_group );
+    TRACE_RAW( ", priv_count=%d", req->priv_count );
 }
 
 static void dump_create_token_reply( const struct create_token_reply *req )
 {
-    fprintf( stderr, " token=%04x", req->token );
+    TRACE_RAW( " token=%04x", req->token );
 }
 
 static void dump_open_token_request( const struct open_token_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_open_token_reply( const struct open_token_reply *req )
 {
-    fprintf( stderr, " token=%04x", req->token );
+    TRACE_RAW( " token=%04x", req->token );
 }
 
 static void dump_set_desktop_shell_windows_request( const struct set_desktop_shell_windows_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", shell_window=%08x", req->shell_window );
-    fprintf( stderr, ", shell_listview=%08x", req->shell_listview );
-    fprintf( stderr, ", progman_window=%08x", req->progman_window );
-    fprintf( stderr, ", taskman_window=%08x", req->taskman_window );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", shell_window=%08x", req->shell_window );
+    TRACE_RAW( ", shell_listview=%08x", req->shell_listview );
+    TRACE_RAW( ", progman_window=%08x", req->progman_window );
+    TRACE_RAW( ", taskman_window=%08x", req->taskman_window );
 }
 
 static void dump_set_desktop_shell_windows_reply( const struct set_desktop_shell_windows_reply *req )
 {
-    fprintf( stderr, " old_shell_window=%08x", req->old_shell_window );
-    fprintf( stderr, ", old_shell_listview=%08x", req->old_shell_listview );
-    fprintf( stderr, ", old_progman_window=%08x", req->old_progman_window );
-    fprintf( stderr, ", old_taskman_window=%08x", req->old_taskman_window );
+    TRACE_RAW( " old_shell_window=%08x", req->old_shell_window );
+    TRACE_RAW( ", old_shell_listview=%08x", req->old_shell_listview );
+    TRACE_RAW( ", old_progman_window=%08x", req->old_progman_window );
+    TRACE_RAW( ", old_taskman_window=%08x", req->old_taskman_window );
 }
 
 static void dump_adjust_token_privileges_request( const struct adjust_token_privileges_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", disable_all=%d", req->disable_all );
-    fprintf( stderr, ", get_modified_state=%d", req->get_modified_state );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", disable_all=%d", req->disable_all );
+    TRACE_RAW( ", get_modified_state=%d", req->get_modified_state );
     dump_varargs_luid_attr( ", privileges=", cur_size );
 }
 
 static void dump_adjust_token_privileges_reply( const struct adjust_token_privileges_reply *req )
 {
-    fprintf( stderr, " len=%08x", req->len );
+    TRACE_RAW( " len=%08x", req->len );
     dump_varargs_luid_attr( ", privileges=", cur_size );
 }
 
 static void dump_get_token_privileges_request( const struct get_token_privileges_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_token_privileges_reply( const struct get_token_privileges_reply *req )
 {
-    fprintf( stderr, " len=%08x", req->len );
+    TRACE_RAW( " len=%08x", req->len );
     dump_varargs_luid_attr( ", privileges=", cur_size );
 }
 
 static void dump_check_token_privileges_request( const struct check_token_privileges_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", all_required=%d", req->all_required );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", all_required=%d", req->all_required );
     dump_varargs_luid_attr( ", privileges=", cur_size );
 }
 
 static void dump_check_token_privileges_reply( const struct check_token_privileges_reply *req )
 {
-    fprintf( stderr, " has_privileges=%d", req->has_privileges );
+    TRACE_RAW( " has_privileges=%d", req->has_privileges );
     dump_varargs_luid_attr( ", privileges=", cur_size );
 }
 
 static void dump_duplicate_token_request( const struct duplicate_token_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", primary=%d", req->primary );
-    fprintf( stderr, ", impersonation_level=%d", req->impersonation_level );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", primary=%d", req->primary );
+    TRACE_RAW( ", impersonation_level=%d", req->impersonation_level );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_duplicate_token_reply( const struct duplicate_token_reply *req )
 {
-    fprintf( stderr, " new_handle=%04x", req->new_handle );
+    TRACE_RAW( " new_handle=%04x", req->new_handle );
 }
 
 static void dump_filter_token_request( const struct filter_token_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%08x", req->flags );
-    fprintf( stderr, ", privileges_size=%u", req->privileges_size );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%08x", req->flags );
+    TRACE_RAW( ", privileges_size=%u", req->privileges_size );
     dump_varargs_luid_attr( ", privileges=", min( cur_size, req->privileges_size ));
     dump_varargs_sid( ", disable_sids=", cur_size );
 }
 
 static void dump_filter_token_reply( const struct filter_token_reply *req )
 {
-    fprintf( stderr, " new_handle=%04x", req->new_handle );
+    TRACE_RAW( " new_handle=%04x", req->new_handle );
 }
 
 static void dump_access_check_request( const struct access_check_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", desired_access=%08x", req->desired_access );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", desired_access=%08x", req->desired_access );
     dump_generic_map( ", mapping=", &req->mapping );
     dump_varargs_security_descriptor( ", sd=", cur_size );
 }
 
 static void dump_access_check_reply( const struct access_check_reply *req )
 {
-    fprintf( stderr, " access_granted=%08x", req->access_granted );
-    fprintf( stderr, ", access_status=%08x", req->access_status );
-    fprintf( stderr, ", privileges_len=%08x", req->privileges_len );
+    TRACE_RAW( " access_granted=%08x", req->access_granted );
+    TRACE_RAW( ", access_status=%08x", req->access_status );
+    TRACE_RAW( ", privileges_len=%08x", req->privileges_len );
     dump_varargs_luid_attr( ", privileges=", cur_size );
 }
 
 static void dump_get_token_sid_request( const struct get_token_sid_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", which_sid=%08x", req->which_sid );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", which_sid=%08x", req->which_sid );
 }
 
 static void dump_get_token_sid_reply( const struct get_token_sid_reply *req )
 {
-    fprintf( stderr, " sid_len=%u", req->sid_len );
+    TRACE_RAW( " sid_len=%u", req->sid_len );
     dump_varargs_sid( ", sid=", cur_size );
 }
 
 static void dump_get_token_groups_request( const struct get_token_groups_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", attr_mask=%08x", req->attr_mask );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", attr_mask=%08x", req->attr_mask );
 }
 
 static void dump_get_token_groups_reply( const struct get_token_groups_reply *req )
 {
-    fprintf( stderr, " attr_len=%u", req->attr_len );
-    fprintf( stderr, ", sid_len=%u", req->sid_len );
+    TRACE_RAW( " attr_len=%u", req->attr_len );
+    TRACE_RAW( ", sid_len=%u", req->sid_len );
     dump_varargs_uints( ", attrs=", min( cur_size, req->attr_len ));
     dump_varargs_sids( ", sids=", cur_size );
 }
 
 static void dump_get_token_default_dacl_request( const struct get_token_default_dacl_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_token_default_dacl_reply( const struct get_token_default_dacl_reply *req )
 {
-    fprintf( stderr, " acl_len=%u", req->acl_len );
+    TRACE_RAW( " acl_len=%u", req->acl_len );
     dump_varargs_acl( ", acl=", cur_size );
 }
 
 static void dump_set_token_default_dacl_request( const struct set_token_default_dacl_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_varargs_acl( ", acl=", cur_size );
 }
 
 static void dump_set_security_object_request( const struct set_security_object_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", security_info=%08x", req->security_info );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", security_info=%08x", req->security_info );
     dump_varargs_security_descriptor( ", sd=", cur_size );
 }
 
 static void dump_get_security_object_request( const struct get_security_object_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", security_info=%08x", req->security_info );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", security_info=%08x", req->security_info );
 }
 
 static void dump_get_security_object_reply( const struct get_security_object_reply *req )
 {
-    fprintf( stderr, " sd_len=%08x", req->sd_len );
+    TRACE_RAW( " sd_len=%08x", req->sd_len );
     dump_varargs_security_descriptor( ", sd=", cur_size );
 }
 
@@ -2757,18 +2757,18 @@ static void dump_get_system_handles_request( const struct get_system_handles_req
 
 static void dump_get_system_handles_reply( const struct get_system_handles_reply *req )
 {
-    fprintf( stderr, " count=%08x", req->count );
+    TRACE_RAW( " count=%08x", req->count );
     dump_varargs_handle_infos( ", data=", cur_size );
 }
 
 static void dump_get_tcp_connections_request( const struct get_tcp_connections_request *req )
 {
-    fprintf( stderr, " state_filter=%08x", req->state_filter );
+    TRACE_RAW( " state_filter=%08x", req->state_filter );
 }
 
 static void dump_get_tcp_connections_reply( const struct get_tcp_connections_reply *req )
 {
-    fprintf( stderr, " count=%08x", req->count );
+    TRACE_RAW( " count=%08x", req->count );
     dump_varargs_tcp_connections( ", connections=", cur_size );
 }
 
@@ -2778,137 +2778,137 @@ static void dump_get_udp_endpoints_request( const struct get_udp_endpoints_reque
 
 static void dump_get_udp_endpoints_reply( const struct get_udp_endpoints_reply *req )
 {
-    fprintf( stderr, " count=%08x", req->count );
+    TRACE_RAW( " count=%08x", req->count );
     dump_varargs_udp_endpoints( ", endpoints=", cur_size );
 }
 
 static void dump_create_mailslot_request( const struct create_mailslot_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", options=%08x", req->options );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", options=%08x", req->options );
     dump_timeout( ", read_timeout=", &req->read_timeout );
-    fprintf( stderr, ", max_msgsize=%08x", req->max_msgsize );
+    TRACE_RAW( ", max_msgsize=%08x", req->max_msgsize );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_mailslot_reply( const struct create_mailslot_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_mailslot_info_request( const struct set_mailslot_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_timeout( ", read_timeout=", &req->read_timeout );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_set_mailslot_info_reply( const struct set_mailslot_info_reply *req )
 {
     dump_timeout( " read_timeout=", &req->read_timeout );
-    fprintf( stderr, ", max_msgsize=%08x", req->max_msgsize );
+    TRACE_RAW( ", max_msgsize=%08x", req->max_msgsize );
 }
 
 static void dump_create_directory_request( const struct create_directory_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
+    TRACE_RAW( " access=%08x", req->access );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_directory_reply( const struct create_directory_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_directory_request( const struct open_directory_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", directory_name=", cur_size );
 }
 
 static void dump_open_directory_reply( const struct open_directory_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_directory_entries_request( const struct get_directory_entries_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", index=%08x", req->index );
-    fprintf( stderr, ", max_count=%08x", req->max_count );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", index=%08x", req->index );
+    TRACE_RAW( ", max_count=%08x", req->max_count );
 }
 
 static void dump_get_directory_entries_reply( const struct get_directory_entries_reply *req )
 {
-    fprintf( stderr, " total_len=%u", req->total_len );
-    fprintf( stderr, ", count=%08x", req->count );
+    TRACE_RAW( " total_len=%u", req->total_len );
+    TRACE_RAW( ", count=%08x", req->count );
     dump_varargs_directory_entries( ", entries=", cur_size );
 }
 
 static void dump_create_symlink_request( const struct create_symlink_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
+    TRACE_RAW( " access=%08x", req->access );
     dump_varargs_object_attributes( ", objattr=", cur_size );
     dump_varargs_unicode_str( ", target_name=", cur_size );
 }
 
 static void dump_create_symlink_reply( const struct create_symlink_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_symlink_request( const struct open_symlink_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_symlink_reply( const struct open_symlink_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_symlink_request( const struct query_symlink_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_symlink_reply( const struct query_symlink_reply *req )
 {
-    fprintf( stderr, " total=%u", req->total );
+    TRACE_RAW( " total=%u", req->total );
     dump_varargs_unicode_str( ", target_name=", cur_size );
 }
 
 static void dump_get_object_info_request( const struct get_object_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_object_info_reply( const struct get_object_info_reply *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", ref_count=%08x", req->ref_count );
-    fprintf( stderr, ", handle_count=%08x", req->handle_count );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", ref_count=%08x", req->ref_count );
+    TRACE_RAW( ", handle_count=%08x", req->handle_count );
 }
 
 static void dump_get_object_name_request( const struct get_object_name_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_object_name_reply( const struct get_object_name_reply *req )
 {
-    fprintf( stderr, " total=%u", req->total );
+    TRACE_RAW( " total=%u", req->total );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_get_object_type_request( const struct get_object_type_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_object_type_reply( const struct get_object_type_reply *req )
@@ -2922,7 +2922,7 @@ static void dump_get_object_types_request( const struct get_object_types_request
 
 static void dump_get_object_types_reply( const struct get_object_types_reply *req )
 {
-    fprintf( stderr, " count=%d", req->count );
+    TRACE_RAW( " count=%d", req->count );
     dump_varargs_object_types_info( ", info=", cur_size );
 }
 
@@ -2937,55 +2937,55 @@ static void dump_allocate_locally_unique_id_reply( const struct allocate_locally
 
 static void dump_create_device_manager_request( const struct create_device_manager_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
 }
 
 static void dump_create_device_manager_reply( const struct create_device_manager_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_create_device_request( const struct create_device_request *req )
 {
-    fprintf( stderr, " rootdir=%04x", req->rootdir );
+    TRACE_RAW( " rootdir=%04x", req->rootdir );
     dump_uint64( ", user_ptr=", &req->user_ptr );
-    fprintf( stderr, ", manager=%04x", req->manager );
+    TRACE_RAW( ", manager=%04x", req->manager );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_delete_device_request( const struct delete_device_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
+    TRACE_RAW( " manager=%04x", req->manager );
     dump_uint64( ", device=", &req->device );
 }
 
 static void dump_get_next_device_request_request( const struct get_next_device_request_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
-    fprintf( stderr, ", prev=%04x", req->prev );
-    fprintf( stderr, ", status=%08x", req->status );
+    TRACE_RAW( " manager=%04x", req->manager );
+    TRACE_RAW( ", prev=%04x", req->prev );
+    TRACE_RAW( ", status=%08x", req->status );
     dump_uint64( ", user_ptr=", &req->user_ptr );
-    fprintf( stderr, ", pending=%d", req->pending );
-    fprintf( stderr, ", iosb_status=%08x", req->iosb_status );
-    fprintf( stderr, ", result=%u", req->result );
+    TRACE_RAW( ", pending=%d", req->pending );
+    TRACE_RAW( ", iosb_status=%08x", req->iosb_status );
+    TRACE_RAW( ", result=%u", req->result );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
 static void dump_get_next_device_request_reply( const struct get_next_device_request_reply *req )
 {
     dump_irp_params( " params=", &req->params );
-    fprintf( stderr, ", next=%04x", req->next );
-    fprintf( stderr, ", client_tid=%04x", req->client_tid );
+    TRACE_RAW( ", next=%04x", req->next );
+    TRACE_RAW( ", client_tid=%04x", req->client_tid );
     dump_uint64( ", client_thread=", &req->client_thread );
-    fprintf( stderr, ", in_size=%u", req->in_size );
+    TRACE_RAW( ", in_size=%u", req->in_size );
     dump_varargs_bytes( ", next_data=", cur_size );
 }
 
 static void dump_get_kernel_object_ptr_request( const struct get_kernel_object_ptr_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " manager=%04x", req->manager );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_get_kernel_object_ptr_reply( const struct get_kernel_object_ptr_reply *req )
@@ -2995,117 +2995,117 @@ static void dump_get_kernel_object_ptr_reply( const struct get_kernel_object_ptr
 
 static void dump_set_kernel_object_ptr_request( const struct set_kernel_object_ptr_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " manager=%04x", req->manager );
+    TRACE_RAW( ", handle=%04x", req->handle );
     dump_uint64( ", user_ptr=", &req->user_ptr );
 }
 
 static void dump_grab_kernel_object_request( const struct grab_kernel_object_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
+    TRACE_RAW( " manager=%04x", req->manager );
     dump_uint64( ", user_ptr=", &req->user_ptr );
 }
 
 static void dump_release_kernel_object_request( const struct release_kernel_object_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
+    TRACE_RAW( " manager=%04x", req->manager );
     dump_uint64( ", user_ptr=", &req->user_ptr );
 }
 
 static void dump_get_kernel_object_handle_request( const struct get_kernel_object_handle_request *req )
 {
-    fprintf( stderr, " manager=%04x", req->manager );
+    TRACE_RAW( " manager=%04x", req->manager );
     dump_uint64( ", user_ptr=", &req->user_ptr );
-    fprintf( stderr, ", access=%08x", req->access );
+    TRACE_RAW( ", access=%08x", req->access );
 }
 
 static void dump_get_kernel_object_handle_reply( const struct get_kernel_object_handle_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_make_process_system_request( const struct make_process_system_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_make_process_system_reply( const struct make_process_system_reply *req )
 {
-    fprintf( stderr, " event=%04x", req->event );
+    TRACE_RAW( " event=%04x", req->event );
 }
 
 static void dump_grant_process_admin_token_request( const struct grant_process_admin_token_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_token_info_request( const struct get_token_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_token_info_reply( const struct get_token_info_reply *req )
 {
     dump_luid( " token_id=", &req->token_id );
     dump_luid( ", modified_id=", &req->modified_id );
-    fprintf( stderr, ", session_id=%08x", req->session_id );
-    fprintf( stderr, ", primary=%d", req->primary );
-    fprintf( stderr, ", impersonation_level=%d", req->impersonation_level );
-    fprintf( stderr, ", elevation_type=%d", req->elevation_type );
-    fprintf( stderr, ", is_elevated=%d", req->is_elevated );
-    fprintf( stderr, ", group_count=%d", req->group_count );
-    fprintf( stderr, ", privilege_count=%d", req->privilege_count );
+    TRACE_RAW( ", session_id=%08x", req->session_id );
+    TRACE_RAW( ", primary=%d", req->primary );
+    TRACE_RAW( ", impersonation_level=%d", req->impersonation_level );
+    TRACE_RAW( ", elevation_type=%d", req->elevation_type );
+    TRACE_RAW( ", is_elevated=%d", req->is_elevated );
+    TRACE_RAW( ", group_count=%d", req->group_count );
+    TRACE_RAW( ", privilege_count=%d", req->privilege_count );
 }
 
 static void dump_create_linked_token_request( const struct create_linked_token_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_create_linked_token_reply( const struct create_linked_token_reply *req )
 {
-    fprintf( stderr, " linked=%04x", req->linked );
+    TRACE_RAW( " linked=%04x", req->linked );
 }
 
 static void dump_create_completion_request( const struct create_completion_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", concurrent=%08x", req->concurrent );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", concurrent=%08x", req->concurrent );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_completion_reply( const struct create_completion_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_completion_request( const struct open_completion_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", filename=", cur_size );
 }
 
 static void dump_open_completion_reply( const struct open_completion_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_add_completion_request( const struct add_completion_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", ckey=", &req->ckey );
     dump_uint64( ", cvalue=", &req->cvalue );
     dump_uint64( ", information=", &req->information );
-    fprintf( stderr, ", reserve_handle=%04x", req->reserve_handle );
-    fprintf( stderr, ", status=%08x", req->status );
+    TRACE_RAW( ", reserve_handle=%04x", req->reserve_handle );
+    TRACE_RAW( ", status=%08x", req->status );
 }
 
 static void dump_remove_completion_request( const struct remove_completion_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", alertable=%d", req->alertable );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", alertable=%d", req->alertable );
 }
 
 static void dump_remove_completion_reply( const struct remove_completion_reply *req )
@@ -3113,8 +3113,8 @@ static void dump_remove_completion_reply( const struct remove_completion_reply *
     dump_uint64( " ckey=", &req->ckey );
     dump_uint64( ", cvalue=", &req->cvalue );
     dump_uint64( ", information=", &req->information );
-    fprintf( stderr, ", status=%08x", req->status );
-    fprintf( stderr, ", wait_handle=%04x", req->wait_handle );
+    TRACE_RAW( ", status=%08x", req->status );
+    TRACE_RAW( ", wait_handle=%04x", req->wait_handle );
 }
 
 static void dump_get_thread_completion_request( const struct get_thread_completion_request *req )
@@ -3126,120 +3126,120 @@ static void dump_get_thread_completion_reply( const struct get_thread_completion
     dump_uint64( " ckey=", &req->ckey );
     dump_uint64( ", cvalue=", &req->cvalue );
     dump_uint64( ", information=", &req->information );
-    fprintf( stderr, ", status=%08x", req->status );
+    TRACE_RAW( ", status=%08x", req->status );
 }
 
 static void dump_query_completion_request( const struct query_completion_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_query_completion_reply( const struct query_completion_reply *req )
 {
-    fprintf( stderr, " depth=%08x", req->depth );
+    TRACE_RAW( " depth=%08x", req->depth );
 }
 
 static void dump_set_completion_info_request( const struct set_completion_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", ckey=", &req->ckey );
-    fprintf( stderr, ", chandle=%04x", req->chandle );
+    TRACE_RAW( ", chandle=%04x", req->chandle );
 }
 
 static void dump_add_fd_completion_request( const struct add_fd_completion_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", cvalue=", &req->cvalue );
     dump_uint64( ", information=", &req->information );
-    fprintf( stderr, ", status=%08x", req->status );
-    fprintf( stderr, ", async=%d", req->async );
+    TRACE_RAW( ", status=%08x", req->status );
+    TRACE_RAW( ", async=%d", req->async );
 }
 
 static void dump_set_fd_completion_mode_request( const struct set_fd_completion_mode_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_set_fd_disp_info_request( const struct set_fd_disp_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_set_fd_name_info_request( const struct set_fd_name_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
-    fprintf( stderr, ", namelen=%u", req->namelen );
-    fprintf( stderr, ", link=%d", req->link );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( ", namelen=%u", req->namelen );
+    TRACE_RAW( ", link=%d", req->link );
+    TRACE_RAW( ", flags=%08x", req->flags );
     dump_varargs_unicode_str( ", name=", min( cur_size, req->namelen ));
     dump_varargs_string( ", filename=", cur_size );
 }
 
 static void dump_set_fd_eof_info_request( const struct set_fd_eof_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
     dump_uint64( ", eof=", &req->eof );
 }
 
 static void dump_get_window_layered_info_request( const struct get_window_layered_info_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_get_window_layered_info_reply( const struct get_window_layered_info_reply *req )
 {
-    fprintf( stderr, " color_key=%08x", req->color_key );
-    fprintf( stderr, ", alpha=%08x", req->alpha );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " color_key=%08x", req->color_key );
+    TRACE_RAW( ", alpha=%08x", req->alpha );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_set_window_layered_info_request( const struct set_window_layered_info_request *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
-    fprintf( stderr, ", color_key=%08x", req->color_key );
-    fprintf( stderr, ", alpha=%08x", req->alpha );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " handle=%08x", req->handle );
+    TRACE_RAW( ", color_key=%08x", req->color_key );
+    TRACE_RAW( ", alpha=%08x", req->alpha );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_alloc_user_handle_request( const struct alloc_user_handle_request *req )
 {
-    fprintf( stderr, " type=%04x", req->type );
+    TRACE_RAW( " type=%04x", req->type );
 }
 
 static void dump_alloc_user_handle_reply( const struct alloc_user_handle_reply *req )
 {
-    fprintf( stderr, " handle=%08x", req->handle );
+    TRACE_RAW( " handle=%08x", req->handle );
 }
 
 static void dump_free_user_handle_request( const struct free_user_handle_request *req )
 {
-    fprintf( stderr, " type=%04x", req->type );
-    fprintf( stderr, ", handle=%08x", req->handle );
+    TRACE_RAW( " type=%04x", req->type );
+    TRACE_RAW( ", handle=%08x", req->handle );
 }
 
 static void dump_set_cursor_request( const struct set_cursor_request *req )
 {
-    fprintf( stderr, " flags=%08x", req->flags );
-    fprintf( stderr, ", handle=%08x", req->handle );
-    fprintf( stderr, ", show_count=%d", req->show_count );
-    fprintf( stderr, ", x=%d", req->x );
-    fprintf( stderr, ", y=%d", req->y );
+    TRACE_RAW( " flags=%08x", req->flags );
+    TRACE_RAW( ", handle=%08x", req->handle );
+    TRACE_RAW( ", show_count=%d", req->show_count );
+    TRACE_RAW( ", x=%d", req->x );
+    TRACE_RAW( ", y=%d", req->y );
     dump_rectangle( ", clip=", &req->clip );
 }
 
 static void dump_set_cursor_reply( const struct set_cursor_reply *req )
 {
-    fprintf( stderr, " prev_handle=%08x", req->prev_handle );
-    fprintf( stderr, ", prev_count=%d", req->prev_count );
-    fprintf( stderr, ", prev_x=%d", req->prev_x );
-    fprintf( stderr, ", prev_y=%d", req->prev_y );
-    fprintf( stderr, ", new_x=%d", req->new_x );
-    fprintf( stderr, ", new_y=%d", req->new_y );
+    TRACE_RAW( " prev_handle=%08x", req->prev_handle );
+    TRACE_RAW( ", prev_count=%d", req->prev_count );
+    TRACE_RAW( ", prev_x=%d", req->prev_x );
+    TRACE_RAW( ", prev_y=%d", req->prev_y );
+    TRACE_RAW( ", new_x=%d", req->new_x );
+    TRACE_RAW( ", new_y=%d", req->new_y );
     dump_rectangle( ", new_clip=", &req->new_clip );
-    fprintf( stderr, ", last_change=%08x", req->last_change );
+    TRACE_RAW( ", last_change=%08x", req->last_change );
 }
 
 static void dump_get_cursor_history_request( const struct get_cursor_history_request *req )
@@ -3253,15 +3253,15 @@ static void dump_get_cursor_history_reply( const struct get_cursor_history_reply
 
 static void dump_get_rawinput_buffer_request( const struct get_rawinput_buffer_request *req )
 {
-    fprintf( stderr, " header_size=%u", req->header_size );
-    fprintf( stderr, ", read_data=%d", req->read_data );
+    TRACE_RAW( " header_size=%u", req->header_size );
+    TRACE_RAW( ", read_data=%d", req->read_data );
 }
 
 static void dump_get_rawinput_buffer_reply( const struct get_rawinput_buffer_reply *req )
 {
-    fprintf( stderr, " next_size=%u", req->next_size );
-    fprintf( stderr, ", time=%08x", req->time );
-    fprintf( stderr, ", count=%08x", req->count );
+    TRACE_RAW( " next_size=%u", req->next_size );
+    TRACE_RAW( ", time=%08x", req->time );
+    TRACE_RAW( ", count=%08x", req->count );
     dump_varargs_bytes( ", data=", cur_size );
 }
 
@@ -3272,129 +3272,129 @@ static void dump_update_rawinput_devices_request( const struct update_rawinput_d
 
 static void dump_create_job_request( const struct create_job_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
+    TRACE_RAW( " access=%08x", req->access );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_create_job_reply( const struct create_job_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_open_job_request( const struct open_job_request *req )
 {
-    fprintf( stderr, " access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_open_job_reply( const struct open_job_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_assign_job_request( const struct assign_job_request *req )
 {
-    fprintf( stderr, " job=%04x", req->job );
-    fprintf( stderr, ", process=%04x", req->process );
+    TRACE_RAW( " job=%04x", req->job );
+    TRACE_RAW( ", process=%04x", req->process );
 }
 
 static void dump_process_in_job_request( const struct process_in_job_request *req )
 {
-    fprintf( stderr, " job=%04x", req->job );
-    fprintf( stderr, ", process=%04x", req->process );
+    TRACE_RAW( " job=%04x", req->job );
+    TRACE_RAW( ", process=%04x", req->process );
 }
 
 static void dump_set_job_limits_request( const struct set_job_limits_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", limit_flags=%08x", req->limit_flags );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", limit_flags=%08x", req->limit_flags );
 }
 
 static void dump_set_job_completion_port_request( const struct set_job_completion_port_request *req )
 {
-    fprintf( stderr, " job=%04x", req->job );
-    fprintf( stderr, ", port=%04x", req->port );
+    TRACE_RAW( " job=%04x", req->job );
+    TRACE_RAW( ", port=%04x", req->port );
     dump_uint64( ", key=", &req->key );
 }
 
 static void dump_get_job_info_request( const struct get_job_info_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_job_info_reply( const struct get_job_info_reply *req )
 {
-    fprintf( stderr, " total_processes=%d", req->total_processes );
-    fprintf( stderr, ", active_processes=%d", req->active_processes );
+    TRACE_RAW( " total_processes=%d", req->total_processes );
+    TRACE_RAW( ", active_processes=%d", req->active_processes );
     dump_varargs_uints( ", pids=", cur_size );
 }
 
 static void dump_terminate_job_request( const struct terminate_job_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
-    fprintf( stderr, ", status=%d", req->status );
+    TRACE_RAW( " handle=%04x", req->handle );
+    TRACE_RAW( ", status=%d", req->status );
 }
 
 static void dump_suspend_process_request( const struct suspend_process_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_resume_process_request( const struct resume_process_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_next_process_request( const struct get_next_process_request *req )
 {
-    fprintf( stderr, " last=%04x", req->last );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " last=%04x", req->last );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_get_next_process_reply( const struct get_next_process_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_next_thread_request( const struct get_next_thread_request *req )
 {
-    fprintf( stderr, " process=%04x", req->process );
-    fprintf( stderr, ", last=%04x", req->last );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", flags=%08x", req->flags );
+    TRACE_RAW( " process=%04x", req->process );
+    TRACE_RAW( ", last=%04x", req->last );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", flags=%08x", req->flags );
 }
 
 static void dump_get_next_thread_reply( const struct get_next_thread_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_set_keyboard_repeat_request( const struct set_keyboard_repeat_request *req )
 {
-    fprintf( stderr, " enable=%d", req->enable );
-    fprintf( stderr, ", delay=%d", req->delay );
-    fprintf( stderr, ", period=%d", req->period );
+    TRACE_RAW( " enable=%d", req->enable );
+    TRACE_RAW( ", delay=%d", req->delay );
+    TRACE_RAW( ", period=%d", req->period );
 }
 
 static void dump_set_keyboard_repeat_reply( const struct set_keyboard_repeat_reply *req )
 {
-    fprintf( stderr, " enable=%d", req->enable );
+    TRACE_RAW( " enable=%d", req->enable );
 }
 
 static void dump_get_inproc_sync_fd_request( const struct get_inproc_sync_fd_request *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_get_inproc_sync_fd_reply( const struct get_inproc_sync_fd_reply *req )
 {
-    fprintf( stderr, " type=%d", req->type );
-    fprintf( stderr, ", access=%08x", req->access );
+    TRACE_RAW( " type=%d", req->type );
+    TRACE_RAW( ", access=%08x", req->access );
 }
 
 static void dump_get_inproc_alert_fd_request( const struct get_inproc_alert_fd_request *req )
@@ -3403,108 +3403,108 @@ static void dump_get_inproc_alert_fd_request( const struct get_inproc_alert_fd_r
 
 static void dump_get_inproc_alert_fd_reply( const struct get_inproc_alert_fd_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_d3dkmt_object_create_request( const struct d3dkmt_object_create_request *req )
 {
-    fprintf( stderr, " type=%08x", req->type );
-    fprintf( stderr, ", fd=%d", req->fd );
-    fprintf( stderr, ", value=%08x", req->value );
+    TRACE_RAW( " type=%08x", req->type );
+    TRACE_RAW( ", fd=%d", req->fd );
+    TRACE_RAW( ", value=%08x", req->value );
     dump_varargs_bytes( ", runtime=", cur_size );
 }
 
 static void dump_d3dkmt_object_create_reply( const struct d3dkmt_object_create_reply *req )
 {
-    fprintf( stderr, " global=%08x", req->global );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " global=%08x", req->global );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_d3dkmt_object_update_request( const struct d3dkmt_object_update_request *req )
 {
-    fprintf( stderr, " type=%08x", req->type );
-    fprintf( stderr, ", global=%08x", req->global );
+    TRACE_RAW( " type=%08x", req->type );
+    TRACE_RAW( ", global=%08x", req->global );
     dump_varargs_bytes( ", runtime=", cur_size );
 }
 
 static void dump_d3dkmt_object_query_request( const struct d3dkmt_object_query_request *req )
 {
-    fprintf( stderr, " type=%08x", req->type );
-    fprintf( stderr, ", global=%08x", req->global );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " type=%08x", req->type );
+    TRACE_RAW( ", global=%08x", req->global );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_d3dkmt_object_query_reply( const struct d3dkmt_object_query_reply *req )
 {
-    fprintf( stderr, " runtime_size=%u", req->runtime_size );
+    TRACE_RAW( " runtime_size=%u", req->runtime_size );
 }
 
 static void dump_d3dkmt_object_open_request( const struct d3dkmt_object_open_request *req )
 {
-    fprintf( stderr, " type=%08x", req->type );
-    fprintf( stderr, ", global=%08x", req->global );
-    fprintf( stderr, ", handle=%04x", req->handle );
+    TRACE_RAW( " type=%08x", req->type );
+    TRACE_RAW( ", global=%08x", req->global );
+    TRACE_RAW( ", handle=%04x", req->handle );
 }
 
 static void dump_d3dkmt_object_open_reply( const struct d3dkmt_object_open_reply *req )
 {
-    fprintf( stderr, " global=%08x", req->global );
-    fprintf( stderr, ", handle=%04x", req->handle );
-    fprintf( stderr, ", runtime_size=%u", req->runtime_size );
+    TRACE_RAW( " global=%08x", req->global );
+    TRACE_RAW( ", handle=%04x", req->handle );
+    TRACE_RAW( ", runtime_size=%u", req->runtime_size );
     dump_varargs_bytes( ", runtime=", cur_size );
 }
 
 static void dump_d3dkmt_share_objects_request( const struct d3dkmt_share_objects_request *req )
 {
-    fprintf( stderr, " resource=%08x", req->resource );
-    fprintf( stderr, ", mutex=%08x", req->mutex );
-    fprintf( stderr, ", sync=%08x", req->sync );
-    fprintf( stderr, ", access=%08x", req->access );
+    TRACE_RAW( " resource=%08x", req->resource );
+    TRACE_RAW( ", mutex=%08x", req->mutex );
+    TRACE_RAW( ", sync=%08x", req->sync );
+    TRACE_RAW( ", access=%08x", req->access );
     dump_varargs_object_attributes( ", objattr=", cur_size );
 }
 
 static void dump_d3dkmt_share_objects_reply( const struct d3dkmt_share_objects_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_d3dkmt_object_open_name_request( const struct d3dkmt_object_open_name_request *req )
 {
-    fprintf( stderr, " type=%08x", req->type );
-    fprintf( stderr, ", access=%08x", req->access );
-    fprintf( stderr, ", attributes=%08x", req->attributes );
-    fprintf( stderr, ", rootdir=%04x", req->rootdir );
+    TRACE_RAW( " type=%08x", req->type );
+    TRACE_RAW( ", access=%08x", req->access );
+    TRACE_RAW( ", attributes=%08x", req->attributes );
+    TRACE_RAW( ", rootdir=%04x", req->rootdir );
     dump_varargs_unicode_str( ", name=", cur_size );
 }
 
 static void dump_d3dkmt_object_open_name_reply( const struct d3dkmt_object_open_name_reply *req )
 {
-    fprintf( stderr, " handle=%04x", req->handle );
+    TRACE_RAW( " handle=%04x", req->handle );
 }
 
 static void dump_d3dkmt_mutex_acquire_request( const struct d3dkmt_mutex_acquire_request *req )
 {
-    fprintf( stderr, " mutex=%08x", req->mutex );
-    fprintf( stderr, ", key_value=%08x", req->key_value );
-    fprintf( stderr, ", wait_handle=%04x", req->wait_handle );
-    fprintf( stderr, ", wait_status=%08x", req->wait_status );
+    TRACE_RAW( " mutex=%08x", req->mutex );
+    TRACE_RAW( ", key_value=%08x", req->key_value );
+    TRACE_RAW( ", wait_handle=%04x", req->wait_handle );
+    TRACE_RAW( ", wait_status=%08x", req->wait_status );
 }
 
 static void dump_d3dkmt_mutex_acquire_reply( const struct d3dkmt_mutex_acquire_reply *req )
 {
     dump_uint64( " fence_value=", &req->fence_value );
-    fprintf( stderr, ", runtime_size=%u", req->runtime_size );
-    fprintf( stderr, ", wait_handle=%04x", req->wait_handle );
+    TRACE_RAW( ", runtime_size=%u", req->runtime_size );
+    TRACE_RAW( ", wait_handle=%04x", req->wait_handle );
     dump_varargs_bytes( ", runtime=", cur_size );
 }
 
 static void dump_d3dkmt_mutex_release_request( const struct d3dkmt_mutex_release_request *req )
 {
-    fprintf( stderr, " mutex=%08x", req->mutex );
-    fprintf( stderr, ", abandon=%d", req->abandon );
-    fprintf( stderr, ", key_value=%08x", req->key_value );
+    TRACE_RAW( " mutex=%08x", req->mutex );
+    TRACE_RAW( ", abandon=%d", req->abandon );
+    TRACE_RAW( ", key_value=%08x", req->key_value );
     dump_uint64( ", fence_value=", &req->fence_value );
-    fprintf( stderr, ", runtime_size=%u", req->runtime_size );
+    TRACE_RAW( ", runtime_size=%u", req->runtime_size );
     dump_varargs_bytes( ", runtime=", cur_size );
 }
 

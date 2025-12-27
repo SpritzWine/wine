@@ -28,8 +28,8 @@ extern "C" {
 #endif
 
 #ifndef WINE_NO_TRACE_MSGS
-void _trace(const char *file, int line, const char *func, const char *fmt, ...);
-void _trace_raw(const char *fmt, ...);
+extern void _trace(const char *file, int line, const char *func, const char *fmt, ...);
+extern void _trace_raw(const char *fmt, ...);
 #define TRACE(...) _trace(__FILE__, __LINE__, __func__, __VA_ARGS__)
 #define TRACE_RAW(...) _trace_raw(__VA_ARGS__)
 #else

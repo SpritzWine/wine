@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -152,14 +153,14 @@ static void handle_table_dump( struct object *obj, int verbose )
 
     assert( obj->ops == &handle_table_ops );
 
-    fprintf( stderr, "Handle table last=%d count=%d process=%p\n",
+    TRACE( "Handle table last=%d count=%d process=%p\n",
              table->last, table->count, table->process );
     if (!verbose) return;
     entry = table->entries;
     for (i = 0; i <= table->last; i++, entry++)
     {
         if (!entry->ptr) continue;
-        fprintf( stderr, "    %04x: %p %08x ",
+        TRACE( "    %04x: %p %08x ",
                  index_to_handle(i), entry->ptr, entry->access );
         dump_object_name( entry->ptr );
         entry->ptr->ops->dump( entry->ptr, 0 );
