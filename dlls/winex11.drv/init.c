@@ -698,6 +698,7 @@ static const struct user_driver_funcs x11drv_funcs =
     .pActivateWindow = X11DRV_ActivateWindow,
     .pSetLayeredWindowAttributes = X11DRV_SetLayeredWindowAttributes,
     .pSetParent = X11DRV_SetParent,
+    .pAllowsToplevelIcon = X11DRV_AllowsToplevelIcon,
     .pSetWindowIcons = X11DRV_SetWindowIcons,
     .pSetWindowRgn = X11DRV_SetWindowRgn,
     .pSetWindowStyle = X11DRV_SetWindowStyle,
