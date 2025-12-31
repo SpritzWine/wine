@@ -653,9 +653,13 @@ BOOL WINAPI WTSQueryUserToken(ULONG session_id, PHANDLE token)
         return FALSE;
     }
 
-    return DuplicateHandle(GetCurrentProcess(), GetCurrentProcessToken(),
+    if(!DuplicateHandle(GetCurrentProcess(), GetCurrentProcessToken(),
                            GetCurrentProcess(), token,
-                           0, FALSE, DUPLICATE_SAME_ACCESS);
+                           0, FALSE, DUPLICATE_SAME_ACCESS))
+        return FALSE;
+
+
+    return SetTokenInformation(*token, TokenSessionId, &session_id, sizeof(ULONG));
 }
 
 /************************************************************
