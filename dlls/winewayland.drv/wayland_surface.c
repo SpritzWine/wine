@@ -867,6 +867,28 @@ err:
 }
 
 /***********************************************************************
+ *           wayland_shm_buffer_copy_center_square
+ *
+ * Copies src into the center of bits.
+ */
+static void wayland_shm_buffer_copy_center_square(const unsigned int *src,
+                                                  int src_w, int src_h,
+                                                  int dst_edge,
+                                                  unsigned int *bits)
+{
+    const int off_x = (dst_edge - src_w) / 2;
+    const int off_y = (dst_edge - src_h) / 2;
+
+    /* Copy the original image into the centered square */
+    for (int y = 0; y < src_h; ++y)
+    {
+        const unsigned int *s = src + y * src_w;
+        unsigned int *d = bits + (off_y + y) * dst_edge + off_x;
+        memcpy(d, s, src_w * 4);
+    }
+}
+
+/***********************************************************************
  *           wayland_shm_buffer_from_color_bitmaps
  *
  * Create a wayland_shm_buffer for a color bitmap.
@@ -880,14 +902,17 @@ struct wayland_shm_buffer *wayland_shm_buffer_from_color_bitmaps(HDC hdc, HBITMA
     char buffer[FIELD_OFFSET(BITMAPINFO, bmiColors[256])];
     BITMAPINFO *info = (BITMAPINFO *)buffer;
     BITMAP bm;
-    unsigned int *ptr, *bits = NULL;
+    unsigned int *ptr, *bits = NULL, *tmp;
     unsigned char *mask_bits = NULL;
-    int i, j;
+    int i, j, dst_edge;
     BOOL has_alpha = FALSE;
 
     if (!NtGdiExtGetObjectW(color, sizeof(bm), &bm)) goto failed;
 
-    shm_buffer = wayland_shm_buffer_create(bm.bmWidth, bm.bmHeight,
+    /* Make the buffer square - edge length is the larger side */
+    dst_edge = (bm.bmWidth > bm.bmHeight) ? bm.bmWidth : bm.bmHeight;
+
+    shm_buffer = wayland_shm_buffer_create(dst_edge, dst_edge,
                                            WL_SHM_FORMAT_ARGB8888);
     if (!shm_buffer) goto failed;
     bits = shm_buffer->map_data;
@@ -904,27 +929,44 @@ struct wayland_shm_buffer *wayland_shm_buffer_from_color_bitmaps(HDC hdc, HBITMA
     info->bmiHeader.biClrUsed = 0;
     info->bmiHeader.biClrImportant = 0;
 
-    if (!NtGdiGetDIBitsInternal(hdc, color, 0, bm.bmHeight, bits, info,
-                                DIB_RGB_COLORS, 0, 0))
-        goto failed;
+    if (bm.bmWidth == bm.bmHeight)
+    {
+        if (!NtGdiGetDIBitsInternal(hdc, color, 0, bm.bmHeight, bits, info,
+                                    DIB_RGB_COLORS, 0, 0))
+            goto failed;
+    }
+    else
+    {
+        if (!(tmp = malloc(bm.bmWidth * bm.bmHeight * 4))) goto failed;
 
-    for (i = 0; i < bm.bmWidth * bm.bmHeight; i++)
+        if (!NtGdiGetDIBitsInternal(hdc, color, 0, bm.bmHeight, tmp, info,
+                                    DIB_RGB_COLORS, 0, 0))
+            goto failed;
+
+        wayland_shm_buffer_copy_center_square(tmp, bm.bmWidth, bm.bmHeight, dst_edge, bits);
+
+        free(tmp);
+    }
+
+    for (i = 0; i < dst_edge * dst_edge; i++)
+    {
         if ((has_alpha = (bits[i] & 0xff000000) != 0)) break;
+    }
 
     if (!has_alpha)
     {
-        unsigned int width_bytes = (bm.bmWidth + 31) / 32 * 4;
+        unsigned int width_bytes = (dst_edge + 31) / 32 * 4;
         /* generate alpha channel from the mask */
         info->bmiHeader.biBitCount = 1;
-        info->bmiHeader.biSizeImage = width_bytes * bm.bmHeight;
+        info->bmiHeader.biSizeImage = width_bytes * dst_edge;
         if (!(mask_bits = malloc(info->bmiHeader.biSizeImage))) goto failed;
-        if (!NtGdiGetDIBitsInternal(hdc, mask, 0, bm.bmHeight, mask_bits,
+        if (!NtGdiGetDIBitsInternal(hdc, mask, 0, dst_edge, mask_bits,
                                     info, DIB_RGB_COLORS, 0, 0))
             goto failed;
         ptr = bits;
-        for (i = 0; i < bm.bmHeight; i++)
+        for (i = 0; i < dst_edge; i++)
         {
-            for (j = 0; j < bm.bmWidth; j++, ptr++)
+            for (j = 0; j < dst_edge; j++, ptr++)
             {
                 if (!((mask_bits[i * width_bytes + j / 8] << (j % 8)) & 0x80))
                     *ptr |= 0xff000000;
@@ -934,7 +976,7 @@ struct wayland_shm_buffer *wayland_shm_buffer_from_color_bitmaps(HDC hdc, HBITMA
     }
 
     /* Wayland requires pre-multiplied alpha values */
-    for (ptr = bits, i = 0; i < bm.bmWidth * bm.bmHeight; ptr++, i++)
+    for (ptr = bits, i = 0; i < dst_edge * dst_edge; ptr++, i++)
     {
         unsigned char alpha = *ptr >> 24;
         if (alpha == 0)
