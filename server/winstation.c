@@ -500,12 +500,13 @@ void set_process_default_desktop( struct process *process, struct desktop *deskt
 void connect_process_winstation( struct process *process, struct unicode_str *desktop_path,
                                  struct thread *parent_thread, struct process *parent_process )
 {
-    struct unicode_str desktop_name = *desktop_path, winstation_name = {0};
+    struct unicode_str desktop_name = *desktop_path, winstation_name = {0}, root_name = {0}, full_winstation_name = {0};
     const int attributes = OBJ_CASE_INSENSITIVE | OBJ_OPENIF;
     struct winstation *winstation = NULL;
     struct desktop *desktop = NULL;
     const WCHAR *wch, *end;
     obj_handle_t handle;
+    char ascii_root[50]; /* len of root path + len(str(2**32)) + 4 (to be safe) */
 
     for (wch = desktop_name.str, end = wch + desktop_name.len / sizeof(WCHAR); wch != end; wch++)
     {
@@ -524,9 +525,20 @@ void connect_process_winstation( struct process *process, struct unicode_str *de
     {
         winstation = (struct winstation *)get_handle_obj( process, handle, 0, &winstation_ops );
     }
-    else if (winstation_name.len && (winstation = open_named_object( NULL, &winstation_ops, &winstation_name, attributes )))
+    else if (winstation_name.len)
     {
-        handle = alloc_handle( process, winstation, STANDARD_RIGHTS_REQUIRED | WINSTA_ALL_ACCESS, 0 );
+        snprintf(ascii_root, sizeof(ascii_root), "\\Sessions\\%u\\Windows\\WindowStations\\", process->session_id);
+        ascii_to_unicode_str(ascii_root, &root_name);
+
+        full_winstation_name.len = root_name.len + winstation_name.len;
+        full_winstation_name.str = malloc(full_winstation_name.len + 2);
+        memcpy((void*)full_winstation_name.str, root_name.str, root_name.len);
+        memcpy((void*)(full_winstation_name.str + root_name.len / sizeof(WCHAR)), winstation_name.str, winstation_name.len);
+
+        if((winstation = open_named_object( NULL, &winstation_ops, &full_winstation_name, attributes )))
+        {
+            handle = alloc_handle( process, winstation, STANDARD_RIGHTS_REQUIRED | WINSTA_ALL_ACCESS, 0 );
+        }
     }
     else if (parent_process->winstation)
     {
@@ -562,6 +574,7 @@ void connect_process_winstation( struct process *process, struct unicode_str *de
         handle = duplicate_handle( parent_process, handle, process, 0, 0, DUPLICATE_SAME_ACCESS );
     }
     if (handle) set_process_default_desktop( process, desktop, handle );
+
 
 done:
     if (desktop) release_object( desktop );
