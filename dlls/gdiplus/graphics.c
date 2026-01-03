@@ -3387,6 +3387,7 @@ GpStatus WINGDIPAPI GdipDrawImagePointsRect(GpGraphics *graphics, GpImage *image
                 GpMatrix dst_to_src;
                 REAL m11, m12, m21, m22, mdx, mdy;
                 REAL x_dx, x_dy, y_dx, y_dy;
+                REAL dst_pixel_offset;
                 ARGB *dst_color;
                 GpPointF src_pointf_row, src_pointf;
 
@@ -3421,12 +3422,23 @@ GpStatus WINGDIPAPI GdipDrawImagePointsRect(GpGraphics *graphics, GpImage *image
                 }
                 dst_color = (ARGB*)(dst_data);
 
+                if ((offset_mode == PixelOffsetModeHalf) ||
+                    (offset_mode == PixelOffsetModeHighQuality))
+                {
+                    // We are checking color in the middle of destination pixel,
+                    // The pixel center is at (0.5, 0.5).
+                    dst_pixel_offset = 0.5;
+                }
+                else
+                    // The pixel center is at (0.0, 0.0).
+                    dst_pixel_offset = 0.0;
+
                 /* Calculate top left point of transformed image.
                    It would be used as reference point for adding */
                 src_pointf_row.X = dst_to_src.matrix[4] +
-                                   dst_area.left * x_dx + dst_area.top * y_dx;
+                                   (dst_area.left + dst_pixel_offset) * x_dx + (dst_area.top + dst_pixel_offset) * y_dx;
                 src_pointf_row.Y = dst_to_src.matrix[5] +
-                                   dst_area.left * x_dy + dst_area.top * y_dy;
+                                   (dst_area.left + dst_pixel_offset) * x_dy + (dst_area.top + dst_pixel_offset) * y_dy;
 
                 for (y = dst_area.top; y < dst_area.bottom;
                      y++, src_pointf_row.X += y_dx, src_pointf_row.Y += y_dy)

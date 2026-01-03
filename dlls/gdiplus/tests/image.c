@@ -4672,8 +4672,10 @@ static void test_DrawImage(void)
     match = memcmp(white_2x2, black_2x2, sizeof(black_2x2)) == 0;
     ok(match, "data should match\n");
     if (!match)
-        trace("%s\n", dbgstr_hexdata(white_2x2, sizeof(white_2x2)));
-
+    {
+        trace("Expected: %s\n", dbgstr_hexdata(black_2x2, sizeof(black_2x2)));
+        trace("Got:      %s\n", dbgstr_hexdata(white_2x2, sizeof(white_2x2)));
+    }
     status = GdipDeleteGraphics(graphics);
     expect(Ok, status);
     status = GdipDisposeImage(u1.image);
@@ -4762,7 +4764,10 @@ static void test_GdipDrawImagePointRect(void)
     match = memcmp(white_2x2, black_2x2, sizeof(black_2x2)) == 0;
     ok(match, "data should match\n");
     if (!match)
-        trace("%s\n", dbgstr_hexdata(white_2x2, sizeof(white_2x2)));
+    {
+        trace("Expected: %s\n", dbgstr_hexdata(black_2x2, sizeof(black_2x2)));
+        trace("Got:      %s\n", dbgstr_hexdata(white_2x2, sizeof(white_2x2)));
+    }
 
     status = GdipDeleteGraphics(graphics);
     expect(Ok, status);
@@ -4938,18 +4943,18 @@ static void test_DrawImage_scale(void)
         /* TODO There are missing left pixel column of image*/
         { 0.8, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_080 }, /* 14 */
         { 1.0, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_100 },
-        { 1.2, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_120_half, 0, TRUE },
+        { 1.2, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_120_half },
         { 1.5, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_150_half, 0, TRUE },
-        { 1.8, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_180_half, 0, TRUE },
-        { 2.0, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_200_half, 0, TRUE },
+        { 1.8, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_180_half },
+        { 2.0, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_200_half },
         { 2.5, InterpolationModeNearestNeighbor, PixelOffsetModeHalf, image_250_half, 0, TRUE },
 
         { 0.8, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_080 }, /* 21 */
         { 1.0, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_100 },
-        { 1.2, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_120_half, 0, TRUE },
+        { 1.2, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_120_half },
         { 1.5, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_150_half, 0, TRUE },
-        { 1.8, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_180_half, 0, TRUE },
-        { 2.0, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_200_half, 0, TRUE },
+        { 1.8, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_180_half },
+        { 2.0, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_200_half },
         { 2.5, InterpolationModeNearestNeighbor, PixelOffsetModeHighQuality, image_250_half, 0, TRUE },
 
         /* The bilinear interpolation results are little bit different than on Windows */
