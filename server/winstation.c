@@ -136,7 +136,7 @@ static const struct object_ops desktop_ops =
 
 /* create a winstation object */
 static struct winstation *create_winstation( struct object *root, const struct unicode_str *name,
-                                             unsigned int attr, unsigned int flags )
+                                             unsigned int attr, unsigned int flags, unsigned int session_id )
 {
     struct winstation *winstation;
 
@@ -152,6 +152,7 @@ static struct winstation *create_winstation( struct object *root, const struct u
             winstation->monitors = NULL;
             winstation->monitor_count = 0;
             winstation->monitor_serial = 1;
+            winstation->session_id = session_id;
             list_add_tail( &winstation_list, &winstation->entry );
             list_init( &winstation->desktops );
             if (!(winstation->desktop_names = create_namespace( 7 )))
@@ -612,7 +613,7 @@ DECL_HANDLER(create_winstation)
     reply->handle = 0;
     if (req->rootdir && !(root = get_directory_obj( current->process, req->rootdir ))) return;
 
-    if ((winstation = create_winstation( root, &name, req->attributes, req->flags )))
+    if ((winstation = create_winstation( root, &name, req->attributes, req->flags, current->process->session_id )))
     {
         reply->handle = alloc_handle( current->process, winstation, req->access, req->attributes );
         release_object( winstation );
@@ -987,6 +988,7 @@ DECL_HANDLER(enum_winstation)
             unsigned int access = WINSTA_ENUMERATE;
             if (!(name = winstation->obj.name)) continue;
             if (!check_object_access( NULL, &winstation->obj, &access )) continue;
+            if (current->process->session_id != winstation->session_id) continue;
             reply->count++;
             reply->total += name->len + sizeof(WCHAR);
             if (reply->total <= size)
