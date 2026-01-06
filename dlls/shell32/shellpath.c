@@ -2692,7 +2692,11 @@ static BOOL WINAPI init_xdg_dirs( INIT_ONCE *once, void *param, void **context )
     if (file != INVALID_HANDLE_VALUE)
     {
         len = GetFileSize( file, NULL );
-        if (!(xdg_config = malloc( len + 1 ))) return TRUE;
+        if (!(xdg_config = malloc( len + 1 )))
+        {
+            CloseHandle( file );
+            return TRUE;
+        }
         if (!ReadFile( file, xdg_config, len, &xdg_config_len, NULL ))
         {
             free( xdg_config );
