@@ -183,6 +183,7 @@ typedef struct
 #define XATTR_ATTRIBS_MASK      (FILE_ATTRIBUTE_HIDDEN|FILE_ATTRIBUTE_SYSTEM)
 
 #define XATTR_REPARSE XATTR_USER_PREFIX "WINEREPARSE"
+#define XATTR_WIN_DIR_READONLY XATTR_USER_PREFIX "WINREADONLY"
 
 struct file_identity
 {
@@ -1746,7 +1747,10 @@ static NTSTATUS fd_set_file_info( int fd, UINT attr, BOOL force_set_xattr )
     if (attr & FILE_ATTRIBUTE_READONLY)
     {
         if (S_ISDIR( st.st_mode))
-            WARN("FILE_ATTRIBUTE_READONLY ignored for directory.\n");
+        {
+            int status = xattr_fset(fd, XATTR_WIN_DIR_READONLY, "1", 1);
+            if (status) WARN("Failed to set extended attribute %s. errno: %d (%s)\n", XATTR_WIN_DIR_READONLY, errno, strerror(errno));
+        }
         else
             st.st_mode &= ~0222; /* clear write permission bits */
     }
@@ -1754,6 +1758,8 @@ static NTSTATUS fd_set_file_info( int fd, UINT attr, BOOL force_set_xattr )
     {
         /* add write permission only where we already have read permission */
         st.st_mode |= (0600 | ((st.st_mode & 044) >> 1)) & (~start_umask);
+
+        if (S_ISDIR(st.st_mode)) xattr_fremove(fd, XATTR_WIN_DIR_READONLY);
     }
     if (fchmod( fd, st.st_mode ) == -1) return errno_to_status( errno );
 
@@ -1777,6 +1783,8 @@ static int get_file_info( const char *path, struct stat *st, ULONG *attr, ULONG 
     char *parent_path;
     char attr_data[65];
     int attr_len, ret;
+    char ro_buffer[3];
+    int ro_buf_len;
 
     *attr = 0;
     ret = lstat( path, st );
@@ -1809,6 +1817,12 @@ static int get_file_info( const char *path, struct stat *st, ULONG *attr, ULONG 
         free( parent_path );
     }
     *attr |= get_file_attributes( st );
+
+    ro_buf_len = xattr_get(path, XATTR_WIN_DIR_READONLY, &ro_buffer, 3);
+    if (ro_buf_len != -1)
+    {
+        *attr |= FILE_ATTRIBUTE_READONLY;
+    }
 
     attr_len = xattr_get( path, XATTR_REPARSE, buffer, sizeof(buffer) );
     if (attr_len >= 0 && attr_len >= sizeof(ULONG))
