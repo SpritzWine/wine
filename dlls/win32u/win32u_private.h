@@ -55,6 +55,7 @@ extern void move_window_bits_surface( HWND hwnd, const RECT *window_rect, struct
 extern void register_window_surface( struct window_surface *old,
                                      struct window_surface *new );
 extern void *window_surface_get_color( struct window_surface *surface, BITMAPINFO *info );
+extern void window_surface_clear( HWND hwnd );
 
 /* defwnd.c */
 extern BOOL adjust_window_rect( RECT *rect, DWORD style, BOOL menu, DWORD ex_style, UINT dpi );
