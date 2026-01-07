@@ -608,6 +608,31 @@ void *window_surface_get_color( struct window_surface *surface, BITMAPINFO *info
     return gdi_bits.ptr;
 }
 
+void window_surface_clear( HWND hwnd )
+{
+    char color_buf[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];
+    BITMAPINFO *color_info = (BITMAPINFO *)color_buf;
+    struct window_surface *surface;
+    void *color_bits;
+
+    pthread_mutex_lock( &surfaces_lock );
+    LIST_FOR_EACH_ENTRY( surface, &window_surfaces, struct window_surface, entry )
+    {
+        if (surface->hwnd == hwnd)
+        {
+            if (!surface->alpha_mask) /* ULW layered window surfaces are only updated from NtUserUpdateLayeredWindow(). */
+            {
+                window_surface_lock( surface );
+                if ((color_bits = window_surface_get_color( surface, color_info )))
+                    memset( color_bits, 0, color_info->bmiHeader.biSizeImage );
+                window_surface_unlock( surface );
+            }
+            break;
+        }
+    }
+    pthread_mutex_unlock( &surfaces_lock );
+}
+
 W32KAPI void window_surface_flush( struct window_surface *surface )
 {
     char color_buf[FIELD_OFFSET( BITMAPINFO, bmiColors[256] )];

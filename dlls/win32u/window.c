@@ -327,6 +327,8 @@ void *client_surface_create( UINT size, const struct client_surface_funcs *funcs
     surface->ref = 1;
     surface->hwnd = hwnd;
 
+    window_surface_clear( hwnd );
+
     pthread_mutex_lock( &surfaces_lock );
     list_add_tail( &client_surfaces, &surface->entry );
     pthread_mutex_unlock( &surfaces_lock );
