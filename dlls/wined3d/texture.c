@@ -1615,9 +1615,10 @@ HRESULT CDECL wined3d_device_context_blt(struct wined3d_device_context *context,
         return WINED3DERR_INVALIDCALL;
     }
 
-    if (dst_texture->resource.device != src_texture->resource.device)
+    if (src_texture->resource.device->cs->thread_id > dst_texture->resource.device->cs->thread_id
+            || src_texture->resource.device->cs > dst_texture->resource.device->cs)
     {
-        FIXME("Rejecting cross-device blit.\n");
+        FIXME("Rejecting blit from newer command stream.\n");
         return E_NOTIMPL;
     }
 
