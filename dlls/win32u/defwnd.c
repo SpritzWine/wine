@@ -376,7 +376,7 @@ static HICON get_window_icon( HWND hwnd, WPARAM type )
 static HICON set_window_icon( HWND hwnd, WPARAM type, HICON icon )
 {
     HWND parent = NtUserGetAncestor( hwnd, GA_PARENT );
-    BOOL is_child = parent && parent != NtUserGetDesktopWindow();
+    BOOL is_child = parent && parent != NtUserGetDesktopWindow(), need_icons;
     HICON icon_small, ret = 0;
     ICONINFO ii, ii_small;
     WND *win;
@@ -420,10 +420,10 @@ static HICON set_window_icon( HWND hwnd, WPARAM type, HICON icon )
 
     icon = win->hIcon;
     icon_small = win->hIconSmall2 ? win->hIconSmall2 : win->hIconSmall;
-    win->has_icons = !is_child;
+    need_icons = win->has_icons = !is_child && user_driver->pAllowsToplevelIcon(hwnd);
     release_win_ptr( win );
 
-    if (!is_child && (icon = get_window_icon_info( hwnd, ICON_BIG, icon, &ii )))
+    if (need_icons && (icon = get_window_icon_info( hwnd, ICON_BIG, icon, &ii )))
     {
         icon_small = get_window_icon_info( hwnd, ICON_SMALL, icon_small, &ii_small );
         user_driver->pSetWindowIcons( hwnd, icon, &ii, icon_small, &ii_small );

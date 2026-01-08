@@ -665,6 +665,26 @@ static enum xdg_toplevel_resize_edge hittest_to_resize_edge(WPARAM hittest)
 }
 
 /*****************************************************************
+ *              WAYLAND_AllowsToplevelIcon
+ */
+BOOL WAYLAND_AllowsToplevelIcon(HWND hwnd)
+{
+    BOOL allows_toplevel_icon;
+
+    struct wayland_win_data *data;
+
+    if (!(data = wayland_win_data_get(hwnd))) return FALSE;
+
+    allows_toplevel_icon = data->wayland_surface &&
+                 wayland_surface_is_toplevel(data->wayland_surface) &&
+                 process_wayland.xdg_toplevel_icon_manager_v1;
+
+    wayland_win_data_release(data);
+
+    return allows_toplevel_icon;
+}
+
+/*****************************************************************
  *		WAYLAND_SetWindowIcons
  */
 void WAYLAND_SetWindowIcons(HWND hwnd, HICON icon, const ICONINFO *ii, HICON icon_small, const ICONINFO *ii_small)
@@ -673,18 +693,12 @@ void WAYLAND_SetWindowIcons(HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
 
     TRACE("hwnd=%p icon=%p ii=%p icon_small=%p ii_small=%p\n", hwnd, icon, ii, icon_small, ii_small);
 
-    if (process_wayland.xdg_toplevel_icon_manager_v1)
-    {
-        if ((data = wayland_win_data_get(hwnd)))
-        {
-            if (data->wayland_surface && wayland_surface_is_toplevel(data->wayland_surface))
-            {
-                wayland_surface_set_icon(data->wayland_surface, ICON_BIG, ii);
-                wayland_surface_set_icon(data->wayland_surface, ICON_SMALL, ii_small);
-            }
-            wayland_win_data_release(data);
-        }
-    }
+    if (!(data = wayland_win_data_get(hwnd))) return;
+
+    if (icon) wayland_surface_set_icon(data->wayland_surface, ICON_BIG, ii);
+    if (icon_small) wayland_surface_set_icon(data->wayland_surface, ICON_SMALL, ii_small);
+
+    wayland_win_data_release(data);
 }
 
 /***********************************************************************
