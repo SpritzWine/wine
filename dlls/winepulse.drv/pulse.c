@@ -85,6 +85,7 @@ struct pulse_stream
 
     struct list packet_free_head;
     struct list packet_filled_head;
+    SIZE_T rem_samples;
 };
 
 typedef struct _ACPacket
@@ -1180,7 +1181,7 @@ static NTSTATUS pulse_create_stream(void *args)
 
     stream->bufsize_frames = ceil((params->duration / 10000000.) * params->fmt->nSamplesPerSec);
     bufsize_bytes = stream->bufsize_frames * pa_frame_size(&stream->ss);
-    stream->mmdev_period_usec = params->period / 10;
+    stream->mmdev_period_usec = params->period / 50;
 
     stream->share = params->share;
     stream->flags = params->flags;
@@ -1572,9 +1573,8 @@ static NTSTATUS pulse_timer_loop(void *args)
     struct pulse_stream *stream = handle_get_stream(params->stream);
     LARGE_INTEGER delay;
     pa_usec_t last_time;
-    UINT32 adv_bytes;
+    UINT32 adv_bytes=0;
     int success;
-
     pulse_lock();
     delay.QuadPart = -stream->mmdev_period_usec * 10;
     pa_stream_get_time(stream->stream, &last_time);
@@ -1612,7 +1612,7 @@ static NTSTATUS pulse_timer_loop(void *args)
                     if (diff > stream->mmdev_period_usec)
                     {
                         stream->just_started = FALSE;
-                        last_time = now;
+                        last_time = now;                 
                     }
                 }
                 else
@@ -1631,20 +1631,43 @@ static NTSTATUS pulse_timer_loop(void *args)
                     last_time += stream->mmdev_period_usec;
                 }
 
-                if (stream->dataflow == eRender)
+                if (stream->dataflow == eRender)        
                 {
+                    SIZE_T frame_size = pa_frame_size(&stream->ss);
+                    UINT64 total_samples;
+                    SIZE_T safe_bytes;
+                    SIZE_T limit;                    
+
+
                     pulse_write(stream);
 
-                    /* regardless of what PA does, advance one period */
-                    adv_bytes = min(stream->period_bytes, stream->held_bytes);
-                    stream->lcl_offs_bytes += adv_bytes;
-                    stream->lcl_offs_bytes %= stream->real_bufsize_bytes;
-                    stream->held_bytes -= adv_bytes;
+                    total_samples = stream->mmdev_period_usec * stream->ss.rate + stream->rem_samples;
+                    adv_bytes = (total_samples / 1000000) * frame_size;
+                    stream->rem_samples = total_samples % 1000000;
+                    
+                    if (adv_bytes > stream->held_bytes)
+                    {
+                        adv_bytes = stream->held_bytes;
+                        stream->rem_samples = 0; 
+                    }
+ 
+                    safe_bytes = adv_bytes;  
+                    if (stream->held_bytes > stream->pa_held_bytes)
+                    {
+                        limit = stream->held_bytes - stream->pa_held_bytes;
+                        if (safe_bytes > limit)
+                            safe_bytes = limit;
+                    }
+
+                    stream->lcl_offs_bytes = (stream->lcl_offs_bytes + safe_bytes) % stream->real_bufsize_bytes;
+                    stream->held_bytes -= safe_bytes;               
                 }
+
                 else if(stream->dataflow == eCapture)
                 {
                     pulse_read(stream);
                 }
+                  
             }
             else
             {
@@ -1653,8 +1676,15 @@ static NTSTATUS pulse_timer_loop(void *args)
             }
         }
 
-        if (stream->event)
-            NtSetEvent(stream->event, NULL);
+       if (stream->event)
+        {
+            if (stream->dataflow == eCapture || 
+                stream->held_bytes == 0 || 
+               ((stream->held_bytes + adv_bytes) / stream->period_bytes != stream->held_bytes / stream->period_bytes))
+            {
+                NtSetEvent(stream->event, NULL);
+            }
+        }
 
         TRACE("%p after update, adv usec: %d, held: %u, delay usec: %u\n",
                 stream, (int)adv_usec,
