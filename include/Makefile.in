@@ -938,6 +938,7 @@ SOURCES = \
 	windows.storage.idl \
 	windows.storage.search.idl \
 	windows.storage.streams.idl \
+	windows.system.diagnostics.telemetry.idl \
 	windows.system.idl \
 	windows.system.power.idl \
 	windows.system.profile.idl \
