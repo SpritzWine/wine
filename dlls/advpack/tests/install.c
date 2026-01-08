@@ -357,6 +357,38 @@ static void test_RegisterOCXs(void)
     DeleteFileA("test.inf");
 }
 
+static void test_ExecuteCab(void)
+{
+    HRESULT hr;
+    WCHAR wstr_empty[1] = {0};
+    char str_empty[1] = {0};
+    CABINFOA cabinfoa = {0};
+    CABINFOW cabinfow = {0};
+
+    /* ExecuteCabA */
+
+    /* ExecuteCabA(NULL, NULL, NULL);  Crashes on windows */
+
+    hr = ExecuteCabA(NULL, &cabinfoa, NULL);
+    ok(hr == E_INVALIDARG, "Got %lx\n", hr);
+
+    cabinfoa.pszInf = str_empty;
+    hr = ExecuteCabA(NULL, &cabinfoa, NULL);
+    ok(hr == E_INVALIDARG, "Got %lx\n", hr);
+
+    /* ExecuteCabW */
+
+    hr = ExecuteCabW(NULL, NULL, NULL);
+    ok(hr == E_INVALIDARG, "Got %lx\n", hr);
+
+    hr = ExecuteCabW(NULL, &cabinfow, NULL);
+    ok(hr == E_INVALIDARG, "Got %lx\n", hr);
+
+    cabinfow.pszInf = wstr_empty;
+    hr = ExecuteCabW(NULL, &cabinfow, NULL);
+    ok(hr == E_INVALIDARG, "Got %lx\n", hr);
+}
+
 START_TEST(install)
 {
     DWORD len;
@@ -385,6 +417,7 @@ START_TEST(install)
     test_LaunchINFSection();
     test_LaunchINFSectionEx();
     test_RegisterOCXs();
+    test_ExecuteCab();
 
     FreeLibrary(hAdvPack);
     SetCurrentDirectoryA(prev_path);
