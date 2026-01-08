@@ -151,7 +151,7 @@ static const char *get_line(const char **ptr)
     const char *p, *q;
 
     p = *ptr;
-    if (!(q = strstr(p, "\n")))
+    if (!(q = strchr(p, '\n')))
     {
         if (!*p)
             return NULL;

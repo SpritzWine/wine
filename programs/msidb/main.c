@@ -449,7 +449,7 @@ static int import_tables( struct msidb_state *state )
         WCHAR *ext;
 
         /* permit specifying tables with wildcards ('Feature*') */
-        if (wcsstr( table_name, L"*" ) != NULL)
+        if (wcschr( table_name, '*' ) != NULL)
         {
             WIN32_FIND_DATAW f;
             HANDLE handle;
