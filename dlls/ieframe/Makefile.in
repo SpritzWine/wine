@@ -21,6 +21,7 @@ SOURCES = \
 	persist.c \
 	shellbrowser.c \
 	shelluihelper.c \
+	shellwindows.c \
 	urlhist.c \
 	view.c \
 	webbrowser.c

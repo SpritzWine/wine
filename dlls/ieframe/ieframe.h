@@ -326,6 +326,7 @@ HRESULT WINAPI InternetShortcut_Create(IClassFactory*,IUnknown*,REFIID,void**);
 HRESULT WINAPI WebBrowser_Create(IClassFactory*,IUnknown*,REFIID,void**);
 HRESULT WINAPI WebBrowserV1_Create(IClassFactory*,IUnknown*,REFIID,void**);
 HRESULT WINAPI InternetExplorerManager_Create(IClassFactory*,IUnknown*,REFIID,void**);
+HRESULT WINAPI ShellWindows_Create(IClassFactory*,IUnknown*,REFIID,void**);
 
 extern IClassFactory InternetExplorerFactory;
 extern IClassFactory InternetExplorerManagerFactory;
