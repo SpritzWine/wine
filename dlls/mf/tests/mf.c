@@ -1712,7 +1712,10 @@ static ULONG WINAPI test_media_stream_Release(IMFMediaStream *iface)
     {
         if (stream->delayed_sample)
             IMFSample_Release(stream->delayed_sample);
+        IMFMediaEventQueue_Shutdown(stream->event_queue);
         IMFMediaEventQueue_Release(stream->event_queue);
+        IMFMediaSource_Release(stream->source);
+        IMFStreamDescriptor_Release(stream->sd);
         free(stream);
     }
 
@@ -1937,7 +1940,10 @@ static ULONG WINAPI test_source_Release(IMFMediaSource *iface)
 
     if (!refcount)
     {
+        IMFMediaEventQueue_Shutdown(source->event_queue);
         IMFMediaEventQueue_Release(source->event_queue);
+        if (source->pd)
+            IMFPresentationDescriptor_Release(source->pd);
         free(source);
     }
 
@@ -2176,11 +2182,15 @@ static HRESULT WINAPI test_source_Shutdown(IMFMediaSource *iface)
 {
     struct test_source *source = impl_test_source_from_IMFMediaSource(iface);
     HRESULT hr;
+    int i;
 
     add_object_state(&actual_object_state_record, SOURCE_SHUTDOWN);
 
     hr = IMFMediaEventQueue_Shutdown(source->event_queue);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    for (i = 0; i < source->stream_count; ++i)
+        IMFMediaStream_Release(&source->streams[i]->IMFMediaStream_iface);
 
     return S_OK;
 }
