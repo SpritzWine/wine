@@ -749,4 +749,29 @@ typedef struct
     LARGE_INTEGER TimeLimit;
 } QUOTA_LIMITS32;
 
+typedef union
+{
+    ULONG RateData;
+    struct
+    {
+        ULONG   RatePercent:7;
+        ULONG   Reserved0:25;
+    };
+} RATE_QUOTA_LIMIT32;
+
+typedef struct
+{
+    ULONG PagedPoolLimit;
+    ULONG NonPagedPoolLimit;
+    ULONG MinimumWorkingSetSize;
+    ULONG MaximumWorkingSetSize;
+    ULONG PagefileLimit;
+    LARGE_INTEGER TimeLimit;
+    ULONG WorkingSetLimit;
+    ULONG Reserved2;
+    ULONG Reserved3;
+    ULONG Reserved4;
+    ULONG Flags;
+    RATE_QUOTA_LIMIT32 CpuRateLimit;
+} QUOTA_LIMITS_EX32;
 #endif /* __WOW64_STRUCT32_H */

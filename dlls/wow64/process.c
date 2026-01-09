@@ -252,6 +252,25 @@ static void put_ps_attributes( PS_ATTRIBUTE_LIST32 *attr32, const PS_ATTRIBUTE_L
     }
 }
 
+void put_quota_limits( QUOTA_LIMITS_EX32 *info32, const QUOTA_LIMITS_EX *info, ULONG size )
+{
+    info32->PagedPoolLimit        = info->PagedPoolLimit;
+    info32->NonPagedPoolLimit     = info->NonPagedPoolLimit;
+    info32->MinimumWorkingSetSize = info->MinimumWorkingSetSize;
+    info32->MaximumWorkingSetSize = info->MaximumWorkingSetSize;
+    info32->PagefileLimit         = info->PagefileLimit;
+    info32->TimeLimit             = info->TimeLimit;
+    if (size == sizeof(QUOTA_LIMITS_EX32))
+    {
+	info32->WorkingSetLimit   = info->WorkingSetLimit;
+	info32->Reserved2         = info->Reserved2;
+	info32->Reserved3         = info->Reserved3;
+	info32->Reserved4         = info->Reserved4;
+	info32->Flags             = info->Flags;
+	info32->CpuRateLimit.RateData = info->CpuRateLimit.RateData;
+    }
+}
+
 void put_vm_counters( VM_COUNTERS_EX32 *info32, const VM_COUNTERS_EX *info, ULONG size )
 {
     info32->PeakVirtualSize            = info->PeakVirtualSize;
@@ -608,24 +627,19 @@ NTSTATUS WINAPI wow64_NtQueryInformationProcess( UINT *args )
         return NtQueryInformationProcess( handle, class, ptr, len, retlen );
 
     case ProcessQuotaLimits:  /* QUOTA_LIMITS */
-        if (len == sizeof(QUOTA_LIMITS32))
+        if (len == sizeof(QUOTA_LIMITS32) || len == sizeof(QUOTA_LIMITS_EX32))
         {
-            QUOTA_LIMITS info;
-            QUOTA_LIMITS32 *info32 = ptr;
+            QUOTA_LIMITS_EX info;
+            QUOTA_LIMITS_EX32 *info32 = ptr;
 
             if (!(status = NtQueryInformationProcess( handle, class, &info, sizeof(info), NULL )))
             {
-                info32->PagedPoolLimit        = info.PagedPoolLimit;
-                info32->NonPagedPoolLimit     = info.NonPagedPoolLimit;
-                info32->MinimumWorkingSetSize = info.MinimumWorkingSetSize;
-                info32->MaximumWorkingSetSize = info.MaximumWorkingSetSize;
-                info32->PagefileLimit         = info.PagefileLimit;
-                info32->TimeLimit             = info.TimeLimit;
+                put_quota_limits( info32, &info, len );
                 if (retlen) *retlen = len;
             }
             return status;
         }
-        if (retlen) *retlen = sizeof(QUOTA_LIMITS32);
+        if (retlen) *retlen = sizeof(QUOTA_LIMITS_EX32);
         return STATUS_INFO_LENGTH_MISMATCH;
 
     case ProcessVmCounters:  /* VM_COUNTERS_EX */

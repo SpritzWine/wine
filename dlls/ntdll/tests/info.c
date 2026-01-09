@@ -2802,6 +2802,7 @@ static void test_query_process_debug_flags(int argc, char **argv)
 static void test_query_process_quota_limits(void)
 {
     QUOTA_LIMITS qlimits;
+    QUOTA_LIMITS_EX qlimitsex;
     NTSTATUS status;
     HANDLE process;
     ULONG ret_len;
@@ -2809,7 +2810,13 @@ static void test_query_process_quota_limits(void)
     status = NtQueryInformationProcess(NULL, ProcessQuotaLimits, NULL, sizeof(qlimits), NULL);
     ok(status == STATUS_INVALID_HANDLE, "NtQueryInformationProcess failed, status %#lx.\n", status);
 
+    status = NtQueryInformationProcess(NULL, ProcessQuotaLimits, NULL, sizeof(qlimitsex), NULL);
+    ok(status == STATUS_INVALID_HANDLE, "NtQueryInformationProcess failed, status %#lx.\n", status);
+
     status = NtQueryInformationProcess(NULL, ProcessQuotaLimits, &qlimits, sizeof(qlimits), NULL);
+    ok(status == STATUS_INVALID_HANDLE, "NtQueryInformationProcess failed, status %#lx.\n", status);
+
+    status = NtQueryInformationProcess(NULL, ProcessQuotaLimits, &qlimitsex, sizeof(qlimitsex), NULL);
     ok(status == STATUS_INVALID_HANDLE, "NtQueryInformationProcess failed, status %#lx.\n", status);
 
     process = GetCurrentProcess();
@@ -2850,6 +2857,40 @@ static void test_query_process_quota_limits(void)
     status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimits, sizeof(qlimits) + 1, &ret_len);
     ok(status == STATUS_INFO_LENGTH_MISMATCH, "NtQueryInformationProcess failed, status %#lx.\n", status);
     ok(sizeof(qlimits) == ret_len, "len set to %lx\n", ret_len);
+
+    status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimitsex, 2, &ret_len);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "NtQueryInformationProcess failed, status %#lx.\n", status);
+
+    memset(&qlimitsex, 0, sizeof(qlimitsex));
+    status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimitsex, sizeof(qlimitsex), &ret_len);
+    ok(status == STATUS_SUCCESS, "NtQueryInformationProcess failed, status %#lx.\n", status);
+    ok(sizeof(qlimitsex) == ret_len, "len set to %lx\n", ret_len);
+    ok(qlimitsex.WorkingSetLimit == ~0,"Expected WorkingLimit = ~0, got %s\n",
+        wine_dbgstr_longlong(qlimitsex.WorkingSetLimit));
+    ok(qlimitsex.Flags == 0xa,"Expected Flags = 0xa, got %#lx\n", qlimitsex.Flags);
+    ok(qlimitsex.CpuRateLimit.RateData == 0 || broken(qlimitsex.CpuRateLimit.RateData == 100) /* Win7*/,
+        "Expected RateData = 0, got %lu\n", qlimitsex.CpuRateLimit.RateData);
+
+    if (winetest_debug > 1)
+    {
+        trace("WorkingSetLimit: %s\n", wine_dbgstr_longlong(qlimitsex.WorkingSetLimit));
+        trace("CpuRateLimit: %lu\n", qlimitsex.CpuRateLimit.RateData);
+    }
+
+    memset(&qlimitsex, 0, sizeof(qlimitsex));
+    status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimitsex, sizeof(qlimitsex) * 2, &ret_len);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "NtQueryInformationProcess failed, status %#lx.\n", status);
+    ok(sizeof(qlimitsex) == ret_len, "len set to %lx\n", ret_len);
+
+    memset(&qlimitsex, 0, sizeof(qlimitsex));
+    status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimitsex, sizeof(qlimitsex) - 1, &ret_len);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "NtQueryInformationProcess failed, status %#lx.\n", status);
+    ok(sizeof(qlimitsex) == ret_len, "len set to %lx\n", ret_len);
+
+    memset(&qlimitsex, 0, sizeof(qlimitsex));
+    status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimitsex, sizeof(qlimitsex) + 1, &ret_len);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "NtQueryInformationProcess failed, status %#lx.\n", status);
+    ok(sizeof(qlimitsex) == ret_len, "len set to %lx\n", ret_len);
 }
 
 static void test_readvirtualmemory(void)

@@ -27,6 +27,7 @@
 #include "winbase.h"
 #include "winnls.h"
 #include "wincontypes.h"
+#include "winnt.h"
 #include "winternl.h"
 
 #include "kernelbase.h"
@@ -976,12 +977,16 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetProcessVersion( DWORD pid )
 BOOL WINAPI DECLSPEC_HOTPATCH GetProcessWorkingSetSizeEx( HANDLE process, SIZE_T *minset,
                                                           SIZE_T *maxset, DWORD *flags)
 {
-    FIXME( "(%p,%p,%p,%p): stub\n", process, minset, maxset, flags );
-    /* 32 MB working set size */
-    if (minset) *minset = 32*1024*1024;
-    if (maxset) *maxset = 32*1024*1024;
-    if (flags) *flags = QUOTA_LIMITS_HARDWS_MIN_DISABLE | QUOTA_LIMITS_HARDWS_MAX_DISABLE;
-    return TRUE;
+    QUOTA_LIMITS_EX qlimits;
+    NTSTATUS status;
+
+    TRACE( "(%p,%p,%p,%p): stub\n", process, minset, maxset, flags );
+
+    status = NtQueryInformationProcess( process, ProcessQuotaLimits, &qlimits, sizeof(qlimits), NULL );
+    if(minset) *minset = qlimits.MinimumWorkingSetSize;
+    if(maxset) *maxset = qlimits.MaximumWorkingSetSize;
+    if(flags) *flags = qlimits.Flags;
+    return set_ntstatus( status );
 }
 
 

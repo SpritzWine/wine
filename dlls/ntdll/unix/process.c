@@ -1559,16 +1559,16 @@ NTSTATUS WINAPI NtQueryInformationProcess( HANDLE handle, PROCESSINFOCLASS class
 
     case ProcessQuotaLimits:
         {
-            QUOTA_LIMITS qlimits;
+            QUOTA_LIMITS_EX qlimits;
 
             FIXME( "ProcessQuotaLimits (%p,%p,0x%08x,%p) stub\n", handle, info, size, ret_len );
 
-            len = sizeof(QUOTA_LIMITS);
-            if (size == len)
+            if (size == sizeof(QUOTA_LIMITS) || size == sizeof(QUOTA_LIMITS_EX))
             {
                 if (!handle) ret = STATUS_INVALID_HANDLE;
                 else
                 {
+                    memset(&qlimits, 0, sizeof(qlimits));
                     /* FIXME: SetProcessWorkingSetSize can also set the quota values.
                                 Quota Limits should be stored inside the process. */
                     qlimits.PagedPoolLimit = (SIZE_T)-1;
@@ -1579,6 +1579,13 @@ NTSTATUS WINAPI NtQueryInformationProcess( HANDLE handle, PROCESSINFOCLASS class
                     qlimits.MaximumWorkingSetSize = 1413120;
                     qlimits.PagefileLimit = (SIZE_T)-1;
                     qlimits.TimeLimit.QuadPart = -1;
+                    if (size == sizeof(QUOTA_LIMITS_EX))
+                    {
+                        qlimits.WorkingSetLimit = (SIZE_T)-1;
+                        qlimits.Flags = QUOTA_LIMITS_HARDWS_MIN_DISABLE|QUOTA_LIMITS_HARDWS_MAX_DISABLE;
+                    }
+                    len = size;
+                    if (len != sizeof(QUOTA_LIMITS)) len = sizeof(QUOTA_LIMITS_EX);
                     memcpy(info, &qlimits, len);
                 }
             }
