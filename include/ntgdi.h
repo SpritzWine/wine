@@ -172,6 +172,8 @@ enum
 /* structs not compatible with native Windows */
 #ifdef __WINESRC__
 
+#define NTGDI_SETVIEWPORT  0x01
+#define NTGDI_SETWND       0x02
 typedef struct DC_ATTR
 {
     UINT      hdc;                 /* handle to self */
@@ -199,8 +201,10 @@ typedef struct DC_ATTR
     POINT     brush_org;           /* brush origin */
     POINT     wnd_org;             /* window origin */
     SIZE      wnd_ext;             /* window extent */
+    SIZE      old_vport_ext;       /* last viewport extent */
     POINT     vport_org;           /* viewport origin */
     SIZE      vport_ext;           /* viewport extent */
+    WORD      vp_wnd_bits;         /* According to msdn, SetWindowExtEx and SetViewportExtEx need to be used together */
     SIZE      virtual_res;
     SIZE      virtual_size;
     UINT      font_code_page;

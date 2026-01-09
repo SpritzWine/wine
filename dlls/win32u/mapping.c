@@ -90,10 +90,22 @@ static void MAPPING_FixIsotropic( DC * dc )
 {
     SIZE virtual_size = get_dc_virtual_size( dc );
     SIZE virtual_res = get_dc_virtual_res( dc );
-    double xdim = fabs((double)dc->attr->vport_ext.cx * virtual_size.cx /
-                       (virtual_res.cx * dc->attr->wnd_ext.cx));
-    double ydim = fabs((double)dc->attr->vport_ext.cy * virtual_size.cy /
-                       (virtual_res.cy * dc->attr->wnd_ext.cy));
+    double xdim, ydim;
+
+    if ((NTGDI_SETVIEWPORT | NTGDI_SETWND) == dc->attr->vp_wnd_bits)
+    {
+        xdim = fabs((double)dc->attr->old_vport_ext.cx / dc->attr->wnd_ext.cx);
+        ydim = fabs((double)dc->attr->old_vport_ext.cy / dc->attr->wnd_ext.cy);
+        dc->attr->vport_ext = dc->attr->old_vport_ext;
+    }
+    else
+    {
+        xdim = fabs((double)dc->attr->vport_ext.cx * virtual_size.cx /
+                        (virtual_res.cx * dc->attr->wnd_ext.cx));
+        ydim = fabs((double)dc->attr->vport_ext.cy * virtual_size.cy /
+                        (virtual_res.cy * dc->attr->wnd_ext.cy));
+        dc->attr->old_vport_ext = dc->attr->vport_ext;
+    }
 
     if (xdim > ydim)
     {
@@ -107,6 +119,9 @@ static void MAPPING_FixIsotropic( DC * dc )
         dc->attr->vport_ext.cy = GDI_ROUND( dc->attr->vport_ext.cy * xdim / ydim );
         if (!dc->attr->vport_ext.cy) dc->attr->vport_ext.cy = mincy;
     }
+
+    if (NTGDI_SETWND & dc->attr->vp_wnd_bits)
+        dc->attr->vp_wnd_bits = 0;
 }
 
 
@@ -133,6 +148,7 @@ BOOL set_map_mode( DC *dc, int mode )
         dc->attr->wnd_ext.cy   = virtual_size.cy * 10;
         dc->attr->vport_ext.cx = virtual_res.cx;
         dc->attr->vport_ext.cy = -virtual_res.cy;
+        dc->attr->vp_wnd_bits  = 0;
         break;
     case MM_HIMETRIC:
         virtual_size           = get_dc_virtual_size( dc );

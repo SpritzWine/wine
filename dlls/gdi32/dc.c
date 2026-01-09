@@ -1185,6 +1185,7 @@ BOOL WINAPI SetWindowExtEx( HDC hdc, INT x, INT y, SIZE *size )
     if (!x || !y) return FALSE;
     dc_attr->wnd_ext.cx = x;
     dc_attr->wnd_ext.cy = y;
+    dc_attr->vp_wnd_bits |= NTGDI_SETWND;
     return NtGdiComputeXformCoefficients( hdc );
 }
 
@@ -1240,6 +1241,7 @@ BOOL WINAPI GetViewportExtEx( HDC hdc, SIZE *size )
 {
     DC_ATTR *dc_attr;
     if (!(dc_attr = get_dc_attr( hdc ))) return FALSE;
+    if (0 != dc_attr->vp_wnd_bits) NtGdiComputeXformCoefficients( hdc );
     *size = dc_attr->vport_ext;
     return TRUE;
 }
@@ -1260,6 +1262,7 @@ BOOL WINAPI SetViewportExtEx( HDC hdc, INT x, INT y, LPSIZE size )
     if (!x || !y) return FALSE;
     dc_attr->vport_ext.cx = x;
     dc_attr->vport_ext.cy = y;
+    dc_attr->vp_wnd_bits |= NTGDI_SETVIEWPORT;
     return NtGdiComputeXformCoefficients( hdc );
 }
 
