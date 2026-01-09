@@ -1389,10 +1389,14 @@ BOOL WINAPI NtUserRemoveMenu( HMENU handle, UINT id, UINT flags )
     {
         free( menu->items );
         menu->items = NULL;
+        menu->FocusedItem = NO_SELECTED_ITEM;
     }
     else
     {
         struct menu_item *new_items, *item = &menu->items[pos];
+
+        if (menu->FocusedItem >= menu->nItems)
+            menu->FocusedItem = NO_SELECTED_ITEM;
 
         while (pos < menu->nItems)
         {

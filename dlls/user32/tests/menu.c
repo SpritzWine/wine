@@ -2623,6 +2623,29 @@ static void test_menu_hilitemenuitem( void )
     ok(!(GetMenuState(hPopupMenu, 2, MF_BYPOSITION) & MF_HILITE),
       "HiliteMenuItem: Item 3 is hilited\n");
 
+    /* deleting an off-screen menu item doesn't reset hilite */
+
+    SetLastError(0xdeadbeef);
+    ok(HiliteMenuItem(hWnd, hPopupMenu, 0, MF_HILITE | MF_BYPOSITION),
+      "HiliteMenuItem: call should not have failed.\n");
+    ok(GetLastError() == 0xdeadbeef,
+      "HiliteMenuItem: expected error 0xdeadbeef, got: %ld\n", GetLastError());
+    todo_wine
+    {
+    ok(GetMenuState(hPopupMenu, 0, MF_BYPOSITION) & MF_HILITE,
+      "HiliteMenuItem: Item 1 is not hilited\n");
+    }
+
+    ok(DeleteMenu(hPopupMenu, 2, MF_BYPOSITION),
+      "DeleteMenu: call should have succeeded.\n");
+    todo_wine
+    {
+    ok(GetMenuState(hPopupMenu, 0, MF_BYPOSITION) & MF_HILITE,
+      "HiliteMenuItem: Item 1 is not hilited\n");
+    }
+    ok(!(GetMenuState(hPopupMenu, 1, MF_BYPOSITION) & MF_HILITE),
+      "HiliteMenuItem: Item 2 is hilited\n");
+
     DestroyWindow(hWnd);
 }
 
@@ -3721,8 +3744,27 @@ static LRESULT WINAPI menu_fill_in_init(HWND hwnd, UINT msg,
     return DefWindowProcA(hwnd, msg, wparam, lparam);
 }
 
+static LRESULT WINAPI menu_select_second_item(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    HWND hwndmenu;
+
+    switch (msg)
+    {
+    case WM_ENTERIDLE:
+        hwndmenu = GetCapture();
+        if (hwndmenu) {
+            PostMessageA(hwndmenu, WM_KEYDOWN, VK_DOWN, 0);
+            PostMessageA(hwndmenu, WM_KEYDOWN, VK_DOWN, 0);
+            PostMessageA(hwndmenu, WM_KEYDOWN, VK_RETURN, 0);
+        }
+    }
+
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
 static void test_emptypopup(void)
 {
+    const int itemid = 0x1234567;
     BOOL ret;
     HMENU hmenu;
 
@@ -3783,6 +3825,40 @@ static void test_emptypopup(void)
     ok(selectitem_lp == 0, "got %Ix\n", selectitem_lp);
 
     DestroyWindow(hwnd);
+
+    ret = DestroyMenu(hmenu);
+    ok(ret, "DestroyMenu failed with error %ld\n", GetLastError());
+
+    /* check that selecting an item, clearing the menu, and then opening an empty menu doesn't crash it */
+    hwnd = CreateWindowExA(0, (LPCSTR)MAKEINTATOM(atomMenuCheckClass), NULL,
+            WS_SYSMENU | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, 100, 100,
+            NULL, NULL, NULL, NULL);
+    ok(hwnd != NULL, "CreateWindowEx failed with error %ld\n", GetLastError());
+    SetWindowLongPtrA( hwnd, GWLP_WNDPROC, (LONG_PTR)menu_select_second_item);
+    hmenu = CreatePopupMenu();
+
+    AppendMenuA(hmenu, MF_STRING, itemid, "Item 1");
+    ret = TrackPopupMenu(hmenu, TPM_RETURNCMD, 100, 100, 0, hwnd, NULL);
+    ok(ret == itemid, "TrackPopupMenu returned %d error is %ld\n", ret, GetLastError());
+
+    RemoveMenu(hmenu, 0, MF_BYPOSITION);
+    ret = TrackPopupMenu(hmenu, TPM_RETURNCMD, 100, 100, 0, hwnd, NULL);
+    ok(ret == 0, "TrackPopupMenu returned %d error is %ld\n", ret, GetLastError());
+
+    ret = DestroyMenu(hmenu);
+    ok(ret, "DestroyMenu failed with error %ld\n", GetLastError());
+
+    /* check that selecting an item, deleting the selected item, and then opening an empty menu doesn't crash it */
+    hmenu = CreatePopupMenu();
+
+    AppendMenuA(hmenu, MF_STRING, 0, "Item 1");
+    AppendMenuA(hmenu, MF_STRING, itemid, "Item 2");
+    ret = TrackPopupMenu(hmenu, TPM_RETURNCMD, 100, 100, 0, hwnd, NULL);
+    ok(ret == itemid, "TrackPopupMenu returned %d error is %ld\n", ret, GetLastError());
+
+    RemoveMenu(hmenu, 1, MF_BYPOSITION);
+    ret = TrackPopupMenu(hmenu, TPM_RETURNCMD, 100, 100, 0, hwnd, NULL);
+    ok(ret == 0, "TrackPopupMenu returned %d error is %ld\n", ret, GetLastError());
 
     ret = DestroyMenu(hmenu);
     ok(ret, "DestroyMenu failed with error %ld\n", GetLastError());
