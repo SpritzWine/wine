@@ -90,8 +90,10 @@ static void test_JsonObjectStatics(void)
     ok( ref == 1, "got ref %ld.\n", ref );
 }
 
-#define check_json( json_value_statics, json, expected_json_value_type, valid ) check_json_( __LINE__, json_value_statics, json, expected_json_value_type, valid )
-static void check_json_( unsigned int line, IJsonValueStatics *json_value_statics, const WCHAR *json, JsonValueType expected_json_value_type, boolean valid )
+#define check_json( json_value_statics, json, expected_json_value_type, valid ) \
+    check_json_( __LINE__, json_value_statics, json, wcslen( json ), expected_json_value_type, valid )
+static void check_json_( unsigned int line, IJsonValueStatics *json_value_statics, const WCHAR *json, SIZE_T json_len,
+                         JsonValueType expected_json_value_type, boolean valid )
 {
     HSTRING str = NULL, parsed_str = NULL, empty_space = NULL;
     IJsonObject *json_object = (void *)0xdeadbeef;
@@ -104,7 +106,7 @@ static void check_json_( unsigned int line, IJsonValueStatics *json_value_static
     LONG ref;
     int res;
 
-    hr = WindowsCreateString( json, wcslen( json ), &str );
+    hr = WindowsCreateString( json, json_len, &str );
     ok_(__FILE__, line)( hr == S_OK, "got hr %#lx.\n", hr );
     hr = IJsonValueStatics_Parse( json_value_statics, str, &json_value );
     if (!valid)
@@ -225,7 +227,7 @@ WCHAR *create_non_null_terminated( const WCHAR *str )
 static void check_non_null_terminated_json_( unsigned int line, IJsonValueStatics *json_value_statics, const WCHAR *json, JsonValueType expected_json_value_type )
 {
     WCHAR *str = create_non_null_terminated( json );
-    check_json_( line, json_value_statics, str, expected_json_value_type, FALSE );
+    check_json_( line, json_value_statics, str, wcslen( json ), expected_json_value_type, FALSE );
     free( str );
 }
 
