@@ -54,10 +54,16 @@ static void test_data_key(void)
     hr = ISpRegDataKey_SetStringValue( data_key, L"Voice", L"Test" );
     ok( hr == E_HANDLE, "got %08lx\n", hr );
 
+    hr = ISpRegDataKey_EnumValues(data_key, 0, &value);
+    ok( hr == E_HANDLE, "got %08lx\n", hr );
+
     hr = ISpRegDataKey_SetKey( data_key, key, FALSE );
     ok( hr == S_OK, "got %08lx\n", hr );
     hr = ISpRegDataKey_SetKey( data_key, key, FALSE );
     ok( hr == SPERR_ALREADY_INITIALIZED, "got %08lx\n", hr );
+
+    hr = ISpRegDataKey_EnumValues(data_key, 0, &value);
+    ok( hr == SPERR_NO_MORE_ITEMS, "got %08lx\n", hr );
 
     hr = ISpRegDataKey_GetStringValue( data_key, L"Voice", &value );
     ok( hr == SPERR_NOT_FOUND, "got %08lx\n", hr );
@@ -72,6 +78,14 @@ static void test_data_key(void)
     ok( hr == S_OK, "got %08lx\n", hr );
     ok( !wcscmp( value, L"Test" ), "got %s\n", wine_dbgstr_w(value) );
     CoTaskMemFree( value );
+
+    hr = ISpRegDataKey_EnumValues(data_key, 0, &value);
+    ok( hr == S_OK, "got %08lx\n", hr );
+    ok( !wcscmp( value, L"Voice" ), "got %s\n", wine_dbgstr_w(value) );
+    CoTaskMemFree( value );
+
+    hr = ISpRegDataKey_EnumValues(data_key, 1, &value);
+    ok( hr == SPERR_NO_MORE_ITEMS, "got %08lx\n", hr );
 
     hr = ISpRegDataKey_OpenKey( data_key, L"Testing", &sub );
     ok( hr == SPERR_NOT_FOUND, "got %08lx\n", hr );

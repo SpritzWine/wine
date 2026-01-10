@@ -275,8 +275,47 @@ static HRESULT WINAPI data_key_EnumKeys( ISpRegDataKey *iface,
 static HRESULT WINAPI data_key_EnumValues( ISpRegDataKey *iface,
                                            ULONG index, LPWSTR *value )
 {
-    FIXME( "stub\n" );
-    return E_NOTIMPL;
+    struct data_key *This = impl_from_ISpRegDataKey( iface );
+    DWORD ret, count, size;
+    WCHAR _buffer[1];
+    WCHAR *content;
+
+    if (!This->key)
+        return E_HANDLE;
+
+    count = 0;
+    size = 0;
+
+    ret = RegEnumValueW(This->key, index, _buffer, &count, NULL, NULL, NULL, &size);
+    if (ret == ERROR_NO_MORE_ITEMS)
+    {
+        return SPERR_NO_MORE_ITEMS;
+    }
+    else if (ret == ERROR_NOT_ENOUGH_MEMORY)
+    {
+        return E_OUTOFMEMORY;
+    }
+    else if (ret != ERROR_SUCCESS && ret != ERROR_MORE_DATA)
+    {
+        return SPERR_NOT_FOUND;
+    }
+
+    size = size + sizeof(WCHAR);
+    count = size / sizeof(WCHAR);
+
+    content = CoTaskMemAlloc(size);
+    if (!content)
+        return E_OUTOFMEMORY;
+
+    ret = RegEnumValueW(This->key, index, content, &count, NULL, NULL, NULL, NULL);
+    if (ret != ERROR_SUCCESS)
+    {
+        CoTaskMemFree(content);
+        return HRESULT_FROM_WIN32(ret);
+    }
+
+    *value = content;
+    return S_OK;
 }
 
 static HRESULT WINAPI data_key_SetKey( ISpRegDataKey *iface,
