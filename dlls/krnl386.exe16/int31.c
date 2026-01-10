@@ -629,15 +629,18 @@ void WINAPI DOSVM_Int31Handler( CONTEXT *context )
         break;
 
     case 0x0900:  /* Get and Disable Virtual Interrupt State */
-        TRACE( "Get and Disable Virtual Interrupt State - not supported\n" );
+        FIXME( "Get and Disable Virtual Interrupt State - unimplemented\n" );
+        SET_AL( context, 1 );  /* report that interrupts are always enabled */
         break;
 
     case 0x0901:  /* Get and Enable Virtual Interrupt State */
-        TRACE( "Get and Enable Virtual Interrupt State - not supported\n" );
+        FIXME( "Get and Enable Virtual Interrupt State - unimplemented\n" );
+        SET_AL( context, 1 );  /* report that interrupts are always enabled */
         break;
 
     case 0x0902:  /* Get Virtual Interrupt State */
-        TRACE( "Get Virtual Interrupt State - not supported\n" );
+        FIXME( "Get Virtual Interrupt State - unimplemented\n" );
+        SET_AL( context, 1 );  /* report that interrupts are always enabled */
         break;
 
     case 0x0e00:  /* Get Coprocessor Status (1.0) */
