@@ -97,7 +97,7 @@ static const IUnknownVtbl object_context_vtbl =
 static HRESULT object_context_create(DWORD flags, IMFByteStream *stream, const WCHAR *url,
         QWORD file_size, IMFAsyncResult *result, IUnknown **out)
 {
-    WCHAR *tmp_url = url ? wcsdup(url) : NULL;
+    WCHAR *tmp_url = wcsdup(url);
     struct object_context *context;
 
     if (!(context = calloc(1, sizeof(*context))))
