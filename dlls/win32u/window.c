@@ -3886,6 +3886,24 @@ BOOL set_window_pos( WINDOWPOS *winpos, int parent_x, int parent_y )
             if (!insertafter_parent) return FALSE;
             if (insertafter_parent != parent) return TRUE;
         }
+        else if (winpos->hwndInsertAfter == HWND_TOPMOST || winpos->hwndInsertAfter == HWND_NOTOPMOST)
+        {
+            BOOL is_child_window;
+            HWND parent;
+            WND *win;
+
+            if ((win = get_win_ptr( winpos->hwnd )) && win != WND_DESKTOP && win != WND_OTHER_PROCESS)
+            {
+                is_child_window = (win->dwStyle & (WS_POPUP | WS_CHILD)) == WS_CHILD;
+                release_win_ptr( win );
+                if (is_child_window && (parent = NtUserGetAncestor( winpos->hwnd, GA_PARENT ))
+                    && parent != get_desktop_window())
+                {
+                    TRACE( "Not changing topmost state for a child window.\n" );
+                    return TRUE;
+                }
+            }
+        }
     }
 
     /* Make sure that coordinates are valid for WM_WINDOWPOSCHANGING */

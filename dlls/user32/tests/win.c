@@ -3167,6 +3167,7 @@ static void test_SetWindowPos(HWND hwnd, HWND hwnd2)
     RECT orig_win_rc, rect;
     LONG_PTR old_proc;
     HWND hwnd_grandchild, hwnd_child, hwnd_child2;
+    DWORD style, ex_style;
     HWND hwnd_desktop;
     RECT rc_expected;
     RECT rc1, rc2;
@@ -3264,7 +3265,7 @@ static void test_SetWindowPos(HWND hwnd, HWND hwnd2)
     ret = SetWindowPos(hwnd_child, HWND_NOTOPMOST, 1, 2, 3, 4, 0);
     ok(ret, "Got %d.\n", ret);
     GetWindowRect(hwnd_child, &rc2);
-    todo_wine ok(EqualRect(&rc1, &rc2), "%s != %s.\n", wine_dbgstr_rect(&rc1), wine_dbgstr_rect(&rc2));
+    ok(EqualRect(&rc1, &rc2), "%s != %s.\n", wine_dbgstr_rect(&rc1), wine_dbgstr_rect(&rc2));
     check_active_state(hwnd2, hwnd2, hwnd2);
     SetWindowPos(hwnd_child, HWND_NOTOPMOST, 0, 0, rc1.right - rc1.left, rc1.bottom - rc1.top, 0);
 
@@ -3272,7 +3273,58 @@ static void test_SetWindowPos(HWND hwnd, HWND hwnd2)
     ret = SetWindowPos(hwnd_child, HWND_TOPMOST, 1, 2, 3, 4, 0);
     ok(ret, "Got %d.\n", ret);
     GetWindowRect(hwnd_child, &rc2);
-    todo_wine ok(EqualRect(&rc1, &rc2), "%s != %s.\n", wine_dbgstr_rect(&rc1), wine_dbgstr_rect(&rc2));
+    ok(EqualRect(&rc1, &rc2), "%s != %s.\n", wine_dbgstr_rect(&rc1), wine_dbgstr_rect(&rc2));
+    check_active_state(hwnd2, hwnd2, hwnd2);
+    SetWindowPos(hwnd_child, HWND_TOPMOST, 0, 0, rc1.right - rc1.left, rc1.bottom - rc1.top, 0);
+
+    /* Child windows with desktop window parent are not treated as child. */
+    SetParent(hwnd_child, NULL);
+    ex_style = GetWindowLongA(hwnd_child, GWL_EXSTYLE);
+    ok(!(ex_style & WS_EX_TOPMOST), "got ex_style %#lx.\n", ex_style);
+    GetWindowRect(hwnd_child, &rc1);
+    rc_expected.left = rc1.left + 1;
+    rc_expected.top = rc1.top + 2;
+    rc_expected.right = rc1.left + 4;
+    rc_expected.bottom = rc1.top + 6;
+    ret = SetWindowPos(hwnd_child, HWND_TOPMOST, 1, 2, 3, 4, 0);
+    ok(ret, "Got %d.\n", ret);
+    GetWindowRect(hwnd_child, &rc2);
+    ok(EqualRect(&rc_expected, &rc2), "%s != %s.\n",
+            wine_dbgstr_rect(&rc_expected), wine_dbgstr_rect(&rc2));
+    check_active_state(hwnd2, hwnd2, hwnd2);
+    SetWindowPos(hwnd_child, HWND_TOPMOST, 0, 0, rc1.right - rc1.left, rc1.bottom - rc1.top, 0);
+
+    style = GetWindowLongA(hwnd_child, GWL_STYLE);
+    ok(style & WS_CHILD, "got style %#lx.\n", style);
+    ex_style = GetWindowLongA(hwnd_child, GWL_EXSTYLE);
+    ok(ex_style & WS_EX_TOPMOST, "got ex_style %#lx.\n", ex_style);
+
+    SetParent(hwnd_child, hwnd);
+    ex_style = GetWindowLongA(hwnd_child, GWL_EXSTYLE);
+    ok(ex_style & WS_EX_TOPMOST, "got ex_style %#lx.\n", ex_style);
+
+    SetParent(hwnd_child, NULL);
+    GetWindowRect(hwnd_child, &rc1);
+    rc_expected.left = rc1.left + 1;
+    rc_expected.top = rc1.top + 2;
+    rc_expected.right = rc1.left + 4;
+    rc_expected.bottom = rc1.top + 6;
+    ret = SetWindowPos(hwnd_child, HWND_NOTOPMOST, 1, 2, 3, 4, 0);
+    ok(ret, "Got %d.\n", ret);
+    GetWindowRect(hwnd_child, &rc2);
+    ok(EqualRect(&rc_expected, &rc2), "%s != %s.\n",
+            wine_dbgstr_rect(&rc_expected), wine_dbgstr_rect(&rc2));
+    check_active_state(hwnd2, hwnd2, hwnd2);
+    SetWindowPos(hwnd_child, HWND_NOTOPMOST, 0, 0, rc1.right - rc1.left, rc1.bottom - rc1.top, 0);
+    SetParent(hwnd_child, hwnd);
+    ex_style = GetWindowLongA(hwnd_child, GWL_EXSTYLE);
+    ok(!(ex_style & WS_EX_TOPMOST), "got ex_style %#lx.\n", ex_style);
+
+    GetWindowRect(hwnd_child, &rc1);
+    ret = SetWindowPos(hwnd_child, HWND_NOTOPMOST, 1, 2, 3, 4, 0);
+    ok(ret, "Got %d.\n", ret);
+    GetWindowRect(hwnd_child, &rc2);
+    ok(EqualRect(&rc1, &rc2), "%s != %s.\n", wine_dbgstr_rect(&rc1), wine_dbgstr_rect(&rc2));
     check_active_state(hwnd2, hwnd2, hwnd2);
     SetWindowPos(hwnd_child, HWND_TOPMOST, 0, 0, rc1.right - rc1.left, rc1.bottom - rc1.top, 0);
 
