@@ -1045,7 +1045,7 @@ TOOLBAR_DrawButton (const TOOLBAR_INFO *infoPtr, TBUTTON_INFO *btnPtr, HDC hdc, 
     else
         rcBitmap.left += ((rc.right - rc.left) - infoPtr->nBitmapWidth) / 2;
 
-    rcBitmap.top += infoPtr->szPadding.cy / 2;
+    rcBitmap.top += ((rc.bottom - rc.top) - infoPtr->nBitmapHeight) / 2;
 
     TRACE("iBitmap=%d, start=(%ld,%ld) w=%d, h=%d\n", btnPtr->iBitmap, rcBitmap.left, rcBitmap.top,
       infoPtr->nBitmapWidth, infoPtr->nBitmapHeight);
@@ -1066,6 +1066,7 @@ TOOLBAR_DrawButton (const TOOLBAR_INFO *infoPtr, TBUTTON_INFO *btnPtr, HDC hdc, 
                 rcText.top += infoPtr->szPadding.cy/2 + infoPtr->nBitmapHeight + 1;
             else
                 rcText.top += infoPtr->szPadding.cy/2 + 2;
+            rcText.top += rcBitmap.top;
         }
     }
 
