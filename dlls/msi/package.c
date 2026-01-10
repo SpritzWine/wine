@@ -1340,7 +1340,7 @@ UINT MSI_OpenPackageW(LPCWSTR szPackage, DWORD dwOptions, MSIPACKAGE **pPackage)
     MSIRECORD *data_row, *info_row;
     UINT r;
     WCHAR localfile[MAX_PATH], cachefile[MAX_PATH];
-    LPCWSTR file = szPackage;
+    LPCWSTR file = szPackage, mode;
     DWORD index = 0;
     MSISUMMARYINFO *si;
     BOOL delete_on_close = FALSE;
@@ -1418,7 +1418,8 @@ UINT MSI_OpenPackageW(LPCWSTR szPackage, DWORD dwOptions, MSIPACKAGE **pPackage)
             product_version = get_product_version( db );
         msiobj_release( &db->hdr );
         TRACE("opening package %s\n", debugstr_w( localfile ));
-        r = MSI_OpenDatabaseW( localfile, MSIDBOPEN_TRANSACT, &db );
+        mode = (dwOptions & WINE_OPENPACKAGEFLAGS_READONLY) ? MSIDBOPEN_READONLY : MSIDBOPEN_TRANSACT;
+        r = MSI_OpenDatabaseW( localfile, mode, &db );
         if (r != ERROR_SUCCESS)
         {
             free( product_version );

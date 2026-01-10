@@ -229,7 +229,7 @@ UINT WINAPI MsiInstallProductW(LPCWSTR szPackagePath, LPCWSTR szCommandLine)
 {
     MSIPACKAGE *package = NULL;
     const WCHAR *reinstallmode;
-    DWORD options = 0;
+    DWORD options = WINE_OPENPACKAGEFLAGS_READONLY;
     UINT r, len;
 
     TRACE("%s %s\n",debugstr_w(szPackagePath), debugstr_w(szCommandLine));

@@ -1259,6 +1259,22 @@ static void test_view_get_error(MSIHANDLE hinst)
     MsiCloseHandle(db);
 }
 
+static void test_open_msi(MSIHANDLE hinst)
+{
+    MSIHANDLE handle = 0;
+    UINT result;
+    char buffer[300];
+    DWORD len = sizeof(buffer);
+
+    result = MsiGetPropertyA(hinst, "DATABASE", buffer, &len);
+    ok(hinst, result == 0, "Failed: %x\n", result);
+
+    result = MsiOpenDatabaseA(buffer, (LPCSTR)MSIDBOPEN_READONLY, &handle);
+    ok (hinst, result == 0, "Got %u\n", result);
+
+    MsiCloseHandle(handle);
+}
+
 /* Main test. Anything that doesn't depend on a specific install configuration
  * or have undesired side effects should go here. */
 UINT WINAPI main_test(MSIHANDLE hinst)
@@ -1287,6 +1303,7 @@ UINT WINAPI main_test(MSIHANDLE hinst)
     test_costs(hinst);
     test_invalid_functions(hinst);
     test_view_get_error(hinst);
+    test_open_msi(hinst);
 
     return ERROR_SUCCESS;
 }
