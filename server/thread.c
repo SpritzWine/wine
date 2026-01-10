@@ -1420,9 +1420,23 @@ static inline int is_in_apc_wait( struct thread *thread )
     return (is_thread_suspended( thread ) || (thread->wait && (thread->wait->flags & SELECT_INTERRUPTIBLE)));
 }
 
+/* try to find a thread in APC wait */
+static struct thread *find_thread_in_apc_wait( struct process *process )
+{
+    struct thread *thread;
+
+    LIST_FOR_EACH_ENTRY( thread, &process->thread_list, struct thread, proc_entry )
+    {
+        if (thread->state == TERMINATED || !is_in_apc_wait( thread )) continue;
+        return thread;
+    }
+    return NULL;
+}
+
 /* queue an existing APC to a given thread */
 static int queue_apc( struct process *process, struct thread *thread, struct thread_apc *apc )
 {
+    struct thread *candidate;
     struct list *queue;
 
     if (thread && thread->state == TERMINATED && process)
@@ -1430,19 +1444,7 @@ static int queue_apc( struct process *process, struct thread *thread, struct thr
 
     if (!thread)  /* find a suitable thread inside the process */
     {
-        struct thread *candidate;
-
-        /* first try to find a waiting thread */
-        LIST_FOR_EACH_ENTRY( candidate, &process->thread_list, struct thread, proc_entry )
-        {
-            if (candidate->state == TERMINATED) continue;
-            if (is_in_apc_wait( candidate ))
-            {
-                thread = candidate;
-                break;
-            }
-        }
-        if (!thread)
+        if (!(thread = find_thread_in_apc_wait( process )))
         {
             /* then use the first one that accepts a signal */
             LIST_FOR_EACH_ENTRY( candidate, &process->thread_list, struct thread, proc_entry )
@@ -1464,7 +1466,13 @@ static int queue_apc( struct process *process, struct thread *thread, struct thr
         /* send signal for system APCs if needed */
         if (queue == &thread->system_apc && list_empty( queue ) && !is_in_apc_wait( thread ))
         {
-            if (!send_thread_signal( thread, SIGUSR1 )) return 0;
+            if (process && (candidate = find_thread_in_apc_wait( process )))
+            {
+                /* System APC which can be queued to any thread, found a thread in APC wait first. */
+                thread = candidate;
+                if (!(queue = get_apc_queue( thread, apc->call.type ))) return 1;
+            }
+            else if (!send_thread_signal( thread, SIGUSR1 )) return 0;
         }
         /* cancel a possible previous APC with the same owner */
         if (apc->owner) thread_cancel_apc( thread, apc->owner, apc->call.type );

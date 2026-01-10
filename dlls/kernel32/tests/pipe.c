@@ -127,7 +127,7 @@ static void _test_not_signaled(unsigned line, HANDLE handle)
 #define test_signaled(h) _test_signaled(__LINE__,h)
 static void _test_signaled(unsigned line, HANDLE handle)
 {
-    DWORD res = WaitForSingleObject(handle, 0);
+    DWORD res = WaitForSingleObject(handle, 50);
     ok_(__FILE__,line)(res == WAIT_OBJECT_0, "WaitForSingleObject returned %lu\n", res);
 }
 
