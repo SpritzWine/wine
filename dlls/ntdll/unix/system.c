@@ -3833,11 +3833,21 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         FIXME("SystemCodeIntegrityInformation, size %u, info %p, stub!\n", size, info);
 
         len = sizeof(SYSTEM_CODEINTEGRITY_INFORMATION);
-
-        if (size >= len)
-            integrity_info->CodeIntegrityOptions = CODEINTEGRITY_OPTION_ENABLED;
-        else
+        if (size > 0)
+        {
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else if (size >= len && integrity_info->Length == len)
+            {
+                /* proper implementation is probably reading this from registry, see https://learn.microsoft.com/en-us/windows/security/hardware-security/enable-virtualization-based-protection-of-code-integrity */
+                integrity_info->CodeIntegrityOptions = CODEINTEGRITY_OPTION_ENABLED | CODEINTEGRITY_OPTION_HVCI_IUM_ENABLED;
+            } else
+            {
+                ret = STATUS_INFO_LENGTH_MISMATCH;
+            }
+        } else
+        {
             ret = STATUS_INFO_LENGTH_MISMATCH;
+        }
         break;
     }
 
