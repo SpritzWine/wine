@@ -1325,9 +1325,11 @@ typedef volatile struct
 
 /* Suspend a thread */
 @REQ(suspend_thread)
-    obj_handle_t handle;       /* thread handle */
+    obj_handle_t handle;        /* thread handle */
+    obj_handle_t waited_handle; /* handle waited on */
 @REPLY
-    int          count;        /* new suspend count */
+    int          count;         /* new suspend count */
+    obj_handle_t wait_handle;   /* handle to wait on */
 @END
 
 
