@@ -1659,6 +1659,11 @@ cpp_quote("DEFINE_ENUM_FLAG_OPERATORS(DSH_FLAGS)")
 ]
 interface IDragSourceHelper2 : IDragSourceHelper
 {
+    typedef enum
+    {
+        DSH_ALLOWDROPDESCRIPTIONTEXT = 0x01
+    } DSH_FLAGS;
+
     HRESULT SetFlags([in] DWORD dwFlags);
 }
 

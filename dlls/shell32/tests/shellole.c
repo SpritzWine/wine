@@ -1015,20 +1015,571 @@ static void test_SHCreateSessionKey(void)
     }
 }
 
+/**
+ * DRAG AND DROP HELPERS
+ */
+
+/**
+ * Mock IDataObject. The drag and drop helpers require a data object with
+ * GetData() and SetData() implemented, with the ability to store "arbitrary
+ * private formats".
+ *
+ * Most interface methods are not implemented, and there are multiple versions
+ * of the required methods to test what the helpers' functions return.
+ */
+
+static HRESULT WINAPI DataObject_QueryInterface(
+    IDataObject *iface,
+    REFIID riid,
+    void **pObj)
+{
+    if (IsEqualIID(riid, &IID_IUnknown) ||
+        IsEqualIID(riid, &IID_IDataObject))
+    {
+        *pObj = iface;
+        IDataObject_AddRef(iface);
+        return S_OK;
+    }
+
+    trace("DataObject_QueryInterface: %s\n", wine_dbgstr_guid(riid));
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI DataObject_AddRef(IDataObject *iface)
+{
+    return 2;
+}
+
+static ULONG WINAPI DataObject_Release(IDataObject *iface)
+{
+    return 1;
+}
+
+static HRESULT WINAPI DataObject_GetData_empty(
+    IDataObject *iface,
+    FORMATETC *pformatetcIn,
+    STGMEDIUM *pmedium)
+{
+    return S_OK;
+}
+
+static HRESULT WINAPI DataObject_SetData_empty(
+    IDataObject *iface,
+    FORMATETC *pformatetc,
+    STGMEDIUM *pmedium,
+    BOOL fRelease)
+{
+    return S_OK;
+}
+
+static HRESULT WINAPI DataObject_GetData_notimpl(
+    IDataObject *iface,
+    FORMATETC *pformatetcIn,
+    STGMEDIUM *pmedium)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_SetData_notimpl(
+    IDataObject *iface,
+    FORMATETC *pformatetc,
+    STGMEDIUM *pmedium,
+    BOOL fRelease)
+{
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_GetDataHere(
+    IDataObject *iface,
+    FORMATETC *pformatetc,
+    STGMEDIUM *pmedium)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_QueryGetData(
+    IDataObject *iface,
+    FORMATETC *pformatetc)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_GetCanonicalFormatEtc(
+    IDataObject *iface,
+    FORMATETC *pformatetcIn,
+    FORMATETC *pformatetcOut)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_EnumFormatEtc(
+    IDataObject *iface,
+    DWORD dwDirection,
+    IEnumFORMATETC **ppenumFormatEtc)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_DAdvise(
+    IDataObject *iface,
+    FORMATETC *pformatetc,
+    DWORD advf,
+    IAdviseSink *pAdvSink,
+    DWORD *pdwConnection)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_DUnadvise(
+    IDataObject *iface,
+    DWORD dwConnection)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static HRESULT WINAPI DataObject_EnumDAdvise(
+    IDataObject *iface,
+    IEnumSTATDATA **ppenumAdvise)
+{
+    ok(0, "unexpected call\n");
+    return E_NOTIMPL;
+}
+
+static const IDataObjectVtbl dataobject_vtbl =
+{
+    DataObject_QueryInterface,
+    DataObject_AddRef,
+    DataObject_Release,
+    DataObject_GetData_empty,
+    DataObject_GetDataHere,
+    DataObject_QueryGetData,
+    DataObject_GetCanonicalFormatEtc,
+    DataObject_SetData_empty,
+    DataObject_EnumFormatEtc,
+    DataObject_DAdvise,
+    DataObject_DUnadvise,
+    DataObject_EnumDAdvise
+};
+
+static const IDataObjectVtbl dataobject_vtbl_notimpl =
+{
+    DataObject_QueryInterface,
+    DataObject_AddRef,
+    DataObject_Release,
+    DataObject_GetData_notimpl,
+    DataObject_GetDataHere,
+    DataObject_QueryGetData,
+    DataObject_GetCanonicalFormatEtc,
+    DataObject_SetData_notimpl,
+    DataObject_EnumFormatEtc,
+    DataObject_DAdvise,
+    DataObject_DUnadvise,
+    DataObject_EnumDAdvise
+};
+
+static IDataObject data_object = { &dataobject_vtbl };
+
+static IDataObject data_object_notimpl = { &dataobject_vtbl_notimpl };
+
+/* SHDRAGIMAGE instance to be used for InitializeFromBitmap() and InitializeFromWindow(). */
+
+static SHDRAGIMAGE drag_image;
+
+/* Window procedure to return a bitmap to a InitializeFromWindow() call. */
+
+static LRESULT WINAPI drag_helper_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    const UINT di_msg = RegisterWindowMessageA(DI_GETDRAGIMAGEA);
+
+    if (msg == di_msg)
+    {
+        SHDRAGIMAGE* tmp = (SHDRAGIMAGE*)lparam;
+        *tmp = drag_image;
+        return 0;
+    }
+
+    return DefWindowProcA(hwnd, msg, wparam, lparam);
+}
+
 static void test_dragdrophelper(void)
 {
     IDragSourceHelper *dragsource;
+    IDragSourceHelper2 *dragsource2;
     IDropTargetHelper *target;
+    WNDCLASSA cls;
+    HWND hwnd_target;
+    HDC dc, comp_dc;
+    RECT rect;
+    HBITMAP bitmap, b_old;
+    HBRUSH brush;
+    SHDRAGIMAGE di_empty;
+    POINT pt;
+    DWORD i;
     HRESULT hr;
 
+    /* Initialize variables and window */
+    pt.x = 50;
+    pt.y = 50;
+
+    memset(&cls, 0, sizeof(cls));
+    cls.lpfnWndProc = drag_helper_proc;
+    cls.hInstance = GetModuleHandleA(NULL);
+    cls.lpszClassName = "drag helper test";
+    RegisterClassA(&cls);
+
+    hwnd_target = CreateWindowA("drag helper test", NULL, 0, 0, 200, 200, 0,
+                                NULL, 0, NULL, 0);
+    ok(hwnd_target != NULL, "CreateWindow failed: %lx\n", GetLastError());
+
+    dc = GetDC(hwnd_target);
+    ok(dc != NULL, "Failed to get device context\n");
+
+    comp_dc = CreateCompatibleDC(dc);
+    ok(comp_dc != NULL, "Failed to create compatible device context\n");
+
+    memset(&di_empty, 0, sizeof(di_empty));
+
+    drag_image.sizeDragImage.cx = 4;
+    drag_image.sizeDragImage.cy = 4;
+    drag_image.ptOffset.x = 4;
+    drag_image.ptOffset.y = 4;
+    drag_image.crColorKey = 0x00000000;
+    drag_image.hbmpDragImage = 0;
+    bitmap = CreateCompatibleBitmap(dc, 4, 4);
+    ok(bitmap != NULL, "Failed to create bitmap\n");
+
+    b_old = (HBITMAP)SelectObject(comp_dc, bitmap);
+    ok(b_old != NULL && b_old != HGDI_ERROR, "Failed to select object: %p\n", b_old);
+
+    brush = CreateSolidBrush(0x00000000);
+    ok(brush != NULL, "Failed to create black brush: %p", brush);
+
+    rect.left = rect.top = 0;
+    rect.right = 4;
+    rect.bottom = 4;
+    hr = FillRect(comp_dc, &rect, brush);
+    ok(hr != 0, "Failed to fill black rect.");
+
+    DeleteObject(brush);
+    rect.right = 2;
+    rect.bottom = 2;
+    brush = CreateSolidBrush(0x000000FF);
+    ok(brush != NULL, "Failed to create red brush: %p", brush);
+    hr = FillRect(comp_dc, &rect, brush);
+    ok(hr != 0, "Failed to fill red rect.");
+    DeleteObject(brush);
+
+    SelectObject(comp_dc, b_old);
+
+    ReleaseDC(hwnd_target, dc);
+    DeleteDC(comp_dc);
+
     hr = CoCreateInstance(&CLSID_DragDropHelper, NULL, CLSCTX_INPROC_SERVER, &IID_IDropTargetHelper, (void **)&target);
-    ok(hr == S_OK, "Failed to create IDropTargetHelper, %#lx\n", hr);
+    ok(hr == S_OK, "Failed to create IDropTargetHelper, 0x%lx\n", hr);
 
     hr = IDropTargetHelper_QueryInterface(target, &IID_IDragSourceHelper, (void **)&dragsource);
-    ok(hr == S_OK, "QI failed, %#lx\n", hr);
+    ok(hr == S_OK, "QI failed, 0x%lx\n", hr);
+
+    hr = IDropTargetHelper_QueryInterface(target, &IID_IDragSourceHelper, (void **)&dragsource2);
+    ok(hr == S_OK, "QI 2 failed, 0x%lx\n", hr);
+
+    /* No initialization */
+
+    todo_wine
+    {
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == E_FAIL,
+           "Drag enter should have failed with 0x%lx, returned 0x%lx\n",
+           E_FAIL, hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, NULL, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        /* Inverse process */
+
+        hr = IDropTargetHelper_Drop(target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drop failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == E_FAIL,
+           "Drag enter should have failed with 0x%lx, returned 0x%lx\n",
+           E_FAIL, hr);
+    }
+
+    /* Test arguments */
+
+    hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object_notimpl);
+    ok(hr == E_NOTIMPL,
+       "Initialization from bitmap should have failed with 0x%lx, returned 0x%lx\n",
+       E_NOTIMPL, hr);
+
+    todo_wine
+    {
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, NULL, &data_object);
+        ok(hr == E_INVALIDARG,
+           "Initialization from bitmap should have failed with 0x%lx, returned 0x%lx\n",
+           E_INVALIDARG, hr);
+
+        drag_image.hbmpDragImage = bitmap;
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, NULL);
+        ok(hr == E_INVALIDARG,
+           "Initialization from bitmap should have failed with 0x%lx, returned 0x%lx\n",
+           E_INVALIDARG, hr);
+
+        drag_image.hbmpDragImage = NULL;
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+        drag_image.hbmpDragImage = bitmap;
+    }
+
+    todo_wine
+    {
+        hr = IDragSourceHelper2_InitializeFromWindow(dragsource2, hwnd_target, &pt, &data_object_notimpl);
+        ok(hr == S_OK, "Initialization from window failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        hr = IDragSourceHelper2_InitializeFromWindow(dragsource2, NULL, &pt, &data_object);
+        ok(hr == S_OK, "Initialization from window failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        hr = IDragSourceHelper2_InitializeFromWindow(dragsource2, hwnd_target, NULL, &data_object);
+        ok(hr == S_OK, "Initialization from window failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        hr = IDragSourceHelper2_InitializeFromWindow(dragsource2, hwnd_target, &pt, NULL);
+        ok(hr == E_INVALIDARG,
+           "Initialization from window should have failed with 0x%lx, returned 0x%lx\n",
+            E_INVALIDARG, hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        drag_image.hbmpDragImage = NULL;
+        hr = IDragSourceHelper2_InitializeFromWindow(dragsource2, hwnd_target, &pt, &data_object);
+        ok(hr == S_OK, "Initialization from window failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        drag_image.hbmpDragImage = bitmap;
+    }
+
+    hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object_notimpl, &pt, DROPEFFECT_MOVE);
+    ok(hr == E_NOTIMPL, "Drag enter failed, 0x%lx\n", hr);
+
+    todo_wine
+    {
+        hr = IDropTargetHelper_DragEnter(target, NULL, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == E_FAIL,
+           "Drag enter should have failed with 0x%lx, returned 0x%lx\n",
+           E_FAIL, hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, NULL, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, NULL, DROPEFFECT_MOVE);
+        ok(hr == E_INVALIDARG,
+           "Drag enter should have failed with 0x%lx, returned 0x%lx\n",
+           E_INVALIDARG, hr);
+
+        hr = IDropTargetHelper_DragOver(target, NULL, DROPEFFECT_MOVE);
+        ok(hr == E_INVALIDARG,
+           "Drag over should have failed with 0x%lx, returned 0x%lx\n",
+           E_INVALIDARG, hr);
+
+        hr = IDropTargetHelper_Drop(target, NULL, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drop failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_Drop(target, &data_object, NULL, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drop failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &di_empty, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+    }
+
+
+    /* Test dragging bitmap. */
+
+    hr = IDragSourceHelper2_SetFlags(dragsource2, DSH_ALLOWDROPDESCRIPTIONTEXT);
+    ok(hr == S_OK, "Flag setting failed, 0x%lx\n", hr);
+
+    drag_image.hbmpDragImage = bitmap;
+
+    todo_wine
+    {
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_Drop(target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drop failed, 0x%lx\n", hr);
+
+        /* Try again, without reinitializing */
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == E_FAIL,
+           "Drag enter should have failed with 0x%lx, returned 0x%lx\n",
+           E_FAIL, hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_Drop(target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drop failed, 0x%lx\n", hr);
+
+        /* Test dragging bitmap from window. */
+
+        hr = IDragSourceHelper2_InitializeFromWindow(dragsource2, hwnd_target, &pt, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_Drop(target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drop failed, 0x%lx\n", hr);
+
+        /* Test cancelling drag. */
+
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+    }
+
+    /* No description text. */
+
+    hr = IDragSourceHelper2_SetFlags(dragsource2, 0x0);
+    ok(hr == S_OK, "Flag setting failed, 0x%lx\n", hr);
+
+    todo_wine
+    {
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+    }
+
+    /* Not visible. */
+
+    hr = IDragSourceHelper2_SetFlags(dragsource2, 0x0);
+    ok(hr == S_OK, "Flag setting failed, 0x%lx\n", hr);
+
+    todo_wine
+    {
+        hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+        ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+    }
+
+    hr = IDropTargetHelper_Show(target, 0);
+    ok(hr == S_OK, "Hide failed.\n");
+
+    todo_wine
+    {
+        hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragOver(target, &pt, DROPEFFECT_MOVE);
+        ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+        hr = IDropTargetHelper_DragLeave(target);
+        ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+
+        /* Test invalid effects */
+        for (i = 0; i < 20; ++i)
+        {
+            hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+            ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+            hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, i);
+            ok(hr == S_OK, "Drag enter failed, effect: 0x%lx, error 0x%lx\n", i, hr);
+
+            hr = IDropTargetHelper_DragOver(target, &pt, i);
+            ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+            hr = IDropTargetHelper_DragLeave(target);
+            ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+        }
+        for (i = 0; i < 20; ++i)
+        {
+            hr = IDragSourceHelper2_InitializeFromBitmap(dragsource2, &drag_image, &data_object);
+            ok(hr == S_OK, "Initialization from bitmap failed, 0x%lx\n", hr);
+
+            hr = IDropTargetHelper_DragEnter(target, hwnd_target, &data_object, &pt, i | DROPEFFECT_SCROLL);
+            ok(hr == S_OK, "Drag enter failed, 0x%lx\n", hr);
+
+            hr = IDropTargetHelper_DragOver(target, &pt, i | DROPEFFECT_SCROLL);
+            ok(hr == S_OK, "Drag over failed, 0x%lx\n", hr);
+
+            hr = IDropTargetHelper_DragLeave(target);
+            ok(hr == S_OK, "Leave failed, 0x%lx\n", hr);
+        }
+    }
+
+    /* Test invalid flags */
+    for (i = 0; i < 20; ++i)
+    {
+        hr = IDragSourceHelper2_SetFlags(dragsource2, i);
+        ok(hr == S_OK, "Flag setting failed, flag: 0x%lx, error: 0x%lx\n", i, hr);
+    }
+
+    /* Clean up */
+
+    IDragSourceHelper2_Release(dragsource2);
+
     IDragSourceHelper_Release(dragsource);
 
     IDropTargetHelper_Release(target);
+
+    DeleteObject(bitmap);
+
+    DestroyWindow(hwnd_target);
+    UnregisterClassA("drag helper test", GetModuleHandleA(NULL));
 }
 
 START_TEST(shellole)

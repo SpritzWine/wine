@@ -1875,6 +1875,27 @@ WINSHELLAPI BOOL         WINAPI DAD_AutoScroll(HWND,AUTO_SCROLL_DATA*,LPPOINT);
 WINSHELLAPI HRESULT      WINAPI SHDoDragDrop(HWND,IDataObject*,IDropSource*,DWORD,LPDWORD);
 
 /****************************************************************************
+ * IDragSourceHelper interface
+ */
+
+#define DI_GETDRAGIMAGEA "ShellGetDragImage"
+
+/* DATAOBJECT_InitShellIDList*/
+#define CFSTR_SHELLIDLISTA           "Shell IDList Array"   /* CF_IDLIST */
+
+#if defined(__GNUC__)
+# define DI_GETDRAGIMAGEW \
+    (const WCHAR []){'S','h','e','l','l','G','e','t','D','r','a','g','I','m','a','g','e',0};
+#elif defined(_MSC_VER)
+# define DI_GETDRAGIMAGEW L"ShellGetDragImage"
+#else
+static const WCHAR DI_GETDRAGIMAGEW[] =
+    {'S','h','e','l','l','G','e','t','D','r','a','g','I','m','a','g','e',0};
+#endif
+
+#define DI_GETDRAGIMAGE WINELIB_NAME_AW(DI_GETDRAGIMAGE)
+
+/****************************************************************************
  * Internet shortcut properties
  */
 
