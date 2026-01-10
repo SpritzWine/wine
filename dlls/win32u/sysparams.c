@@ -168,6 +168,7 @@ static pthread_mutex_t display_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static BOOL emulate_modeset;
 BOOL decorated_mode = TRUE;
+BOOL tabletpc_mode = FALSE;
 UINT64 thunk_lock_callback = 0;
 
 #define VIRTUAL_HMONITOR ((HMONITOR)(UINT_PTR)(0x10000 + 1))
@@ -5942,6 +5943,8 @@ void sysparams_init(void)
         decorated_mode = IS_OPTION_TRUE( buffer[0] );
     if (!get_config_key( hkey, appkey, "EmulateModeset", buffer, sizeof(buffer) ))
         emulate_modeset = IS_OPTION_TRUE( buffer[0] );
+    if (!get_config_key( hkey, appkey, "TabletPC", buffer, sizeof(buffer) ))
+        tabletpc_mode = IS_OPTION_TRUE( buffer[0] );
 
 #undef IS_OPTION_TRUE
 
@@ -7118,8 +7121,9 @@ int get_system_metrics( int index )
     case SM_CYFOCUSBORDER:
         return 1;
     case SM_TABLETPC:
+        return tabletpc_mode;
     case SM_MEDIACENTER:
-        return 0;
+        return 1;
     case SM_CMETRICS:
         return SM_CMETRICS;
     default:
