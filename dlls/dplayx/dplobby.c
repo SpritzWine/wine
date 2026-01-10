@@ -38,10 +38,6 @@ WINE_DEFAULT_DEBUG_CHANNEL(dplay);
 HRESULT DPL_CreateCompoundAddress ( LPCDPCOMPOUNDADDRESSELEMENT lpElements, DWORD dwElementCount,
                                     LPVOID lpAddress, LPDWORD lpdwAddressSize, BOOL bAnsiInterface );
 
-static HRESULT DPL_CreateAddress( REFGUID guidSP, REFGUID guidDataType, LPCVOID lpData, DWORD dwDataSize,
-                           LPVOID lpAddress, LPDWORD lpdwAddressSize, BOOL bAnsiInterface );
-
-
 /*****************************************************************************
  * IDirectPlayLobby {1,2,3} implementation structure
  *
@@ -66,6 +62,7 @@ typedef struct IDirectPlayLobbyImpl
     IDirectPlayLobby3 IDirectPlayLobby3_iface;
     IDirectPlayLobby3A IDirectPlayLobby3A_iface;
     LONG ref;
+    BOOL ansi_iface;
     CRITICAL_SECTION lock;
     HKEY cbkeyhack;
     DWORD msgtid;
@@ -93,13 +90,6 @@ static void dplobby_destroy(IDirectPlayLobbyImpl *obj)
     free( obj );
 }
 
-static HRESULT WINAPI IDirectPlayLobby3AImpl_QueryInterface( IDirectPlayLobby3A *iface, REFIID riid,
-        void **ppv )
-{
-    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-    return IDirectPlayLobby_QueryInterface( &This->IDirectPlayLobby3_iface, riid, ppv );
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_QueryInterface( IDirectPlayLobby3 *iface, REFIID riid,
         void **ppv )
 {
@@ -108,17 +98,14 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_QueryInterface( IDirectPlayLobby3 *i
     if ( IsEqualGUID( &IID_IUnknown, riid ) ||
          IsEqualGUID( &IID_IDirectPlayLobby, riid ) ||
          IsEqualGUID( &IID_IDirectPlayLobby2, riid ) ||
-         IsEqualGUID( &IID_IDirectPlayLobby3, riid ) )
+         IsEqualGUID( &IID_IDirectPlayLobby3, riid ) ||
+         /* Ansi interfaces */
+         IsEqualGUID( &IID_IDirectPlayLobbyA, riid ) ||
+         IsEqualGUID( &IID_IDirectPlayLobby2A, riid ) ||
+         IsEqualGUID( &IID_IDirectPlayLobby3A, riid ))
     {
         TRACE( "(%p)->(IID_IDirectPlay3 %p)\n", This, ppv );
         *ppv = &This->IDirectPlayLobby3_iface;
-    }
-    else if ( IsEqualGUID( &IID_IDirectPlayLobbyA, riid ) ||
-              IsEqualGUID( &IID_IDirectPlayLobby2A, riid ) ||
-              IsEqualGUID( &IID_IDirectPlayLobby3A, riid ) )
-    {
-        TRACE( "(%p)->(IID_IDirectPlayLobby3A %p)\n", This, ppv );
-        *ppv = &This->IDirectPlayLobby3A_iface;
     }
     else
     {
@@ -131,35 +118,12 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_QueryInterface( IDirectPlayLobby3 *i
     return S_OK;
 }
 
-static ULONG WINAPI IDirectPlayLobby3AImpl_AddRef(IDirectPlayLobby3A *iface)
-{
-    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-    ULONG ref = InterlockedIncrement( &This->ref );
-
-    TRACE( "(%p) ref3=%ld\n", This, ref );
-
-    return ref;
-}
-
 static ULONG WINAPI IDirectPlayLobby3Impl_AddRef(IDirectPlayLobby3 *iface)
 {
     IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
     ULONG ref = InterlockedIncrement( &This->ref );
 
     TRACE( "(%p) ref3=%ld\n", This, ref );
-
-    return ref;
-}
-
-static ULONG WINAPI IDirectPlayLobby3AImpl_Release(IDirectPlayLobby3A *iface)
-{
-    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-    ULONG ref = InterlockedDecrement( &This->ref );
-
-    TRACE( "(%p) ref=%ld\n", This, ref );
-
-    if ( !ref )
-        dplobby_destroy( This );
 
     return ref;
 }
@@ -264,12 +228,6 @@ static HRESULT DPL_ConnectEx( IDirectPlayLobbyImpl *This, DWORD dwFlags, REFIID 
   return hr;
 }
 
-static HRESULT WINAPI IDirectPlayLobby3AImpl_Connect( IDirectPlayLobby3A *iface, DWORD flags,
-    IDirectPlay2A **dp, IUnknown *unk)
-{
-    return IDirectPlayLobby_ConnectEx( iface, flags, &IID_IDirectPlay2A, (void**)dp, unk );
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_Connect( IDirectPlayLobby3 *iface, DWORD flags,
         IDirectPlay2 **dp, IUnknown *unk)
 {
@@ -287,52 +245,31 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_Connect( IDirectPlayLobby3 *iface, D
  * NOTE: It appears that this method is supposed to be really really stupid
  *       with no error checking on the contents.
  */
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_CreateAddress( IDirectPlayLobby3A *iface,
-        REFGUID guidSP, REFGUID guidDataType, const void *lpData, DWORD dwDataSize, void *lpAddress,
-        DWORD *lpdwAddressSize )
-{
-  return DPL_CreateAddress( guidSP, guidDataType, lpData, dwDataSize,
-                            lpAddress, lpdwAddressSize, TRUE );
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_CreateAddress( IDirectPlayLobby3 *iface, REFGUID guidSP,
         REFGUID guidDataType, const void *lpData, DWORD dwDataSize, void *lpAddress,
         DWORD *lpdwAddressSize )
 {
-  return DPL_CreateAddress( guidSP, guidDataType, lpData, dwDataSize,
-                            lpAddress, lpdwAddressSize, FALSE );
-}
+    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
 
-static HRESULT DPL_CreateAddress(
-  REFGUID guidSP,
-  REFGUID guidDataType,
-  LPCVOID lpData,
-  DWORD dwDataSize,
-  LPVOID lpAddress,
-  LPDWORD lpdwAddressSize,
-  BOOL bAnsiInterface )
-{
-  const DWORD dwNumAddElements = 2; /* Service Provide & address data type */
-  DPCOMPOUNDADDRESSELEMENT addressElements[ 2 /* dwNumAddElements */ ];
+    const DWORD dwNumAddElements = 2; /* Service Provide & address data type */
+    DPCOMPOUNDADDRESSELEMENT addressElements[ 2 /* dwNumAddElements */ ];
 
-  TRACE( "(%p)->(%p,%p,0x%08lx,%p,%p,%d)\n", guidSP, guidDataType, lpData, dwDataSize,
-                                             lpAddress, lpdwAddressSize, bAnsiInterface );
+    TRACE( "(%p)->(%s, %s, %p, 0x%08lx, %p, %p)\n", This, debugstr_guid(guidSP), debugstr_guid(guidDataType),
+           lpData, dwDataSize, lpAddress, lpdwAddressSize);
 
-  addressElements[ 0 ].guidDataType = DPAID_ServiceProvider;
-  addressElements[ 0 ].dwDataSize = sizeof( GUID );
-  addressElements[ 0 ].lpData = (LPVOID)guidSP;
+    addressElements[ 0 ].guidDataType = DPAID_ServiceProvider;
+    addressElements[ 0 ].dwDataSize = sizeof( GUID );
+    addressElements[ 0 ].lpData = (LPVOID)guidSP;
 
-  addressElements[ 1 ].guidDataType = *guidDataType;
-  addressElements[ 1 ].dwDataSize = dwDataSize;
-  addressElements[ 1 ].lpData = (LPVOID)lpData;
+    addressElements[ 1 ].guidDataType = *guidDataType;
+    addressElements[ 1 ].dwDataSize = dwDataSize;
+    addressElements[ 1 ].lpData = (LPVOID)lpData;
 
-  /* Call CreateCompoundAddress to cut down on code.
+    /* Call CreateCompoundAddress to cut down on code.
      NOTE: We can do this because we don't support DPL 1 interfaces! */
-  return DPL_CreateCompoundAddress( addressElements, dwNumAddElements,
-                                    lpAddress, lpdwAddressSize, bAnsiInterface );
+    return DPL_CreateCompoundAddress( addressElements, dwNumAddElements,
+                                    lpAddress, lpdwAddressSize, This->ansi_iface );
 }
-
 
 
 /********************************************************************
@@ -341,18 +278,6 @@ static HRESULT DPL_CreateAddress(
  * given callback function, with lpContext, for each of the chunks.
  *
  */
-static HRESULT WINAPI IDirectPlayLobby3AImpl_EnumAddress( IDirectPlayLobby3A *iface,
-        LPDPENUMADDRESSCALLBACK lpEnumAddressCallback, const void *lpAddress, DWORD dwAddressSize,
-        void *lpContext )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-
-  TRACE("(%p)->(%p,%p,0x%08lx,%p)\n", This, lpEnumAddressCallback, lpAddress,
-                                      dwAddressSize, lpContext );
-
-  return DPL_EnumAddress( lpEnumAddressCallback, lpAddress, dwAddressSize, lpContext );
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_EnumAddress( IDirectPlayLobby3 *iface,
         LPDPENUMADDRESSCALLBACK lpEnumAddressCallback, const void *lpAddress, DWORD dwAddressSize,
         void *lpContext )
@@ -400,133 +325,117 @@ HRESULT DPL_EnumAddress( LPDPENUMADDRESSCALLBACK lpEnumAddressCallback, LPCVOID 
  * build the DirectPlay Address.
  *
  */
-static HRESULT WINAPI IDirectPlayLobby3AImpl_EnumAddressTypes( IDirectPlayLobby3A *iface,
-        LPDPLENUMADDRESSTYPESCALLBACK lpEnumAddressTypeCallback, REFGUID guidSP, void *lpContext,
-        DWORD dwFlags )
+static HRESULT WINAPI IDirectPlayLobby3Impl_EnumAddressTypes( IDirectPlayLobby3 *iface,
+        LPDPLENUMADDRESSTYPESCALLBACK enumaddrtypecb, REFGUID sp, void *context, DWORD flags )
 {
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
+    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
+    HKEY   hkResult;
+    LPCSTR searchSubKey    = "SOFTWARE\\Microsoft\\DirectPlay\\Service Providers";
+    DWORD  dwIndex, sizeOfSubKeyName=50;
+    char   subKeyName[51];
+    FILETIME filetime;
 
-  HKEY   hkResult;
-  LPCSTR searchSubKey    = "SOFTWARE\\Microsoft\\DirectPlay\\Service Providers";
-  DWORD  dwIndex, sizeOfSubKeyName=50;
-  char   subKeyName[51];
-  FILETIME filetime;
+    TRACE(" (%p)->(%p,%p,%p,0x%08lx)\n", This, enumaddrtypecb, sp, context, flags );
 
-  TRACE(" (%p)->(%p,%p,%p,0x%08lx)\n", This, lpEnumAddressTypeCallback, guidSP, lpContext, dwFlags );
+    if (!This->ansi_iface)
+    {
+        ERR("Returning unicode values currently isn't supported\n");
+        return DPERR_INVALIDPARAMS;
+    }
 
-  if( dwFlags != 0 )
-  {
-    return DPERR_INVALIDPARAMS;
-  }
-
-  if( !lpEnumAddressTypeCallback )
-  {
-     return DPERR_INVALIDPARAMS;
-  }
-
-  if( guidSP == NULL )
-  {
-    return DPERR_INVALIDOBJECT;
-  }
+    if ( flags != 0 || !enumaddrtypecb || sp == NULL )
+    {
+        return DPERR_INVALIDPARAMS;
+    }
 
     /* Need to loop over the service providers in the registry */
-    if( RegOpenKeyExA( HKEY_LOCAL_MACHINE, searchSubKey,
+    if ( RegOpenKeyExA( HKEY_LOCAL_MACHINE, searchSubKey,
                          0, KEY_READ, &hkResult ) != ERROR_SUCCESS )
     {
-      /* Hmmm. Does this mean that there are no service providers? */
-      ERR(": no service providers?\n");
-      return DP_OK;
+        /* Hmmm. Does this mean that there are no service providers? */
+        ERR(": no service providers?\n");
+        return DP_OK;
     }
 
     /* Traverse all the service providers we have available */
-    for( dwIndex=0;
+    for ( dwIndex=0;
          RegEnumKeyExA( hkResult, dwIndex, subKeyName, &sizeOfSubKeyName,
                         NULL, NULL, NULL, &filetime ) != ERROR_NO_MORE_ITEMS;
          ++dwIndex, sizeOfSubKeyName=50 )
     {
+        HKEY     hkServiceProvider, hkServiceProviderAt;
+        GUID     serviceProviderGUID;
+        DWORD    returnTypeGUID, sizeOfReturnBuffer = 50;
+        char     atSubKey[51];
+        char     returnBuffer[51];
+        WCHAR    buff[51];
+        DWORD    dwAtIndex;
+        LPCSTR   atKey = "Address Types";
+        LPCSTR   guidDataSubKey   = "Guid";
 
-      HKEY     hkServiceProvider, hkServiceProviderAt;
-      GUID     serviceProviderGUID;
-      DWORD    returnTypeGUID, sizeOfReturnBuffer = 50;
-      char     atSubKey[51];
-      char     returnBuffer[51];
-      WCHAR    buff[51];
-      DWORD    dwAtIndex;
-      LPCSTR   atKey = "Address Types";
-      LPCSTR   guidDataSubKey   = "Guid";
+        TRACE(" this time through: %s\n", subKeyName );
 
-      TRACE(" this time through: %s\n", subKeyName );
-
-      /* Get a handle for this particular service provider */
-      if( RegOpenKeyExA( hkResult, subKeyName, 0, KEY_READ,
+        /* Get a handle for this particular service provider */
+        if ( RegOpenKeyExA( hkResult, subKeyName, 0, KEY_READ,
                          &hkServiceProvider ) != ERROR_SUCCESS )
-      {
-         ERR(": what the heck is going on?\n" );
-         continue;
-      }
+        {
+            ERR(": what the heck is going on?\n" );
+            continue;
+        }
 
-      if( RegQueryValueExA( hkServiceProvider, guidDataSubKey,
+        if ( RegQueryValueExA( hkServiceProvider, guidDataSubKey,
                             NULL, &returnTypeGUID, (LPBYTE)returnBuffer,
                             &sizeOfReturnBuffer ) != ERROR_SUCCESS )
-      {
-        ERR(": missing GUID registry data members\n" );
-        continue;
-      }
-
-      /* FIXME: Check return types to ensure we're interpreting data right */
-      MultiByteToWideChar( CP_ACP, 0, returnBuffer, -1, buff, ARRAY_SIZE( buff ));
-      CLSIDFromString( buff, &serviceProviderGUID );
-      /* FIXME: Have I got a memory leak on the serviceProviderGUID? */
-
-      /* Determine if this is the Service Provider that the user asked for */
-      if( !IsEqualGUID( &serviceProviderGUID, guidSP ) )
-      {
-        continue;
-      }
-
-      /* Get a handle for this particular service provider */
-      if( RegOpenKeyExA( hkServiceProvider, atKey, 0, KEY_READ,
-                         &hkServiceProviderAt ) != ERROR_SUCCESS )
-      {
-        TRACE(": No Address Types registry data sub key/members\n" );
-        break;
-      }
-
-      /* Traverse all the address type we have available */
-      for( dwAtIndex=0;
-           RegEnumKeyExA( hkServiceProviderAt, dwAtIndex, atSubKey, &sizeOfSubKeyName,
-                          NULL, NULL, NULL, &filetime ) != ERROR_NO_MORE_ITEMS;
-           ++dwAtIndex, sizeOfSubKeyName=50 )
-      {
-        TRACE( "Found Address Type GUID %s\n", atSubKey );
+        {
+            ERR(": missing GUID registry data members\n" );
+            continue;
+        }
 
         /* FIXME: Check return types to ensure we're interpreting data right */
-        MultiByteToWideChar( CP_ACP, 0, atSubKey, -1, buff, ARRAY_SIZE( buff ));
+        MultiByteToWideChar( CP_ACP, 0, returnBuffer, -1, buff, ARRAY_SIZE( buff ));
         CLSIDFromString( buff, &serviceProviderGUID );
         /* FIXME: Have I got a memory leak on the serviceProviderGUID? */
 
-        /* The enumeration will return FALSE if we are not to continue */
-        if( !lpEnumAddressTypeCallback( &serviceProviderGUID, lpContext, 0 ) )
+        /* Determine if this is the Service Provider that the user asked for */
+        if ( !IsEqualGUID( &serviceProviderGUID, sp ) )
         {
-           WARN("lpEnumCallback returning FALSE\n" );
-           break; /* FIXME: This most likely has to break from the procedure...*/
+            continue;
         }
 
-      }
+        /* Get a handle for this particular service provider */
+        if ( RegOpenKeyExA( hkServiceProvider, atKey, 0, KEY_READ,
+                         &hkServiceProviderAt ) != ERROR_SUCCESS )
+        {
+            TRACE(": No Address Types registry data sub key/members\n" );
+            break;
+        }
 
-      /* We only enumerate address types for 1 GUID. We've found it, so quit looking */
-      break;
+        /* Traverse all the address type we have available */
+        for ( dwAtIndex=0;
+           RegEnumKeyExA( hkServiceProviderAt, dwAtIndex, atSubKey, &sizeOfSubKeyName,
+                          NULL, NULL, NULL, &filetime ) != ERROR_NO_MORE_ITEMS;
+           ++dwAtIndex, sizeOfSubKeyName=50 )
+        {
+            TRACE( "Found Address Type GUID %s\n", atSubKey );
+
+            /* FIXME: Check return types to ensure we're interpreting data right */
+            MultiByteToWideChar( CP_ACP, 0, atSubKey, -1, buff, ARRAY_SIZE( buff ));
+            CLSIDFromString( buff, &serviceProviderGUID );
+            /* FIXME: Have I got a memory leak on the serviceProviderGUID? */
+
+            /* The enumeration will return FALSE if we are not to continue */
+            if ( !enumaddrtypecb( &serviceProviderGUID, context, 0 ) )
+            {
+                WARN("lpEnumCallback returning FALSE\n" );
+                break; /* FIXME: This most likely has to break from the procedure...*/
+            }
+        }
+
+        /* We only enumerate address types for 1 GUID. We've found it, so quit looking */
+        break;
     }
 
-  return DP_OK;
-}
-
-static HRESULT WINAPI IDirectPlayLobby3Impl_EnumAddressTypes( IDirectPlayLobby3 *iface,
-        LPDPLENUMADDRESSTYPESCALLBACK enumaddrtypecb, REFGUID sp, void *context, DWORD flags )
-{
-    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
-    return IDirectPlayLobby_EnumAddressTypes( &This->IDirectPlayLobby3A_iface, enumaddrtypecb, sp,
-          context, flags );
+    return DP_OK;
 }
 
 /********************************************************************
@@ -538,100 +447,96 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_EnumAddressTypes( IDirectPlayLobby3 
 static HRESULT WINAPI IDirectPlayLobby3Impl_EnumLocalApplications( IDirectPlayLobby3 *iface,
         LPDPLENUMLOCALAPPLICATIONSCALLBACK lpEnumLocalAppCallback, void *lpContext, DWORD dwFlags )
 {
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
+    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
 
-  FIXME("(%p)->(%p,%p,0x%08lx):stub\n", This, lpEnumLocalAppCallback, lpContext, dwFlags );
+    HKEY hkResult;
+    LPCSTR searchSubKey    = "SOFTWARE\\Microsoft\\DirectPlay\\Applications";
+    LPCSTR guidDataSubKey  = "Guid";
+    DWORD dwIndex, sizeOfSubKeyName=50;
+    char subKeyName[51];
+    FILETIME filetime;
 
-  return DPERR_OUTOFMEMORY;
-}
+    TRACE("(%p)->(%p,%p,0x%08lx)\n", This, lpEnumLocalAppCallback, lpContext, dwFlags );
 
-static HRESULT WINAPI IDirectPlayLobby3AImpl_EnumLocalApplications( IDirectPlayLobby3A *iface,
-        LPDPLENUMLOCALAPPLICATIONSCALLBACK lpEnumLocalAppCallback, void *lpContext, DWORD dwFlags )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
+    if (!This->ansi_iface)
+    {
+        ERR("Returning unicode values currently isn't supported\n");
+        return DPERR_INVALIDPARAMS;
+    }
 
-  HKEY hkResult;
-  LPCSTR searchSubKey    = "SOFTWARE\\Microsoft\\DirectPlay\\Applications";
-  LPCSTR guidDataSubKey  = "Guid";
-  DWORD dwIndex, sizeOfSubKeyName=50;
-  char subKeyName[51];
-  FILETIME filetime;
+    if ( dwFlags != 0 )
+    {
+        return DPERR_INVALIDPARAMS;
+    }
 
-  TRACE("(%p)->(%p,%p,0x%08lx)\n", This, lpEnumLocalAppCallback, lpContext, dwFlags );
+    if ( !lpEnumLocalAppCallback )
+    {
+        return DPERR_INVALIDPARAMS;
+    }
 
-  if( dwFlags != 0 )
-  {
-    return DPERR_INVALIDPARAMS;
-  }
-
-  if( !lpEnumLocalAppCallback )
-  {
-     return DPERR_INVALIDPARAMS;
-  }
-
-  /* Need to loop over the service providers in the registry */
-  if( RegOpenKeyExA( HKEY_LOCAL_MACHINE, searchSubKey,
+    /* Need to loop over the service providers in the registry */
+    if ( RegOpenKeyExA( HKEY_LOCAL_MACHINE, searchSubKey,
                      0, KEY_READ, &hkResult ) != ERROR_SUCCESS )
-  {
-    /* Hmmm. Does this mean that there are no service providers? */
-    ERR(": no service providers?\n");
-    return DP_OK;
-  }
+    {
+        /* Hmmm. Does this mean that there are no service providers? */
+        ERR(": no service providers?\n");
+        return DP_OK;
+    }
 
-  /* Traverse all registered applications */
-  for( dwIndex=0;
+    /* Traverse all registered applications */
+    for ( dwIndex=0;
        RegEnumKeyExA( hkResult, dwIndex, subKeyName, &sizeOfSubKeyName, NULL, NULL, NULL, &filetime ) != ERROR_NO_MORE_ITEMS;
        ++dwIndex, sizeOfSubKeyName=50 )
-  {
-
-    HKEY       hkServiceProvider;
-    GUID       serviceProviderGUID;
-    DWORD      returnTypeGUID, sizeOfReturnBuffer = 50;
-    char       returnBuffer[51];
-    WCHAR      buff[51];
-    DPLAPPINFO dplAppInfo;
-
-    TRACE(" this time through: %s\n", subKeyName );
-
-    /* Get a handle for this particular service provider */
-    if( RegOpenKeyExA( hkResult, subKeyName, 0, KEY_READ,
-                       &hkServiceProvider ) != ERROR_SUCCESS )
     {
-       ERR(": what the heck is going on?\n" );
-       continue;
+
+        HKEY       hkServiceProvider;
+        GUID       serviceProviderGUID;
+        DWORD      returnTypeGUID, sizeOfReturnBuffer = 50;
+        char       returnBuffer[51];
+        WCHAR      buff[51];
+        DPLAPPINFO dplAppInfo;
+
+        TRACE(" this time through: %s\n", subKeyName );
+
+        /* Get a handle for this particular service provider */
+        if ( RegOpenKeyExA( hkResult, subKeyName, 0, KEY_READ,
+                           &hkServiceProvider ) != ERROR_SUCCESS )
+        {
+            ERR(": what the heck is going on?\n" );
+            continue;
+        }
+
+        if ( RegQueryValueExA( hkServiceProvider, guidDataSubKey,
+                              NULL, &returnTypeGUID, (LPBYTE)returnBuffer,
+                              &sizeOfReturnBuffer ) != ERROR_SUCCESS )
+        {
+            ERR(": missing GUID registry data members\n" );
+            continue;
+        }
+
+        /* FIXME: Check return types to ensure we're interpreting data right */
+        MultiByteToWideChar( CP_ACP, 0, returnBuffer, -1, buff, ARRAY_SIZE( buff ));
+        CLSIDFromString( buff, &serviceProviderGUID );
+        /* FIXME: Have I got a memory leak on the serviceProviderGUID? */
+
+        dplAppInfo.dwSize          = sizeof( dplAppInfo );
+        dplAppInfo.guidApplication = serviceProviderGUID;
+        dplAppInfo.lpszAppNameA    = subKeyName;
+
+        EnterCriticalSection( &This->lock );
+
+        memcpy( &This->cbkeyhack, &hkServiceProvider, sizeof( hkServiceProvider ) );
+
+        if ( !lpEnumLocalAppCallback( &dplAppInfo, lpContext, dwFlags ) )
+        {
+            LeaveCriticalSection( &This->lock );
+            break;
+        }
+
+        LeaveCriticalSection( &This->lock );
     }
 
-    if( RegQueryValueExA( hkServiceProvider, guidDataSubKey,
-                          NULL, &returnTypeGUID, (LPBYTE)returnBuffer,
-                          &sizeOfReturnBuffer ) != ERROR_SUCCESS )
-    {
-      ERR(": missing GUID registry data members\n" );
-      continue;
-    }
-
-    /* FIXME: Check return types to ensure we're interpreting data right */
-    MultiByteToWideChar( CP_ACP, 0, returnBuffer, -1, buff, ARRAY_SIZE( buff ));
-    CLSIDFromString( buff, &serviceProviderGUID );
-    /* FIXME: Have I got a memory leak on the serviceProviderGUID? */
-
-    dplAppInfo.dwSize          = sizeof( dplAppInfo );
-    dplAppInfo.guidApplication = serviceProviderGUID;
-    dplAppInfo.lpszAppNameA    = subKeyName;
-
-    EnterCriticalSection( &This->lock );
-
-    memcpy( &This->cbkeyhack, &hkServiceProvider, sizeof( hkServiceProvider ) );
-
-    if( !lpEnumLocalAppCallback( &dplAppInfo, lpContext, dwFlags ) )
-    {
-       LeaveCriticalSection( &This->lock );
-       break;
-    }
-
-    LeaveCriticalSection( &This->lock );
-  }
-
-  return DP_OK;
+    return DP_OK;
 }
 
 /********************************************************************
@@ -644,27 +549,6 @@ static HRESULT WINAPI IDirectPlayLobby3AImpl_EnumLocalApplications( IDirectPlayL
  *        the data structure to be allocated by our caller which can then
  *        call this procedure/method again with a valid data pointer.
  */
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_GetConnectionSettings( IDirectPlayLobby3A *iface,
-        DWORD dwAppID, void *lpData, DWORD *lpdwDataSize )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-  HRESULT hr;
-
-  TRACE("(%p)->(0x%08lx,%p,%p)\n", This, dwAppID, lpData, lpdwDataSize );
-
-  EnterCriticalSection( &This->lock );
-
-  hr = DPLAYX_GetConnectionSettingsA( dwAppID,
-                                      lpData,
-                                      lpdwDataSize
-                                    );
-
-  LeaveCriticalSection( &This->lock );
-
-  return hr;
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_GetConnectionSettings( IDirectPlayLobby3 *iface,
         DWORD dwAppID, void *lpData, DWORD *lpdwDataSize )
 {
@@ -691,17 +575,6 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_GetConnectionSettings( IDirectPlayLo
  * application. All messages are queued until received.
  *
  */
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_ReceiveLobbyMessage( IDirectPlayLobby3A *iface,
-        DWORD dwFlags, DWORD dwAppID, DWORD *lpdwMessageFlags, void *lpData,
-        DWORD *lpdwDataSize )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-  FIXME(":stub %p %08lx %08lx %p %p %p\n", This, dwFlags, dwAppID, lpdwMessageFlags, lpData,
-         lpdwDataSize );
-  return DPERR_OUTOFMEMORY;
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_ReceiveLobbyMessage( IDirectPlayLobby3 *iface,
         DWORD dwFlags, DWORD dwAppID, DWORD *lpdwMessageFlags, void *lpData,
         DWORD *lpdwDataSize )
@@ -853,64 +726,69 @@ static BOOL DPL_CreateAndSetLobbyHandles( DWORD dwDestProcessId, HANDLE hDestPro
  * connect to a session.
  *
  */
-static HRESULT WINAPI IDirectPlayLobby3AImpl_RunApplication( IDirectPlayLobby3A *iface,
-        DWORD dwFlags, DWORD *lpdwAppID, DPLCONNECTION *lpConn, HANDLE hReceiveEvent )
+static HRESULT WINAPI IDirectPlayLobby3Impl_RunApplication( IDirectPlayLobby3 *iface, DWORD dwFlags,
+        DWORD *lpdwAppID, DPLCONNECTION *lpConn, HANDLE hReceiveEvent )
 {
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-  HRESULT hr;
-  RunApplicationEnumStruct enumData;
-  char temp[200];
-  STARTUPINFOA startupInfo;
-  PROCESS_INFORMATION newProcessInfo;
-  LPSTR appName;
-  DWORD dwSuspendCount;
-  HANDLE hStart, hDeath, hSettingRead;
+    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
+    HRESULT hr;
+    RunApplicationEnumStruct enumData;
+    char temp[200];
+    STARTUPINFOA startupInfo;
+    PROCESS_INFORMATION newProcessInfo;
+    LPSTR appName;
+    DWORD dwSuspendCount;
+    HANDLE hStart, hDeath, hSettingRead;
 
-  TRACE( "(%p)->(0x%08lx,%p,%p,%p)\n",
-         This, dwFlags, lpdwAppID, lpConn, hReceiveEvent );
+    TRACE( "(%p)->(0x%08lx,%p,%p,%p)\n", This, dwFlags, lpdwAppID, lpConn, hReceiveEvent );
 
-  if( dwFlags != 0 )
-  {
-    return DPERR_INVALIDPARAMS;
-  }
+    if (!This->ansi_iface)
+    {
+        ERR("Returning unicode values currently isn't supported\n");
+        return DPERR_INVALIDPARAMS;
+    }
 
-  if( DPLAYX_AnyLobbiesWaitingForConnSettings() )
-  {
-    FIXME( "Waiting lobby not being handled correctly\n" );
-  }
+    if( dwFlags != 0 )
+    {
+        return DPERR_INVALIDPARAMS;
+    }
 
-  EnterCriticalSection( &This->lock );
+    if( DPLAYX_AnyLobbiesWaitingForConnSettings() )
+    {
+        FIXME( "Waiting lobby not being handled correctly\n" );
+    }
 
-  ZeroMemory( &enumData, sizeof( enumData ) );
-  enumData.This    = This;
-  enumData.appGUID = lpConn->lpSessionDesc->guidApplication;
+    EnterCriticalSection( &This->lock );
 
-  /* Our callback function will fill up the enumData structure with all the information
+    ZeroMemory( &enumData, sizeof( enumData ) );
+    enumData.This    = This;
+    enumData.appGUID = lpConn->lpSessionDesc->guidApplication;
+
+    /* Our callback function will fill up the enumData structure with all the information
      required to start a new process */
-  IDirectPlayLobby_EnumLocalApplications( iface, RunApplicationA_EnumLocalApplications,
+    IDirectPlayLobby_EnumLocalApplications( iface, RunApplicationA_EnumLocalApplications,
                                           (&enumData), 0 );
 
-  /* First the application name */
-  strcpy( temp, enumData.lpszPath );
-  strcat( temp, "\\" );
-  strcat( temp, enumData.lpszFileName );
-  free( enumData.lpszPath );
-  free( enumData.lpszFileName );
-  appName = strdup( temp );
+    /* First the application name */
+    strcpy( temp, enumData.lpszPath );
+    strcat( temp, "\\" );
+    strcat( temp, enumData.lpszFileName );
+    free( enumData.lpszPath );
+    free( enumData.lpszFileName );
+    appName = strdup( temp );
 
-  /* Now the command line */
-  strcat( temp, " " );
-  strcat( temp, enumData.lpszCommandLine );
-  free( enumData.lpszCommandLine );
-  enumData.lpszCommandLine = strdup( temp );
+    /* Now the command line */
+    strcat( temp, " " );
+    strcat( temp, enumData.lpszCommandLine );
+    free( enumData.lpszCommandLine );
+    enumData.lpszCommandLine = strdup( temp );
 
-  ZeroMemory( &startupInfo, sizeof( startupInfo ) );
-  startupInfo.cb = sizeof( startupInfo );
-  /* FIXME: Should any fields be filled in? */
+    ZeroMemory( &startupInfo, sizeof( startupInfo ) );
+    startupInfo.cb = sizeof( startupInfo );
+    /* FIXME: Should any fields be filled in? */
 
-  ZeroMemory( &newProcessInfo, sizeof( newProcessInfo ) );
+    ZeroMemory( &newProcessInfo, sizeof( newProcessInfo ) );
 
-  if( !CreateProcessA( appName,
+    if( !CreateProcessA( appName,
                        enumData.lpszCommandLine,
                        NULL,
                        NULL,
@@ -922,67 +800,57 @@ static HRESULT WINAPI IDirectPlayLobby3AImpl_RunApplication( IDirectPlayLobby3A 
                        &newProcessInfo
                      )
     )
-  {
-    ERR( "Failed to create process for app %s\n", appName );
+    {
+        ERR( "Failed to create process for app %s\n", appName );
+
+        free( appName );
+        free( enumData.lpszCommandLine );
+        free( enumData.lpszCurrentDirectory );
+
+        LeaveCriticalSection( &This->lock );
+        return DPERR_CANTCREATEPROCESS;
+    }
 
     free( appName );
     free( enumData.lpszCommandLine );
     free( enumData.lpszCurrentDirectory );
 
-    LeaveCriticalSection( &This->lock );
-    return DPERR_CANTCREATEPROCESS;
-  }
+    /* Reserve this global application id! */
+    if( !DPLAYX_CreateLobbyApplication( newProcessInfo.dwProcessId ) )
+    {
+        ERR( "Unable to create global application data for 0x%08lx\n", newProcessInfo.dwProcessId );
+    }
 
-  free( appName );
-  free( enumData.lpszCommandLine );
-  free( enumData.lpszCurrentDirectory );
+    hr = IDirectPlayLobby_SetConnectionSettings( iface, 0, newProcessInfo.dwProcessId, lpConn );
+    if( hr != DP_OK )
+    {
+        ERR( "SetConnectionSettings failure %s\n", DPLAYX_HresultToString( hr ) );
+        LeaveCriticalSection( &This->lock );
+        return hr;
+    }
 
-  /* Reserve this global application id! */
-  if( !DPLAYX_CreateLobbyApplication( newProcessInfo.dwProcessId ) )
-  {
-    ERR( "Unable to create global application data for 0x%08lx\n",
-           newProcessInfo.dwProcessId );
-  }
-
-  hr = IDirectPlayLobby_SetConnectionSettings( iface, 0, newProcessInfo.dwProcessId, lpConn );
-
-  if( hr != DP_OK )
-  {
-    ERR( "SetConnectionSettings failure %s\n", DPLAYX_HresultToString( hr ) );
-    LeaveCriticalSection( &This->lock );
-    return hr;
-  }
-
-  /* Setup the handles for application notification */
-  DPL_CreateAndSetLobbyHandles( newProcessInfo.dwProcessId,
+    /* Setup the handles for application notification */
+    DPL_CreateAndSetLobbyHandles( newProcessInfo.dwProcessId,
                                 newProcessInfo.hProcess,
                                 &hStart, &hDeath, &hSettingRead );
 
-  /* Setup the message thread ID */
-  This->msgtid = CreateLobbyMessageReceptionThread( hReceiveEvent, hStart, hDeath, hSettingRead );
+    /* Setup the message thread ID */
+    This->msgtid = CreateLobbyMessageReceptionThread( hReceiveEvent, hStart, hDeath, hSettingRead );
 
-  DPLAYX_SetLobbyMsgThreadId( newProcessInfo.dwProcessId, This->msgtid );
+    DPLAYX_SetLobbyMsgThreadId( newProcessInfo.dwProcessId, This->msgtid );
 
-  LeaveCriticalSection( &This->lock );
+    LeaveCriticalSection( &This->lock );
 
-  /* Everything seems to have been set correctly, update the dwAppID */
-  *lpdwAppID = newProcessInfo.dwProcessId;
+    /* Everything seems to have been set correctly, update the dwAppID */
+    *lpdwAppID = newProcessInfo.dwProcessId;
 
-  /* Unsuspend the process - should return the prev suspension count */
-  if( ( dwSuspendCount = ResumeThread( newProcessInfo.hThread ) ) != 1 )
-  {
-    ERR( "ResumeThread failed with 0x%08lx\n", dwSuspendCount );
-  }
+    /* Unsuspend the process - should return the prev suspension count */
+    if( ( dwSuspendCount = ResumeThread( newProcessInfo.hThread ) ) != 1 )
+    {
+        ERR( "ResumeThread failed with 0x%08lx\n", dwSuspendCount );
+    }
 
-  return DP_OK;
-}
-
-static HRESULT WINAPI IDirectPlayLobby3Impl_RunApplication( IDirectPlayLobby3 *iface, DWORD dwFlags,
-        DWORD *lpdwAppID, DPLCONNECTION *lpConn, HANDLE hReceiveEvent )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
-  FIXME( "(%p)->(0x%08lx,%p,%p,%p):stub\n", This, dwFlags, lpdwAppID, lpConn, hReceiveEvent );
-  return DPERR_OUTOFMEMORY;
+    return DP_OK;
 }
 
 /********************************************************************
@@ -991,14 +859,6 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_RunApplication( IDirectPlayLobby3 *i
  * All messages are queued until received.
  *
  */
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_SendLobbyMessage( IDirectPlayLobby3A *iface,
-        DWORD flags, DWORD appid, void *data, DWORD size )
-{
-  FIXME(":stub\n");
-  return DPERR_OUTOFMEMORY;
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_SendLobbyMessage( IDirectPlayLobby3 *iface,
         DWORD flags, DWORD appid, void *data, DWORD size )
 {
@@ -1043,47 +903,11 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_SetConnectionSettings( IDirectPlayLo
   return hr;
 }
 
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_SetConnectionSettings( IDirectPlayLobby3A *iface,
-        DWORD dwFlags, DWORD dwAppID, DPLCONNECTION *lpConn )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-  HRESULT hr;
-
-  TRACE("(%p)->(0x%08lx,0x%08lx,%p)\n", This, dwFlags, dwAppID, lpConn );
-
-  EnterCriticalSection( &This->lock );
-
-  hr = DPLAYX_SetConnectionSettingsA( dwFlags, dwAppID, lpConn );
-
-  /* FIXME: Don't think that this is supposed to fail, but the documentation
-            is somewhat sketchy. I'll try creating a lobby application
-            for this... */
-  if( hr == DPERR_NOTLOBBIED )
-  {
-    FIXME( "Unlobbied app setting connections. Is this correct behavior?\n" );
-    dwAppID = GetCurrentProcessId();
-    DPLAYX_CreateLobbyApplication( dwAppID );
-    hr = DPLAYX_SetConnectionSettingsA( dwFlags, dwAppID, lpConn );
-  }
-
-  LeaveCriticalSection( &This->lock );
-
-  return hr;
-}
-
 /********************************************************************
  *
  * Registers an event that will be set when a lobby message is received.
  *
  */
-static HRESULT WINAPI IDirectPlayLobby3AImpl_SetLobbyMessageEvent( IDirectPlayLobby3A *iface,
-        DWORD flags, DWORD appid, HANDLE event )
-{
-  FIXME(":stub\n");
-  return DPERR_OUTOFMEMORY;
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_SetLobbyMessageEvent( IDirectPlayLobby3 *iface,
         DWORD flags, DWORD appid, HANDLE event )
 {
@@ -1095,14 +919,11 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_CreateCompoundAddress( IDirectPlayLo
         const DPCOMPOUNDADDRESSELEMENT *lpElements, DWORD dwElementCount, void *lpAddress,
         DWORD *lpdwAddressSize )
 {
-  return DPL_CreateCompoundAddress( lpElements, dwElementCount, lpAddress, lpdwAddressSize, FALSE );
-}
+    IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3( iface );
 
-static HRESULT WINAPI IDirectPlayLobby3AImpl_CreateCompoundAddress( IDirectPlayLobby3A *iface,
-        const DPCOMPOUNDADDRESSELEMENT *lpElements, DWORD dwElementCount, void *lpAddress,
-        DWORD *lpdwAddressSize )
-{
-  return DPL_CreateCompoundAddress( lpElements, dwElementCount, lpAddress, lpdwAddressSize, TRUE );
+    TRACE("(%p)->(%p, 0x%08lx, %p, %p)\n", This, lpElements, dwElementCount, lpAddress, lpdwAddressSize );
+
+    return DPL_CreateCompoundAddress( lpElements, dwElementCount, lpAddress, lpdwAddressSize, This->ansi_iface );
 }
 
 HRESULT DPL_CreateCompoundAddress
@@ -1283,13 +1104,6 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_ConnectEx( IDirectPlayLobby3 *iface,
   return DPL_ConnectEx( This, dwFlags, riid, lplpDP, pUnk );
 }
 
-static HRESULT WINAPI IDirectPlayLobby3AImpl_ConnectEx( IDirectPlayLobby3A *iface, DWORD dwFlags,
-        REFIID riid, void **lplpDP, IUnknown *pUnk )
-{
-  IDirectPlayLobbyImpl *This = impl_from_IDirectPlayLobby3A( iface );
-  return DPL_ConnectEx( This, dwFlags, riid, lplpDP, pUnk );
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_RegisterApplication( IDirectPlayLobby3 *iface,
         DWORD flags, DPAPPLICATIONDESC *appdesc )
 {
@@ -1297,21 +1111,7 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_RegisterApplication( IDirectPlayLobb
   return DP_OK;
 }
 
-static HRESULT WINAPI IDirectPlayLobby3AImpl_RegisterApplication( IDirectPlayLobby3A *iface,
-        DWORD flags, DPAPPLICATIONDESC *appdesc )
-{
-  FIXME(":stub\n");
-  return DP_OK;
-}
-
 static HRESULT WINAPI IDirectPlayLobby3Impl_UnregisterApplication( IDirectPlayLobby3 *iface,
-        DWORD flags, REFGUID appdesc )
-{
-  FIXME(":stub\n");
-  return DP_OK;
-}
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_UnregisterApplication( IDirectPlayLobby3A *iface,
         DWORD flags, REFGUID appdesc )
 {
   FIXME(":stub\n");
@@ -1334,46 +1134,6 @@ static HRESULT WINAPI IDirectPlayLobby3Impl_WaitForConnectionSettings( IDirectPl
 
   return hr;
 }
-
-static HRESULT WINAPI IDirectPlayLobby3AImpl_WaitForConnectionSettings( IDirectPlayLobby3A *iface,
-        DWORD dwFlags )
-{
-  HRESULT hr         = DP_OK;
-  BOOL    bStartWait = !(dwFlags & DPLWAIT_CANCEL);
-
-  TRACE( "(%p)->(0x%08lx)\n", iface, dwFlags );
-
-  if( DPLAYX_WaitForConnectionSettings( bStartWait ) )
-  {
-    /* FIXME: What is the correct error return code? */
-    hr = DPERR_NOTLOBBIED;
-  }
-
-  return hr;
-}
-
-static const IDirectPlayLobby3Vtbl dpl3A_vt =
-{
-    IDirectPlayLobby3AImpl_QueryInterface,
-    IDirectPlayLobby3AImpl_AddRef,
-    IDirectPlayLobby3AImpl_Release,
-    IDirectPlayLobby3AImpl_Connect,
-    IDirectPlayLobby3AImpl_CreateAddress,
-    IDirectPlayLobby3AImpl_EnumAddress,
-    IDirectPlayLobby3AImpl_EnumAddressTypes,
-    IDirectPlayLobby3AImpl_EnumLocalApplications,
-    IDirectPlayLobby3AImpl_GetConnectionSettings,
-    IDirectPlayLobby3AImpl_ReceiveLobbyMessage,
-    IDirectPlayLobby3AImpl_RunApplication,
-    IDirectPlayLobby3AImpl_SendLobbyMessage,
-    IDirectPlayLobby3AImpl_SetConnectionSettings,
-    IDirectPlayLobby3AImpl_SetLobbyMessageEvent,
-    IDirectPlayLobby3AImpl_CreateCompoundAddress,
-    IDirectPlayLobby3AImpl_ConnectEx,
-    IDirectPlayLobby3AImpl_RegisterApplication,
-    IDirectPlayLobby3AImpl_UnregisterApplication,
-    IDirectPlayLobby3AImpl_WaitForConnectionSettings
-};
 
 static const IDirectPlayLobby3Vtbl dpl3_vt =
 {
@@ -1411,9 +1171,11 @@ HRESULT dplobby_create( REFIID riid, void **ppv )
         return DPERR_OUTOFMEMORY;
 
     obj->IDirectPlayLobby3_iface.lpVtbl = &dpl3_vt;
-    obj->IDirectPlayLobby3A_iface.lpVtbl = &dpl3A_vt;
     obj->msgtid = 0;
     obj->ref = 1;
+    obj->ansi_iface = IsEqualGUID( &IID_IDirectPlayLobbyA, riid ) ||
+                 IsEqualGUID( &IID_IDirectPlayLobby2A, riid ) ||
+                 IsEqualGUID( &IID_IDirectPlayLobby3A, riid );
 
     InitializeCriticalSectionEx( &obj->lock, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO );
     obj->lock.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": IDirectPlayLobbyImpl.lock");
