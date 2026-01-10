@@ -1446,10 +1446,12 @@ static void test_items(void)
 {
     const LPARAM lparamTest = 0x42;
     static CHAR text[] = "Text";
+    static CHAR textnl[] = "T\re\nxt";
     char buffA[5];
+    char buffB[7];
     HWND hwnd;
     LVITEMA item;
-    DWORD r;
+    DWORD r, r2;
 
     hwnd = CreateWindowExA(0, WC_LISTVIEWA, "foo", LVS_REPORT,
                 10, 10, 100, 200, hwndparent, NULL, NULL, NULL);
@@ -1567,6 +1569,29 @@ static void test_items(void)
     r = SendMessageA(hwnd, LVM_GETITEMA, 0, (LPARAM) &item);
     expect(1, r);
     ok(!memcmp(item.pszText, text, sizeof(text)), "got text %s, expected %s\n", item.pszText, text);
+
+    /* Set up a subitem with special characters */
+    memset (&item, 0xcc, sizeof (item));
+    item.mask = LVIF_TEXT;
+    item.iItem = 0;
+    item.iSubItem = 1;
+    item.pszText = textnl;
+    r = SendMessageA(hwnd, LVM_SETITEMA, 0, (LPARAM) &item);
+    expect(1, r);
+
+    item.mask = LVIF_TEXT;
+    item.iItem = 0;
+    item.iSubItem = 1;
+    item.pszText = buffB;
+    item.cchTextMax = sizeof(buffB);
+    r = SendMessageA(hwnd, LVM_GETITEMA, 0, (LPARAM) &item);
+    expect(1, r);
+    ok(!memcmp(item.pszText, textnl, sizeof(textnl)), "got text %s, expected %s\n", item.pszText, textnl);
+
+    r = SendMessageA(hwnd, LVM_GETSTRINGWIDTHA, 0, (LPARAM) text);
+    ok(r > 0, "Expected non null width\n");
+    r2 = SendMessageA(hwnd, LVM_GETSTRINGWIDTHA, 0, (LPARAM) textnl);
+    ok(r2 > r, "Expected a greater width\n");
 
     /* set up with extra flag */
     /* 1. reset subitem text */

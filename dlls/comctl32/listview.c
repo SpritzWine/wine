@@ -2307,7 +2307,30 @@ static void LISTVIEW_GetItemOrigin(const LISTVIEW_INFO *infoPtr, INT nItem, LPPO
 	lpptPosition->y = nItem * infoPtr->nItemHeight;
     }
 }
-    
+
+/* wrapper for DrawTextW, so that we remove the characters that native doesn't display (Win10) */
+static INT LISTVIEW_draw_text(HDC hdc, WCHAR *text, RECT *rect, unsigned format)
+{
+    static const WCHAR *totrim = L"\r\n";
+    WCHAR *buffer;
+    WCHAR *src, *dst;
+    INT ret;
+
+    if (!wcspbrk(text, totrim))
+        return DrawTextW(hdc, text, -1, rect, format);
+
+    buffer = wcsdup(text);
+    if (!buffer) return 0;
+    for (src = text, dst = buffer; *src; src++)
+    {
+        if (!wcschr(totrim, *src))
+            *dst++ = *src;
+    }
+    ret = DrawTextW(hdc, buffer, dst - buffer, rect, format);
+    free(buffer);
+    return ret;
+}
+
 /***
  * DESCRIPTION:            [INTERNAL]
  * Compute the rectangles of an item.  This is to localize all
@@ -2499,8 +2522,8 @@ static void LISTVIEW_GetItemMetrics(const LISTVIEW_INFO *infoPtr, const LVITEMW 
 		uFormat = oversizedBox ? LV_FL_DT_FLAGS : LV_ML_DT_FLAGS;
 	    else
 		uFormat = LV_SL_DT_FLAGS;
-	    
-    	    DrawTextW (hdc, lpLVItem->pszText, -1, &rcText, uFormat | DT_CALCRECT);
+
+	    LISTVIEW_draw_text(hdc, lpLVItem->pszText, &rcText, uFormat | DT_CALCRECT);
 
 	    if (rcText.right != rcText.left)
 	        labelSize.cx = min(rcText.right - rcText.left + TRAILING_LABEL_PADDING, infoPtr->nItemWidth);
@@ -4764,7 +4787,7 @@ static void LISTVIEW_DrawItemPart(LISTVIEW_INFO *infoPtr, LVITEMW *item, const N
     if (infoPtr->uView == LV_VIEW_DETAILS && infoPtr->dwLvExStyle & LVS_EX_GRIDLINES)
         rcLabel.bottom--;
 
-    DrawTextW(nmlvcd->nmcd.hdc, item->pszText, -1, &rcLabel, format);
+    LISTVIEW_draw_text(nmlvcd->nmcd.hdc, item->pszText, &rcLabel, format);
 }
 
 /***
