@@ -168,6 +168,8 @@ void dump_objects(void)
 
 void close_objects(void)
 {
+    struct object *rootdir = get_root_directory();
+
     /* release the permanent objects */
     for (;;)
     {
@@ -183,6 +185,11 @@ void close_objects(void)
         }
         if (!found) break;
     }
+
+    /* release the initial and final reference */
+    assert( rootdir->refcount >= 2 );
+    release_object( rootdir );
+    release_object( rootdir );
 
     dump_objects();  /* dump any remaining objects */
 }

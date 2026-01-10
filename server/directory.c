@@ -513,13 +513,18 @@ void init_directories( struct fd *intl_fd )
     release_object( named_pipe_device );
     release_object( mailslot_device );
     release_object( null_device );
-    release_object( root_directory );
     release_object( dir_driver );
     release_object( dir_device );
     release_object( dir_objtype );
     release_object( dir_kernel );
     release_object( dir_nls );
     release_object( dir_global );
+
+    /*
+     * Leave at least one extra ref (in addition to permanent ref) for
+     * root_directory.  This protects against use-after-free when the client
+     * makes it temporary and empties it on an unlikely occasion.
+     */
 }
 
 /* create a directory object */
