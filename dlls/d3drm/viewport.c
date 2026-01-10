@@ -458,6 +458,8 @@ static HRESULT WINAPI d3drm_viewport2_Clear(IDirect3DRMViewport2 *iface, DWORD f
     if (FAILED(hr = IDirect3DViewport_Clear(viewport->d3d_viewport, 1, &clear_rect, clear_flags)))
         return hr;
 
+    viewport->device->needs_update = TRUE;
+
     return D3DRM_OK;
 }
 
@@ -677,17 +679,35 @@ static HRESULT WINAPI d3drm_viewport1_Configure(IDirect3DRMViewport *iface,
 static HRESULT WINAPI d3drm_viewport2_ForceUpdate(IDirect3DRMViewport2* iface,
         DWORD x1, DWORD y1, DWORD x2, DWORD y2)
 {
-    FIXME("iface %p, x1 %lu, y1 %lu, x2 %lu, y2 %lu stub!\n", iface, x1, y1, x2, y2);
+    struct d3drm_viewport *viewport = impl_from_IDirect3DRMViewport2(iface);
+    D3DVIEWPORT vp = { sizeof(vp) };
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, x1 %lu, y1 %lu, x2 %lu, y2 %lu.\n", iface, x1, y1, x2, y2);
+
+    if (!viewport->d3d_viewport)
+        return D3DRMERR_BADOBJECT;
+
+    if (FAILED(hr = IDirect3DViewport_GetViewport(viewport->d3d_viewport, &vp)))
+        return hr;
+
+    if (x1 > x2 || y1 > y2 || x1 < vp.dwX || y1 < vp.dwY ||
+            x2 > (vp.dwX + vp.dwWidth) || y2 > (vp.dwY + vp.dwHeight))
+        return D3DRMERR_BADVALUE;
+
+    viewport->device->needs_update = TRUE;
+
+    return D3DRM_OK;
 }
 
 static HRESULT WINAPI d3drm_viewport1_ForceUpdate(IDirect3DRMViewport *iface,
         DWORD x1, DWORD y1, DWORD x2, DWORD y2)
 {
-    FIXME("iface %p, x1 %lu, y1 %lu, x2 %lu, y2 %lu stub!\n", iface, x1, y1, x2, y2);
+    struct d3drm_viewport *viewport = impl_from_IDirect3DRMViewport(iface);
 
-    return E_NOTIMPL;
+    TRACE("iface %p, x1 %lu, y1 %lu, x2 %lu, y2 %lu.\n", iface, x1, y1, x2, y2);
+
+    return d3drm_viewport2_ForceUpdate(&viewport->IDirect3DRMViewport2_iface, x1, y1, x2, y2);
 }
 
 static HRESULT WINAPI d3drm_viewport2_SetPlane(IDirect3DRMViewport2 *iface,

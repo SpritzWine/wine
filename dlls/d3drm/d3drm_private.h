@@ -127,13 +127,15 @@ struct d3drm_device
     IDirect3DRM *d3drm;
     IDirectDraw *ddraw;
     IDirectDrawSurface *primary_surface, *render_target;
-    IDirectDrawClipper *clipper;
     IDirect3DDevice *device;
     BOOL dither;
     D3DRMRENDERQUALITY quality;
     DWORD rendermode;
     DWORD height;
     DWORD width;
+    HWND window;
+    BOOL needs_update;
+    struct list update_callbacks;
 };
 
 struct d3drm_face

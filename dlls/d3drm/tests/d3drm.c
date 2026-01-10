@@ -6833,6 +6833,25 @@ static D3DCOLOR get_surface_color(IDirectDrawSurface *surface, UINT x, UINT y)
     return color;
 }
 
+static HRESULT set_surface_color(IDirectDrawSurface *surface, UINT x, UINT y, D3DCOLOR color)
+{
+    RECT rect = { x, y, x + 1, y + 1 };
+    DDSURFACEDESC surface_desc;
+    HRESULT hr;
+
+    memset(&surface_desc, 0, sizeof(surface_desc));
+    surface_desc.dwSize = sizeof(surface_desc);
+
+    hr = IDirectDrawSurface_Lock(surface, &rect, &surface_desc, DDLOCK_WRITEONLY | DDLOCK_WAIT, NULL);
+    if (FAILED(hr))
+        return hr;
+
+    *((DWORD *)surface_desc.lpSurface) = color;
+
+    hr = IDirectDrawSurface_Unlock(surface, NULL);
+    return hr;
+}
+
 static IDirect3DDevice2 *create_device2_without_ds(IDirectDraw2 *ddraw, HWND window)
 {
     IDirectDrawSurface *surface;
@@ -8230,6 +8249,614 @@ static void test_wrap_qi(void)
 
     IDirect3DRM_Release(d3drm1);
 }
+
+struct update_rect_context
+{
+    int rect_count;
+    D3DRECT rect;
+};
+
+static void CDECL update_cb_modify_rect(IDirect3DRMDevice *device, void *arg, int rect_count, D3DRECT *update_rects)
+{
+    if (rect_count > 0)
+        update_rects[0].x1 = 999999;
+}
+static void CDECL update_cb_get_rect(IDirect3DRMDevice *device, void *arg, int rect_count, D3DRECT *update_rects)
+{
+    struct update_rect_context *ctx = arg;
+    ctx->rect_count = rect_count;
+    if (rect_count > 0)
+        ctx->rect = update_rects[0];
+}
+
+static void test_update_1(void)
+{
+    IDirect3DRM *d3drm1 = NULL;
+    IDirect3DRMDevice *device1 = NULL;
+    IDirect3DRMFrame *scene = NULL, *camera = NULL;
+    IDirect3DRMViewport *viewport = NULL;
+    IDirectDrawClipper *clipper = NULL;
+    GUID driver = IID_IDirect3DRGBDevice;
+    DWORD dev_width = 600, dev_height = 400;
+    RECT vrect = { 1, 1, 480, 360 };
+    struct update_rect_context ctx;
+    HWND window;
+    HRESULT hr;
+
+    window = create_window();
+
+    /* Set up device */
+    hr = DirectDrawCreateClipper(0, &clipper, NULL);
+    ok(hr == DD_OK, "Cannot get IDirectDrawClipper interface, hr %#lx.\n", hr);
+    hr = IDirectDrawClipper_SetHWnd(clipper, 0, window);
+    ok(hr == DD_OK, "Cannot set HWnd to Clipper, hr %#lx.\n", hr);
+    hr = Direct3DRMCreate(&d3drm1);
+    ok(SUCCEEDED(hr), "Cannot create IDirect3DRM instance, hr %#lx.\n", hr);
+    hr = IDirect3DRM_CreateDeviceFromClipper(d3drm1, clipper, &driver, dev_width, dev_height, &device1);
+    ok(hr == D3DRM_OK, "Cannot create IDirect3DRMDevice interface, hr %#lx.\n", hr);
+
+    /* Set up viewport */
+    hr = IDirect3DRM_CreateFrame(d3drm1, NULL, &scene);
+    ok(hr == D3DRM_OK, "Cannot create root scene, hr %#lx.\n", hr);
+    hr = IDirect3DRM_CreateFrame(d3drm1, scene, &camera);
+    ok(hr == D3DRM_OK, "Cannot create camera, hr %#lx.\n", hr);
+    hr = IDirect3DRM_CreateViewport(d3drm1, device1, camera,
+            vrect.left, vrect.top, vrect.right - vrect.left, vrect.bottom - vrect.top, &viewport);
+    ok(hr == D3DRM_OK, "Cannot create viewport, hr %#lx\n", hr);
+
+    /* A NULL callback is not allowed */
+    hr = IDirect3DRMDevice_AddUpdateCallback(device1, NULL, NULL);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, NULL, NULL);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from delete update callback, hr %#lx.\n", hr);
+
+    /* Callbacks receive no rectangles if the viewport hasn't been notified of updates */
+    ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
+    ctx.rect_count = -1;
+    hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, NULL);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 0, "Got unexpected rect count %d, expected 0.\n", ctx.rect_count);
+    ok(ctx.rect.x1 == LONG_MIN && ctx.rect.y1 == LONG_MIN && ctx.rect.x2 == LONG_MIN && ctx.rect.y2 == LONG_MIN,
+            "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
+
+    /* Area cannot extend beyond viewport */
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left - 1, vrect.top, vrect.right - 1, vrect.bottom);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top - 1, vrect.right, vrect.bottom - 1);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.right + 1, vrect.bottom);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.right, vrect.bottom + 1);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    /* Point 1 cannot be left of or above Point 2 */
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.left, vrect.top + 1);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.left + 1, vrect.top);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left + 1, vrect.top + 1, vrect.left, vrect.top);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    /* Anything else is allowed, including a single point */
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left, vrect.top);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left + 1, vrect.top + 1);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    /* Update just to flush force updates */
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+
+    /* Callbacks will receive (at least) one rectangle following a force update */
+    ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
+    ctx.rect_count = -1;
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_modify_rect, NULL);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_modify_rect, NULL);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
+    ok(ctx.rect.x1 == 999999 && ctx.rect.y1 <= vrect.top &&
+       ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
+            "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
+
+    /* Callbacks will receive (at least) one rectangle following a viewport clear */
+    ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
+    ctx.rect_count = -1;
+    hr = IDirect3DRMViewport_Clear(viewport);
+    ok(hr == D3DRM_OK, "Cannot clear viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
+    ok(ctx.rect.x1 <= vrect.left && ctx.rect.y1 <= vrect.top &&
+       ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
+            "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
+
+    IDirect3DRMViewport_Release(viewport);
+    IDirect3DRMFrame_Release(camera);
+    IDirect3DRMFrame_Release(scene);
+
+    IDirect3DRMDevice_Release(device1);
+    IDirect3DRM_Release(d3drm1);
+    IDirectDrawClipper_Release(clipper);
+    DestroyWindow(window);
+}
+
+static void test_update_3(void)
+{
+    IDirect3DRM *d3drm1 = NULL;
+    IDirect3DRM3 *d3drm3 = NULL;
+    IDirect3DRMDevice3 *device3 = NULL;
+    IDirect3DRMFrame3 *scene = NULL, *camera = NULL;
+    IDirect3DRMViewport2 *viewport = NULL;
+    IDirectDrawClipper *clipper = NULL;
+    GUID driver = IID_IDirect3DRGBDevice;
+    DWORD dev_width = 600, dev_height = 400;
+    RECT vrect = { 1, 1, 480, 360 };
+    struct update_rect_context ctx;
+    HWND window;
+    HRESULT hr;
+
+    window = create_window();
+
+    /* Set up device */
+    hr = DirectDrawCreateClipper(0, &clipper, NULL);
+    ok(hr == DD_OK, "Cannot get IDirectDrawClipper interface, hr %#lx.\n", hr);
+    hr = IDirectDrawClipper_SetHWnd(clipper, 0, window);
+    ok(hr == DD_OK, "Cannot set HWnd to Clipper, hr %#lx.\n", hr);
+    hr = Direct3DRMCreate(&d3drm1);
+    ok(SUCCEEDED(hr), "Cannot create IDirect3DRM instance, hr %#lx.\n", hr);
+    hr = IDirect3DRM_QueryInterface(d3drm1, &IID_IDirect3DRM3, (void **)&d3drm3);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRM3 interface, hr %#lx.\n", hr);
+    hr = IDirect3DRM3_CreateDeviceFromClipper(d3drm3, clipper, &driver, dev_width, dev_height, &device3);
+    ok(hr == D3DRM_OK, "Cannot create IDirect3DRMDevice3 interface, hr %#lx.\n", hr);
+
+    /* Set up viewport */
+    hr = IDirect3DRM3_CreateFrame(d3drm3, NULL, &scene);
+    ok(hr == D3DRM_OK, "Cannot create root scene, hr %#lx.\n", hr);
+    hr = IDirect3DRM3_CreateFrame(d3drm3, scene, &camera);
+    ok(hr == D3DRM_OK, "Cannot create camera, hr %#lx.\n", hr);
+    hr = IDirect3DRM3_CreateViewport(d3drm3, device3, camera,
+            vrect.left, vrect.top, vrect.right - vrect.left, vrect.bottom - vrect.top, &viewport);
+    ok(hr == D3DRM_OK, "Cannot create viewport, hr %#lx\n", hr);
+
+    /* Callbacks receive no rectangles if the viewport hasn't been notified of updates */
+    ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
+    ctx.rect_count = -1;
+    hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 0, "Got unexpected rect count %d, expected 0.\n", ctx.rect_count);
+    ok(ctx.rect.x1 == LONG_MIN && ctx.rect.y1 == LONG_MIN && ctx.rect.x2 == LONG_MIN && ctx.rect.y2 == LONG_MIN,
+            "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
+
+    /* Area cannot extend beyond viewport */
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left - 1, vrect.top, vrect.right - 1, vrect.bottom);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top - 1, vrect.right, vrect.bottom - 1);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.right + 1, vrect.bottom);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.right, vrect.bottom + 1);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    /* Point 1 cannot be left of or above Point 2 */
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left + 1, vrect.top, vrect.left, vrect.top + 1);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top + 1, vrect.left + 1, vrect.top);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left + 1, vrect.top + 1, vrect.left, vrect.top);
+    ok(hr == D3DRMERR_BADVALUE, "Expected bad value from force update, hr %#lx.\n", hr);
+    /* Anything else is allowed, including a single point */
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left, vrect.top);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.left + 1, vrect.top + 1);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    /* Update just to flush force updates */
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+
+    /* Callbacks will receive (at least) one rectangle following a force update */
+    ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
+    ctx.rect_count = -1;
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_modify_rect, NULL);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_modify_rect, NULL);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
+    ok(ctx.rect.x1 == 999999 && ctx.rect.y1 <= vrect.top &&
+       ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
+            "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
+
+    /* Callbacks will receive (at least) one rectangle following a viewport clear */
+    ctx.rect.x1 = ctx.rect.y1 = ctx.rect.x2 = ctx.rect.y2 = LONG_MIN;
+    ctx.rect_count = -1;
+    hr = IDirect3DRMViewport2_Clear(viewport, D3DRMCLEAR_ALL);
+    ok(hr == D3DRM_OK, "Cannot clear viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_get_rect, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ok(ctx.rect_count == 1, "Got unexpected rect count %d, expected 1.\n", ctx.rect_count);
+    ok(ctx.rect.x1 <= vrect.left && ctx.rect.y1 <= vrect.top &&
+       ctx.rect.x2 >= vrect.right && ctx.rect.y2 >= vrect.bottom,
+            "Got unexpected rect %s.\n", wine_dbgstr_rect((RECT *)&ctx.rect));
+
+    IDirect3DRMViewport2_Release(viewport);
+    IDirect3DRMFrame3_Release(camera);
+    IDirect3DRMFrame3_Release(scene);
+
+    IDirect3DRMDevice3_Release(device3);
+    IDirect3DRM3_Release(d3drm3);
+    IDirect3DRM_Release(d3drm1);
+    IDirectDrawClipper_Release(clipper);
+    DestroyWindow(window);
+}
+
+struct update_surface_context
+{
+    IDirectDrawSurface *surface;
+    UINT x;
+    UINT y;
+    D3DCOLOR color;
+};
+
+static void CDECL update_cb_surf_color(IDirect3DRMDevice *device, void *arg, int rect_count, D3DRECT *update_rects)
+{
+    struct update_surface_context *ctx = arg;
+    ctx->color = get_surface_color(ctx->surface, ctx->x, ctx->y);
+}
+
+static void test_update_surfaces_1(void)
+{
+    IDirect3DRM *d3drm1 = NULL;
+    IDirect3DRMDevice *device1 = NULL;
+    IDirect3DRMFrame *scene = NULL, *camera = NULL;
+    IDirect3DRMViewport *viewport = NULL;
+    IDirect3DDevice *d3ddevice1 = NULL;
+    IDirectDrawClipper *clipper = NULL;
+    IDirectDrawSurface *surface = NULL, *d3drm_primary = NULL;
+    IDirectDrawSurface7 *surface7 = NULL;
+    IDirectDraw *ddraw = NULL;
+    IUnknown *unknown = NULL;
+    GUID driver = IID_IDirect3DRGBDevice;
+    DWORD dev_width = 600, dev_height = 400;
+    RECT vrect = { 1, 1, 480, 360 };
+    POINT client_pos = { 0, 0 };
+    struct update_surface_context ctx;
+    D3DCOLOR ret_color = 0;
+    DWORD clip_list_size;
+    RGNDATA *clip_list;
+    HWND window;
+    HRESULT hr;
+
+    window = create_window();
+
+    /* Set up device */
+    hr = DirectDrawCreateClipper(0, &clipper, NULL);
+    ok(hr == DD_OK, "Cannot get IDirectDrawClipper interface, hr %#lx.\n", hr);
+    hr = IDirectDrawClipper_SetHWnd(clipper, 0, window);
+    ok(hr == DD_OK, "Cannot set HWnd to Clipper, hr %#lx.\n", hr);
+    hr = Direct3DRMCreate(&d3drm1);
+    ok(SUCCEEDED(hr), "Cannot create IDirect3DRM instance, hr %#lx.\n", hr);
+    hr = IDirect3DRM_CreateDeviceFromClipper(d3drm1, clipper, &driver, dev_width, dev_height, &device1);
+    ok(hr == D3DRM_OK, "Cannot create IDirect3DRMDevice interface, hr %#lx.\n", hr);
+
+    /* Obtain render target */
+    hr = IDirect3DRMDevice_GetDirect3DDevice(device1, &d3ddevice1);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DDevice interface, hr %#lx.\n", hr);
+    hr = IDirect3DDevice_QueryInterface(d3ddevice1, &IID_IDirectDrawSurface, (void **)&surface);
+    ok(hr == DD_OK, "Cannot get surface to the render target, hr %#lx.\n", hr);
+
+    /* Obtain primary surface */
+    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirectDrawSurface7, (void **)&surface7);
+    ok(hr == DD_OK, "Cannot get IDirectDrawSurface7 interface, hr %#lx.\n", hr);
+    IDirectDrawSurface7_GetDDInterface(surface7, (void **)&unknown);
+    hr = IUnknown_QueryInterface(unknown, &IID_IDirectDraw, (void **)&ddraw);
+    ok(hr == DD_OK, "Cannot get IDirectDraw interface, hr %#lx.\n", hr);
+    IUnknown_Release(unknown);
+    hr = IDirectDraw_EnumSurfaces(ddraw, DDENUMSURFACES_ALL | DDENUMSURFACES_DOESEXIST,
+            NULL, &d3drm_primary, surface_callback);
+    ok(hr == DD_OK, "Cannot enumerate surfaces, hr %#lx.\n", hr);
+    ok(d3drm_primary != NULL, "No primary surface was enumerated.\n");
+
+    /* Set color of a pixel on primary surface and on render target */
+    ClientToScreen(window, &client_pos);
+    hr = set_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y, 0x00123456);
+    if (FAILED(hr))
+    {
+        win_skip("Cannot lock/unlock primary surface, hr %#lx, skipping tests\n", hr);
+        goto cleanup;
+    }
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    if (!compare_color(ret_color, 0x00123456, 1))
+    {
+        win_skip("Cannot set color of pixel on primary surface, color 0x%08lx, skipping tests\n", ret_color);
+        goto cleanup;
+    }
+    hr = set_surface_color(surface, 320, 240, 0x000000ff);
+    ret_color = get_surface_color(surface, 320, 240);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    /* Set up viewport */
+    hr = IDirect3DRM_CreateFrame(d3drm1, NULL, &scene);
+    ok(hr == D3DRM_OK, "Cannot create root scene, hr %#lx.\n", hr);
+    hr = IDirect3DRM_CreateFrame(d3drm1, scene, &camera);
+    ok(hr == D3DRM_OK, "Cannot create camera, hr %#lx.\n", hr);
+    hr = IDirect3DRM_CreateViewport(d3drm1, device1, camera,
+            vrect.left, vrect.top, vrect.right - vrect.left, vrect.bottom - vrect.top, &viewport);
+    ok(hr == D3DRM_OK, "Cannot create viewport, hr %#lx\n", hr);
+
+    /* Update leaves primary surface unmodified if the viewport hasn't been notified */
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x00123456, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    /* Update modifies primary surface following a force update */
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    /* Update modifies primary surface following a viewport clear */
+    clip_list_size = 0;
+    hr = IDirectDrawClipper_GetClipList(clipper, NULL, NULL, &clip_list_size);
+    ok(hr == DD_OK, "Cannot get clip list size, hr %#lx.\n", hr);
+    clip_list = malloc(clip_list_size);
+    hr = IDirectDrawClipper_GetClipList(clipper, NULL, clip_list, &clip_list_size);
+    ok(hr == DD_OK, "Cannot get clip list, hr %#lx.\n", hr);
+    ctx.surface = d3drm_primary;
+    ctx.x = 320 + client_pos.x;
+    ctx.y = 240 + client_pos.y;
+    ctx.color = 0xdeadbeef;
+    hr = IDirect3DRMFrame_SetSceneBackgroundRGB(scene, 1.0f, 0.5f, 0.0f);
+    ok(hr == D3DRM_OK, "Cannot set background color, hr %#lx\n", hr);
+    hr = IDirect3DRMViewport_Clear(viewport);
+    ok(hr == D3DRM_OK, "Cannot clear viewport, hr %#lx.\n", hr);
+    ret_color = get_surface_color(surface, 320, 240);
+    ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    hr = IDirect3DRMDevice_AddUpdateCallback(device1, update_cb_surf_color, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_DeleteUpdateCallback(device1, update_cb_surf_color, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
+
+    /* Draw at the window handle location, regardless of clipper alterations */
+    clip_list->rdh.rcBound.left += 10;
+    clip_list->rdh.rcBound.top  += 20;
+    ((RECT *)&clip_list->Buffer[0])->left += 10;
+    ((RECT *)&clip_list->Buffer[0])->top  += 20;
+    hr = IDirectDrawClipper_SetHWnd(clipper, 0, NULL);
+    ok(hr == DD_OK, "Cannot set NULL HWnd to Clipper, hr %#lx\n", hr);
+    hr = IDirectDrawClipper_SetClipList(clipper, clip_list, 0);
+    ok(hr == DD_OK, "Cannot set clip list, hr %#lx.\n", hr);
+    free(clip_list);
+    set_surface_color(surface, 320, 240, 0x0000ff00);
+    hr = IDirect3DRMViewport_ForceUpdate(viewport, 320, 240, 321, 241);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice_Update(device1);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x0000ff00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    IDirect3DRMViewport_Release(viewport);
+    IDirect3DRMFrame_Release(camera);
+    IDirect3DRMFrame_Release(scene);
+
+cleanup:
+    IDirectDrawSurface_Release(d3drm_primary);
+    IDirectDraw_Release(ddraw);
+    IDirectDrawSurface7_Release(surface7);
+    IDirectDrawSurface_Release(surface);
+    IDirect3DDevice_Release(d3ddevice1);
+
+    IDirect3DRMDevice_Release(device1);
+    IDirect3DRM_Release(d3drm1);
+    IDirectDrawClipper_Release(clipper);
+    DestroyWindow(window);
+}
+
+static void test_update_surfaces_3(void)
+{
+    IDirect3DRM *d3drm1 = NULL;
+    IDirect3DRM3 *d3drm3 = NULL;
+    IDirect3DRMDevice3 *device3 = NULL;
+    IDirect3DRMFrame3 *scene = NULL, *camera = NULL;
+    IDirect3DRMViewport2 *viewport = NULL;
+    IDirect3DDevice2 *d3ddevice2 = NULL;
+    IDirectDrawClipper *clipper = NULL;
+    IDirectDrawSurface *surface = NULL, *d3drm_primary = NULL;
+    IDirectDrawSurface7 *surface7 = NULL;
+    IDirectDraw *ddraw = NULL;
+    IUnknown *unknown = NULL;
+    GUID driver = IID_IDirect3DRGBDevice;
+    DWORD dev_width = 600, dev_height = 400;
+    RECT vrect = { 1, 1, 480, 360 };
+    POINT client_pos = { 0, 0 };
+    struct update_surface_context ctx;
+    D3DCOLOR ret_color = 0;
+    DWORD clip_list_size;
+    RGNDATA *clip_list;
+    HWND window;
+    HRESULT hr;
+
+    window = create_window();
+
+    /* Set up device */
+    hr = DirectDrawCreateClipper(0, &clipper, NULL);
+    ok(hr == DD_OK, "Cannot get IDirectDrawClipper interface, hr %#lx.\n", hr);
+    hr = IDirectDrawClipper_SetHWnd(clipper, 0, window);
+    ok(hr == DD_OK, "Cannot set HWnd to Clipper, hr %#lx.\n", hr);
+    hr = Direct3DRMCreate(&d3drm1);
+    ok(SUCCEEDED(hr), "Cannot create IDirect3DRM instance, hr %#lx.\n", hr);
+    hr = IDirect3DRM_QueryInterface(d3drm1, &IID_IDirect3DRM3, (void **)&d3drm3);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DRM3 interface, hr %#lx.\n", hr);
+    hr = IDirect3DRM3_CreateDeviceFromClipper(d3drm3, clipper, &driver, dev_width, dev_height, &device3);
+    ok(hr == D3DRM_OK, "Cannot create IDirect3DRMDevice interface, hr %#lx.\n", hr);
+
+    /* Obtain render target */
+    hr = IDirect3DRMDevice3_GetDirect3DDevice2(device3, &d3ddevice2);
+    ok(hr == D3DRM_OK, "Cannot get IDirect3DDevice interface, hr %#lx.\n", hr);
+    hr = IDirect3DDevice2_GetRenderTarget(d3ddevice2, &surface);
+    ok(hr == DD_OK, "Cannot get surface to the render target, hr %#lx.\n", hr);
+
+    /* Obtain primary surface */
+    hr = IDirectDrawSurface_QueryInterface(surface, &IID_IDirectDrawSurface7, (void **)&surface7);
+    ok(hr == DD_OK, "Cannot get IDirectDrawSurface7 interface, hr %#lx.\n", hr);
+    IDirectDrawSurface7_GetDDInterface(surface7, (void **)&unknown);
+    hr = IUnknown_QueryInterface(unknown, &IID_IDirectDraw, (void **)&ddraw);
+    ok(hr == DD_OK, "Cannot get IDirectDraw interface, hr %#lx.\n", hr);
+    IUnknown_Release(unknown);
+    hr = IDirectDraw_EnumSurfaces(ddraw, DDENUMSURFACES_ALL | DDENUMSURFACES_DOESEXIST,
+            NULL, &d3drm_primary, surface_callback);
+    ok(hr == DD_OK, "Cannot enumerate surfaces, hr %#lx.\n", hr);
+    ok(d3drm_primary != NULL, "No primary surface was enumerated.\n");
+
+    /* Set color of a pixel on primary surface and on render target */
+    ClientToScreen(window, &client_pos);
+    hr = set_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y, 0x00123456);
+    if (FAILED(hr))
+    {
+        win_skip("Cannot lock/unlock primary surface, hr %#lx, skipping tests\n", hr);
+        goto cleanup;
+    }
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    if (!compare_color(ret_color, 0x00123456, 1))
+    {
+        win_skip("Cannot set color of pixel on primary surface, color 0x%08lx, skipping tests\n", ret_color);
+        goto cleanup;
+    }
+    hr = set_surface_color(surface, 320, 240, 0x000000ff);
+    ret_color = get_surface_color(surface, 320, 240);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    /* Set up viewport */
+    hr = IDirect3DRM3_CreateFrame(d3drm3, NULL, &scene);
+    ok(hr == D3DRM_OK, "Cannot create root scene, hr %#lx.\n", hr);
+    hr = IDirect3DRM3_CreateFrame(d3drm3, scene, &camera);
+    ok(hr == D3DRM_OK, "Cannot create camera, hr %#lx.\n", hr);
+    hr = IDirect3DRM3_CreateViewport(d3drm3, device3, camera,
+            vrect.left, vrect.top, vrect.right - vrect.left, vrect.bottom - vrect.top, &viewport);
+    ok(hr == D3DRM_OK, "Cannot create viewport, hr %#lx\n", hr);
+
+    /* Update leaves primary surface unmodified if the viewport hasn't been notified */
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x00123456, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    /* Update modifies primary surface following a force update */
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, vrect.left, vrect.top, vrect.right, vrect.bottom);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    /* Update modifies primary surface following a viewport clear */
+    ctx.surface = d3drm_primary;
+    ctx.x = 320 + client_pos.x;
+    ctx.y = 240 + client_pos.y;
+    ctx.color = 0xdeadbeef;
+    hr = IDirect3DRMFrame3_SetSceneBackgroundRGB(scene, 1.0f, 0.5f, 0.0f);
+    ok(hr == D3DRM_OK, "Cannot set background color, hr %#lx\n", hr);
+    hr = IDirect3DRMViewport2_Clear(viewport, D3DRMCLEAR_ALL);
+    ok(hr == D3DRM_OK, "Cannot clear viewport, hr %#lx.\n", hr);
+    ret_color = get_surface_color(surface, 320, 240);
+    ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x000000ff, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    hr = IDirect3DRMDevice3_AddUpdateCallback(device3, update_cb_surf_color, &ctx);
+    ok(hr == D3DRM_OK, "Cannot add update callback, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_DeleteUpdateCallback(device3, update_cb_surf_color, &ctx);
+    ok(hr == D3DRM_OK, "Cannot delete update callback, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+    ok(compare_color(ctx.color, 0x00ff7f00, 1), "Got unexpected color 0x%08lx.\n", ctx.color);
+
+    /* Draw at the window handle location, regardless of clipper alterations */
+    clip_list_size = 0;
+    hr = IDirectDrawClipper_GetClipList(clipper, NULL, NULL, &clip_list_size);
+    ok(hr == DD_OK, "Cannot get clip list size, hr %#lx.\n", hr);
+    clip_list = malloc(clip_list_size);
+    hr = IDirectDrawClipper_GetClipList(clipper, NULL, clip_list, &clip_list_size);
+    ok(hr == DD_OK, "Cannot get clip list, hr %#lx.\n", hr);
+    clip_list->rdh.rcBound.left += 10;
+    clip_list->rdh.rcBound.top  += 20;
+    ((RECT *)&clip_list->Buffer[0])->left += 10;
+    ((RECT *)&clip_list->Buffer[0])->top  += 20;
+    hr = IDirectDrawClipper_SetHWnd(clipper, 0, NULL);
+    ok(hr == DD_OK, "Cannot set NULL HWnd to Clipper, hr %#lx\n", hr);
+    hr = IDirectDrawClipper_SetClipList(clipper, clip_list, 0);
+    ok(hr == DD_OK, "Cannot set clip list, hr %#lx.\n", hr);
+    free(clip_list);
+    set_surface_color(surface, 320, 240, 0x0000ff00);
+    hr = IDirect3DRMViewport2_ForceUpdate(viewport, 320, 240, 321, 241);
+    ok(hr == D3DRM_OK, "Cannot force update of viewport, hr %#lx.\n", hr);
+    hr = IDirect3DRMDevice3_Update(device3);
+    ok(hr == D3DRM_OK, "Cannot update Direct3DRMDevice3, hr %#lx.\n", hr);
+    ret_color = get_surface_color(d3drm_primary, 320 + client_pos.x, 240 + client_pos.y);
+    ok(compare_color(ret_color, 0x0000ff00, 1), "Got unexpected color 0x%08lx.\n", ret_color);
+
+    IDirect3DRMViewport2_Release(viewport);
+    IDirect3DRMFrame3_Release(camera);
+    IDirect3DRMFrame3_Release(scene);
+
+cleanup:
+    IDirectDrawSurface_Release(d3drm_primary);
+    IDirectDraw_Release(ddraw);
+    IDirectDrawSurface7_Release(surface7);
+    IDirectDrawSurface_Release(surface);
+    IDirect3DDevice2_Release(d3ddevice2);
+
+    IDirect3DRMDevice3_Release(device3);
+    IDirect3DRM3_Release(d3drm3);
+    IDirect3DRM_Release(d3drm1);
+    IDirectDrawClipper_Release(clipper);
+    DestroyWindow(window);
+}
+
 START_TEST(d3drm)
 {
     test_MeshBuilder();
@@ -8271,4 +8898,8 @@ START_TEST(d3drm)
     test_animation_qi();
     test_wrap();
     test_wrap_qi();
+    test_update_1();
+    test_update_3();
+    test_update_surfaces_1();
+    test_update_surfaces_3();
 }
