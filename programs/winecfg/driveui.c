@@ -176,7 +176,7 @@ static void enable_labelserial_box(HWND dialog, int mode)
             disable(IDC_EDIT_DEVICE);
             disable(IDC_BUTTON_BROWSE_DEVICE);
             disable(IDC_EDIT_SERIAL);
-            disable(IDC_EDIT_LABEL);
+            enable(IDC_EDIT_LABEL);
             break;
 
         case BOX_MODE_NORMAL:

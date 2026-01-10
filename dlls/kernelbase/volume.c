@@ -116,7 +116,11 @@ static DWORD get_mountmgr_drive_type( LPCWSTR root )
     DWORD br;
 
     memset( &data, 0, sizeof(data) );
-    if (root) data.letter = root[0];
+    if (root)
+    {
+        if (wcslen(root) < 3 || root[1] != ':' || root[2] != '\\') return DRIVE_UNKNOWN;
+        data.letter = root[0];
+    }
     else
     {
         WCHAR curdir[MAX_PATH];
@@ -558,13 +562,13 @@ UINT WINAPI DECLSPEC_HOTPATCH GetDriveTypeW( LPCWSTR root )
     HANDLE handle;
     UINT ret;
 
+    ret = get_mountmgr_drive_type( root );
+    if (ret != DRIVE_UNKNOWN) {
+        return ret;
+    }
+
     if (!open_device_root( root, &handle ))
     {
-        /* CD ROM devices do not necessarily have a volume, but a drive type */
-        ret = get_mountmgr_drive_type( root );
-        if (ret == DRIVE_CDROM || ret == DRIVE_REMOVABLE)
-            return ret;
-
         return DRIVE_NO_ROOT_DIR;
     }
 
