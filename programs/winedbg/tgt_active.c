@@ -919,7 +919,7 @@ enum dbg_start dbg_active_auto(int argc, char* argv[])
         break;
     }
 
-    input = parser_generate_command_file("echo Modules:", "info share",
+    input = parser_generate_command_file("echo Modules:", "info wow share",
                                          "echo Threads:", "info threads",
                                          "info system",
                                          "detach",
