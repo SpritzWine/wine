@@ -89,8 +89,10 @@ static HRESULT WINAPI factory_GetIids( IActivationFactory *iface, ULONG *iid_cou
 
 static HRESULT WINAPI factory_GetRuntimeClassName( IActivationFactory *iface, HSTRING *class_name )
 {
-    FIXME( "iface %p, class_name %p stub!\n", iface, class_name );
-    return E_NOTIMPL;
+    TRACE( "iface %p, class_name %p\n", iface, class_name );
+
+    *class_name = NULL;
+    return E_ILLEGAL_METHOD_CALL;
 }
 
 static HRESULT WINAPI factory_GetTrustLevel( IActivationFactory *iface, TrustLevel *trust_level )

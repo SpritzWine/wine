@@ -80,6 +80,11 @@ static void test_NetworkInformationStatics(void)
     hr = IActivationFactory_QueryInterface( factory, &IID_INetworkInformationStatics, (void **)&network_information_statics );
     ok( hr == S_OK, "got hr %#lx.\n", hr );
 
+    str = (void *)0xdeadbeef;
+    hr = IActivationFactory_GetRuntimeClassName( factory, &str );
+    ok( hr == E_ILLEGAL_METHOD_CALL, "got hr %#lx.\n", hr );
+    ok( str == NULL, "got str %s.\n", wine_dbgstr_hstring( str ) );
+
     hr = CoCreateInstance( &CLSID_NetworkListManager, NULL, CLSCTX_INPROC_SERVER, &IID_INetworkListManager, (void **)&network_list_manager );
     ok( hr == S_OK, "got hr %#lx.\n", hr );
     if (FAILED(hr))
