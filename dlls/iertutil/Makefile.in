@@ -1,5 +1,5 @@
 MODULE = iertutil.dll
-IMPORTS = combase
+IMPORTS = combase kernelbase
 
 SOURCES = \
 	classes.idl \
