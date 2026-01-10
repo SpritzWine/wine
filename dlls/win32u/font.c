@@ -1002,7 +1002,7 @@ static void dump_gdi_font_list(void)
 
     WINE_RB_FOR_EACH_ENTRY( family, &family_name_tree, struct gdi_font_family, name_entry )
     {
-        TRACE( "Family: %s\n", debugstr_w(family->family_name) );
+        TRACE( "Family: %s, Second name: %s\n", debugstr_w(family->family_name),debugstr_w(family->second_name) );
         LIST_FOR_EACH_ENTRY( face, &family->faces, struct gdi_font_face, entry )
         {
             TRACE( "\t%s\t%s\t%08x", debugstr_w(face->style_name), debugstr_w(face->full_name),
@@ -3365,17 +3365,18 @@ static BOOL family_matches( struct gdi_font_family *family, const WCHAR *face_na
 {
     struct gdi_font_face *face;
 
-    if (!facename_compare( face_name, family->family_name, LF_FACESIZE - 1 )) return TRUE;
+    if (!facename_compare( face_name, family->family_name, LF_FACESIZE - 1 ) || !facename_compare( face_name, family->second_name, LF_FACESIZE - 1 )) return TRUE;
     LIST_FOR_EACH_ENTRY( face, get_family_face_list(family), struct gdi_font_face, entry )
         if (!facename_compare( face_name, face->full_name, LF_FACESIZE - 1 )) return TRUE;
     return FALSE;
 }
 
-static BOOL face_matches( const WCHAR *family_name, struct gdi_font_face *face, const WCHAR *face_name )
+static BOOL face_matches( struct gdi_font_family *family, struct gdi_font_face *face, const WCHAR *face_name )
 {
-    if (!facename_compare( face_name, family_name, LF_FACESIZE - 1)) return TRUE;
+    if (!facename_compare( face_name, family->family_name, LF_FACESIZE - 1) || !facename_compare( face_name, family->second_name, LF_FACESIZE - 1 ) ) return TRUE;
     return !facename_compare( face_name, face->full_name, LF_FACESIZE - 1 );
 }
+
 
 static BOOL enum_face_charsets( const struct gdi_font_family *family, struct gdi_font_face *face,
                                 struct enum_charset *list, DWORD count, font_enum_proc proc, LPARAM lparam,
@@ -3473,7 +3474,7 @@ static BOOL font_EnumFonts( PHYSDEV dev, LOGFONTW *lf, font_enum_proc proc, LPAR
             if (!family_matches(family, face_name)) continue;
             LIST_FOR_EACH_ENTRY( face, get_family_face_list(family), struct gdi_font_face, entry )
             {
-                if (!face_matches( family->family_name, face, face_name )) continue;
+                if (!face_matches( family, face, face_name )) continue;
                 if (!enum_face_charsets( family, face, enum_charsets, count, proc, lparam, orig_name ))
                     return FALSE; /* enum_face_charsets() unlocked font_lock */
 	    }
