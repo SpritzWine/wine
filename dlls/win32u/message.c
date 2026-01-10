@@ -2593,6 +2593,8 @@ static BOOL process_mouse_message( MSG *msg, UINT hw_id, ULONG_PTR extra_info, H
                 is_current_thread_window( next ))
                 msg->hwnd = window_from_point( next, msg->pt, &hittest, TRUE );
         }
+        if (!msg->hwnd) /* Try the next top-level window */
+            msg->hwnd = window_from_point( 0, msg->pt, &hittest );
     }
 
     if (!msg->hwnd || !is_current_thread_window( msg->hwnd ))
