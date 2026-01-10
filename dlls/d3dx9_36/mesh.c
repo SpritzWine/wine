@@ -1668,7 +1668,6 @@ static HRESULT WINAPI d3dx9_mesh_OptimizeInplace(ID3DXMesh *iface, DWORD flags, 
             FIXME("D3DXMESHOPT_VERTEXCACHE not implemented.\n");
         if (flags & D3DXMESHOPT_STRIPREORDER)
             FIXME("D3DXMESHOPT_STRIPREORDER not implemented.\n");
-        return E_NOTIMPL;
     }
 
     hr = iface->lpVtbl->LockIndexBuffer(iface, 0, &indices);
@@ -7758,4 +7757,10 @@ cleanup:
     empty_frame_queue(&queue);
 
     return found;
+}
+
+HRESULT WINAPI D3DXFrameCalculateBoundingSphere(const D3DXFRAME *frame_root, D3DXVECTOR3 *center, FLOAT *radius)
+{
+    FIXME("(%p, %p, %p) stub!\n", frame_root, center, radius);
+    return E_NOTIMPL;
 }
