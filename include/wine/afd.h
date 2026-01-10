@@ -291,6 +291,8 @@ C_ASSERT( sizeof(struct afd_get_events_params) == 56 );
 #define IOCTL_AFD_WINE_SET_TCP_KEEPCNT                  WINE_AFD_IOC(302)
 #define IOCTL_AFD_WINE_GET_TCP_KEEPINTVL                WINE_AFD_IOC(303)
 #define IOCTL_AFD_WINE_SET_TCP_KEEPINTVL                WINE_AFD_IOC(304)
+#define IOCTL_AFD_WINE_GET_IPX_ADDRESS                  WINE_AFD_IOC(305)
+#define IOCTL_AFD_WINE_GET_IPX_MAX_ADAPTER_NUM          WINE_AFD_IOC(306)
 
 struct afd_iovec
 {

@@ -1913,40 +1913,19 @@ int WINAPI getsockopt( SOCKET s, int level, int optname, char *optval, int *optl
 
     case NSPROTO_IPX:
     {
-        struct sockaddr_ipx addr;
-        IPX_ADDRESS_DATA *data;
-        int namelen;
+        IO_STATUS_BLOCK io;
+        NTSTATUS status;
         switch(optname)
         {
         case IPX_ADDRESS:
-            /*
-            *  On a Win2000 system with one network card there are usually
-            *  three ipx devices one with a speed of 28.8kbps, 10Mbps and 100Mbps.
-            *  Using this call you can then retrieve info about this all.
-            *  In case of Linux it is a bit different. Usually you have
-            *  only "one" device active and further it is not possible to
-            *  query things like the linkspeed.
-            */
-            FIXME("IPX_ADDRESS\n");
-            namelen = sizeof(struct sockaddr_ipx);
-            memset( &addr, 0, sizeof(struct sockaddr_ipx) );
-            getsockname( s, (struct sockaddr *)&addr, &namelen );
-
-            data = (IPX_ADDRESS_DATA*)optval;
-                    memcpy(data->nodenum,addr.sa_nodenum,sizeof(data->nodenum));
-                    memcpy(data->netnum,addr.sa_netnum,sizeof(data->netnum));
-            data->adapternum = 0;
-            data->wan = FALSE; /* We are not on a wan for now .. */
-            data->status = FALSE; /* Since we are not on a wan, the wan link isn't up */
-            data->maxpkt = 1467; /* This value is the default one, at least on Win2k/WinXP */
-            data->linkspeed = 100000; /* Set the line speed in 100bit/s to 10 Mbit;
-                                       * note 1MB = 1000kB in this case */
-            return 0;
+            status = NtDeviceIoControlFile( (HANDLE)s, NULL, NULL, NULL, &io,
+                                 IOCTL_AFD_WINE_GET_IPX_ADDRESS, optval, *optlen, optval, *optlen );
+            if (status == STATUS_SUCCESS) *optlen = io.Information;
+            SetLastError( NtStatusToWSAError( status ) );
+            return status == STATUS_SUCCESS ? 0 : SOCKET_ERROR;
 
         case IPX_MAX_ADAPTER_NUM:
-            FIXME("IPX_MAX_ADAPTER_NUM\n");
-            *(int*)optval = 1; /* As noted under IPX_ADDRESS we have just one card. */
-            return 0;
+            return server_getsockopt( s, IOCTL_AFD_WINE_GET_IPX_MAX_ADAPTER_NUM, optval, optlen );
 
         case IPX_PTYPE:
             return server_getsockopt( s, IOCTL_AFD_WINE_GET_IPX_PTYPE, optval, optlen );

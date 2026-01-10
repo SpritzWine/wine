@@ -78,6 +78,7 @@
 #include "ws2tcpip.h"
 #include "wsipx.h"
 #include "af_irda.h"
+#include "wsnwlink.h"
 #include "wine/afd.h"
 
 #include "unix_private.h"
@@ -2579,6 +2580,146 @@ NTSTATUS sock_ioctl( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, void *apc
             return do_setsockopt( handle, io, 0, SO_DEFAULT_HEADERS, &value, sizeof(value) );
         }
 #endif
+        case IOCTL_AFD_WINE_GET_IPX_ADDRESS:
+        {
+            const IPX_ADDRESS_DATA *in_data;
+            IPX_ADDRESS_DATA *out_data;
+#ifdef __linux__
+            FILE *f;
+            int c;
+            int nlines;
+#else
+            union unix_sockaddr addr;
+            struct WS_sockaddr_ipx ws_addr;
+            socklen_t namelen;
+#endif
+
+            /*
+            *  On a Win2000 system with one network card there are usually
+            *  three ipx devices one with a speed of 28.8kbps, 10Mbps and 100Mbps.
+            *  Using this call you can then retrieve info about this all.
+            *  In case of Linux it is a bit different. Usually you have
+            *  only "one" device active and further it is not possible to
+            *  query things like the linkspeed.
+            */
+            in_data = in_buffer;
+            out_data = out_buffer;
+
+            TRACE("IOCTL_AFD_WINE_GET_IPX_ADDRESS: adapternum = %d\n", in_data->adapternum);
+            if (in_data->adapternum < 0)
+            {
+                status = STATUS_INVALID_PARAMETER;
+                break;
+            }
+
+#ifdef __linux__
+            f = fopen("/proc/net/ipx/interface", "r");
+            if (!f)
+            {
+                f = fopen("/proc/net/ipx_interface", "r");
+                if (!f)
+                {
+                    /* IPX isn't supported by this kernel */
+                    status = STATUS_INVALID_PARAMETER;
+                    break;
+                }
+            }
+
+            status = STATUS_INVALID_PARAMETER;
+            nlines = 0; /* Count lines from 0 to align with in_data->adapternum */
+            while ((c = fgetc(f)) != EOF)
+            {
+                /* Skip until next line */
+                if (c != '\n') continue;
+
+                /* Because the first line is a header, comparing the line
+                 * number with requested adapter number before increasing it
+                 */
+                if (nlines++ == in_data->adapternum)
+                {
+                    int nmatches;
+                    nmatches = fscanf(f, "%02hhX%02hhX%02hhX%02hhX %02hhX%02hhX%02hhX%02hhX%02hhX%02hhX",
+                        out_data->netnum, out_data->netnum+1, out_data->netnum+2, out_data->netnum+3,
+                        out_data->nodenum, out_data->nodenum+1, out_data->nodenum+2,
+                        out_data->nodenum+3, out_data->nodenum+4, out_data->nodenum+5);
+                    switch (nmatches)
+                    {
+                        case 10:
+                            status = STATUS_SUCCESS;
+                            break;
+                        case EOF:
+                            /* Interface not found */
+                            status = STATUS_INVALID_PARAMETER;
+                            break;
+                        default:
+                            ERR("IOCTL_AFD_WINE_GET_IPX_ADDRESS: Unexpected format of /proc/net/ipx/interface");
+                            status = STATUS_INVALID_ADDRESS;
+                            break;
+                    }
+                    break;
+                }
+            }
+            fclose(f);
+            if (status != STATUS_SUCCESS) break;
+#else
+            FIXME("IOCTL_AFD_WINE_GET_IPX_ADDRESS\n");
+            if ((status = server_get_unix_fd( handle, 0, &fd, &needs_close, NULL, NULL )))
+                return status;
+            namelen = sizeof(struct sockaddr_ipx);
+            memset( &addr.ipx, 0, sizeof(struct sockaddr_ipx) );
+            if (getsockname( fd, (struct sockaddr *)&addr.ipx, &namelen ) < 0)
+            {
+                status = sock_errno_to_status( errno );
+                break;
+            }
+            sockaddr_from_unix( &addr, (struct WS_sockaddr *)&ws_addr, sizeof(ws_addr) );
+            memcpy(out_data->nodenum, ws_addr.sa_nodenum, sizeof(out_data->nodenum));
+            memcpy(out_data->netnum, ws_addr.sa_netnum, sizeof(out_data->netnum));
+#endif
+            out_data->wan = FALSE; /* We are not on a wan for now .. */
+            out_data->status = FALSE; /* Since we are not on a wan, the wan link isn't up */
+            out_data->maxpkt = 1467; /* This value is the default one, at least on Win2k/WinXP */
+            out_data->linkspeed = 100000; /* Set the line speed in 100bit/s to 10 Mbit;
+                                           * note 1MB = 1000kB in this case */
+            status = STATUS_SUCCESS;
+            break;
+        }
+
+        case IOCTL_AFD_WINE_GET_IPX_MAX_ADAPTER_NUM:
+        {
+            int *count = out_buffer;
+#ifdef __linux__
+            FILE *f;
+            int c;
+            f = fopen("/proc/net/ipx/interface", "r");
+            if (!f)
+            {
+                f = fopen("/proc/net/ipx_interface", "r");
+                if (!f)
+                {
+                    *count = 0;
+                    status = STATUS_SUCCESS;
+                    break;
+                }
+            }
+            *count = -1; /* Initial value -1 for skipping the header line */
+            while ((c = fgetc(f)) != EOF)
+            {
+                if (c == '\n') (*count)++;
+            }
+            fclose(f);
+            if (*count < 0)
+            {
+                *count = 0;
+            }
+            TRACE("IOCTL_AFD_WINE_GET_IPX_MAX_ADAPTER_NUM: *count = %d\n", *count);
+#else
+            FIXME("IOCTL_AFD_WINE_GET_IPX_MAX_ADAPTER_NUM\n");
+            *count = 1; /* As noted under IPX_ADDRESS we have just one card. */
+#endif
+            status = STATUS_SUCCESS;
+            break;
+        }
 #endif
 
 #ifdef HAS_IRDA
