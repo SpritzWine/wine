@@ -1526,10 +1526,13 @@ then
       freebsd*)
         WINE_PACKAGE_FLAGS(HWLOC,[hwloc],,,,
             [AC_CHECK_HEADER([hwloc.h],
-                [AC_CHECK_LIB(hwloc,hwloc_topology_init,
-                    [AC_DEFINE(HAVE_LIBHWLOC, 1, [Define to 1 if you have the 'hwloc' library (-lhwloc).])],
+                [AC_CHECK_DECL(HWLOC_OBJ_L1CACHE,
+                    [AC_CHECK_LIB(hwloc,hwloc_topology_init,
+                        [AC_DEFINE(HAVE_LIBHWLOC, 1, [Define to 1 if you have the 'hwloc' library (-lhwloc).])],
+                        [HWLOC_LIBS=""],
+                        [$HWLOC_LIBS])],
                     [HWLOC_LIBS=""],
-                    [$HWLOC_LIBS])],
+                    [#include "hwloc.h"])],
                 [HWLOC_LIBS=""])])
         WINE_NOTICE_WITH(hwloc,[test "$ac_cv_lib_hwloc_hwloc_topology_init" != "yes"],
                          [hwloc ${notice_platform}development files not found, detailed CPU info on FreeBSD won't be supported.])
