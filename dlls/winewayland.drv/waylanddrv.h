@@ -74,7 +74,8 @@ enum wayland_surface_config_state
     WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED = (1 << 0),
     WAYLAND_SURFACE_CONFIG_STATE_RESIZING = (1 << 1),
     WAYLAND_SURFACE_CONFIG_STATE_TILED = (1 << 2),
-    WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN = (1 << 3)
+    WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN = (1 << 3),
+    WAYLAND_SURFACE_CONFIG_STATE_UNCERTAIN = (1u << 31),
 };
 
 enum wayland_surface_role
@@ -285,6 +286,7 @@ struct wayland_surface
     };
 
     struct wayland_surface_config pending, requested, processing, current;
+    enum wayland_surface_config_state client_request_state;
     BOOL resizing;
     struct wayland_window_config window;
     int content_width, content_height;

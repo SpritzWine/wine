@@ -637,6 +637,7 @@ static BOOL wayland_surface_reconfigure_xdg(struct wayland_surface *surface,
     {
         surface->current = surface->processing;
         memset(&surface->processing, 0, sizeof(surface->processing));
+        surface->client_request_state = surface->current.state;
         xdg_surface_ack_configure(surface->xdg_surface, surface->current.serial);
     }
     /* If this is the initial configure, and we have a compatible requested
@@ -649,6 +650,7 @@ static BOOL wayland_surface_reconfigure_xdg(struct wayland_surface *surface,
     {
         surface->current = surface->requested;
         memset(&surface->requested, 0, sizeof(surface->requested));
+        surface->client_request_state = surface->current.state;
         xdg_surface_ack_configure(surface->xdg_surface, surface->current.serial);
     }
     else if (!surface->current.serial ||

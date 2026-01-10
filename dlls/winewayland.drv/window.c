@@ -268,25 +268,33 @@ static void wayland_surface_update_state_toplevel(struct wayland_surface *surfac
          /* First do all state unsettings, before setting new state. Some
           * Wayland compositors misbehave if the order is reversed. */
         if (!(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
-            (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED))
+            ((surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) ||
+             (surface->client_request_state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED)))
         {
             xdg_toplevel_unset_maximized(surface->xdg_toplevel);
+            surface->client_request_state &= ~WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
         }
         if (!(surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
-            (surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
+            ((surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
+             (surface->client_request_state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN)))
         {
             xdg_toplevel_unset_fullscreen(surface->xdg_toplevel);
+            surface->client_request_state &= ~WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN;
         }
 
         if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) &&
-           !(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED))
+            (!(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED) ||
+             !(surface->client_request_state & WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED)))
         {
             xdg_toplevel_set_maximized(surface->xdg_toplevel);
+            surface->client_request_state |= WAYLAND_SURFACE_CONFIG_STATE_MAXIMIZED;
         }
         if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
-           !(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN))
+            (!(surface->current.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) ||
+             !(surface->client_request_state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN)))
         {
             xdg_toplevel_set_fullscreen(surface->xdg_toplevel, NULL);
+            surface->client_request_state |= WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN;
         }
     }
     else
