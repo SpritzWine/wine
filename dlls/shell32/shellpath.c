@@ -2801,6 +2801,26 @@ done:
     CloseHandle( mgr );
 }
 
+static BOOL isolate_folder(const char *folder)
+{
+    char buffer[200];
+    char *current, *next;
+    const char *isolate = getenv("WINEISOLATE");
+
+    if (!isolate || strlen(isolate) > ARRAY_SIZE(buffer))
+        return FALSE;
+
+    strcpy(buffer, isolate);
+    current = strtok_s(buffer, ",", &next);
+    while (current)
+    {
+        if (!strcmp(current, folder))
+            return TRUE;
+        current = strtok_s(NULL, ",", &next);
+    }
+    return FALSE;
+}
+
 /******************************************************************************
  * _SHCreateSymbolicLink  [Internal]
  *
@@ -2812,29 +2832,39 @@ done:
  */
 static void _SHCreateSymbolicLink(int nFolder, const WCHAR *path)
 {
+    BOOL isolate_all = isolate_folder("home");
     DWORD folder = nFolder & CSIDL_FOLDER_MASK;
+
+    if (isolate_all) return;
 
     switch (folder) {
         case CSIDL_PERSONAL:
-            create_link( path, "XDG_DOCUMENTS_DIR", "$HOME/Documents" );
+            if (!isolate_folder("documents"))
+                create_link( path, "XDG_DOCUMENTS_DIR", "$HOME/Documents" );
             break;
         case CSIDL_DESKTOPDIRECTORY:
-            create_link( path, "XDG_DESKTOP_DIR", "$HOME/Desktop" );
+            if (!isolate_folder("desktop"))
+                create_link( path, "XDG_DESKTOP_DIR", "$HOME/Desktop" );
             break;
         case CSIDL_MYPICTURES:
-            create_link( path, "XDG_PICTURES_DIR", "$HOME/Pictures" );
+            if (!isolate_folder("pictures"))
+                create_link( path, "XDG_PICTURES_DIR", "$HOME/Pictures" );
             break;
         case CSIDL_MYVIDEO:
-            create_link( path, "XDG_VIDEOS_DIR", "$HOME/Movies" );
+            if (!isolate_folder("movies"))
+                create_link( path, "XDG_VIDEOS_DIR", "$HOME/Movies" );
             break;
         case CSIDL_MYMUSIC:
-            create_link( path, "XDG_MUSIC_DIR", "$HOME/Music" );
+            if (!isolate_folder("music"))
+                create_link( path, "XDG_MUSIC_DIR", "$HOME/Music" );
             break;
         case CSIDL_DOWNLOADS:
-            create_link( path, "XDG_DOWNLOAD_DIR", "$HOME/Downloads" );
+            if (!isolate_folder("downloads"))
+                create_link( path, "XDG_DOWNLOAD_DIR", "$HOME/Downloads" );
             break;
         case CSIDL_TEMPLATES:
-            create_link( path, "XDG_TEMPLATES_DIR", "$HOME/Templates" );
+            if (!isolate_folder("templates"))
+                create_link( path, "XDG_TEMPLATES_DIR", "$HOME/Templates" );
             break;
     }
 }

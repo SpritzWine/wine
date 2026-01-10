@@ -1313,6 +1313,26 @@ static const char *init_server_dir( dev_t dev, ino_t ino )
     return dir;
 }
 
+/* Copied from shell32/shellpath, changed to use strtok_r */
+static BOOL isolate_folder(const char *folder)
+{
+    char buffer[200];
+    char *current, *next = NULL;
+    const char *isolate = getenv("WINEISOLATE");
+
+    if (!isolate || strlen(isolate) > ARRAY_SIZE(buffer))
+        return FALSE;
+
+    strcpy(buffer, isolate);
+    current = strtok_r(buffer, ",", &next);
+    while (current)
+    {
+        if (!strcmp(current, folder))
+            return TRUE;
+        current = strtok_r(NULL, ",", &next);
+    }
+    return FALSE;
+}
 
 /***********************************************************************
  *           setup_config_dir
@@ -1351,7 +1371,8 @@ static int setup_config_dir(void)
     {
         mkdir( "drive_c", 0777 );
         symlink( "../drive_c", "dosdevices/c:" );
-        symlink( "/", "dosdevices/z:" );
+        if (!isolate_folder("root"))
+            symlink( "/", "dosdevices/z:" );
     }
     else if (errno != EEXIST) fatal_perror( "cannot create %s/dosdevices", config_dir );
 
