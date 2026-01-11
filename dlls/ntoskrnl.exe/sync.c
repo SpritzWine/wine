@@ -777,6 +777,34 @@ LIST_ENTRY * WINAPI ExInterlockedRemoveHeadList( LIST_ENTRY *list, KSPIN_LOCK *l
     return ret;
 }
 
+/***********************************************************************
+ *           ExInterlockedInsertTailList   (NTOSKRNL.EXE.@)
+ */
+LIST_ENTRY * WINAPI ExInterlockedInsertTailList( LIST_ENTRY *head, LIST_ENTRY *entry, KSPIN_LOCK *lock )
+{
+    LIST_ENTRY *ret;
+    KIRQL irql;
+
+    TRACE( "(%p %p %p)\n", head, entry, lock );
+
+    if ( !head || !entry || !lock )
+        return NULL;
+
+    KeAcquireSpinLock( lock, &irql );
+
+    if ( !head->Blink )
+    {
+        KeReleaseSpinLock( lock, irql );
+        return NULL;
+    }
+
+    ret = head->Blink;
+    InsertTailList( head, entry );
+
+    KeReleaseSpinLock( lock, irql );
+
+    return ret;
+}
 
 /***********************************************************************
  *           InterlockedPopEntrySList   (NTOSKRNL.EXE.@)

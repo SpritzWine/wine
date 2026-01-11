@@ -170,7 +170,7 @@
 @ stub ExInterlockedExtendZone
 @ stub ExInterlockedIncrementLong
 @ stub ExInterlockedInsertHeadList
-@ stub ExInterlockedInsertTailList
+@ stdcall ExInterlockedInsertTailList(ptr ptr ptr)
 @ stub ExInterlockedPopEntryList
 @ stub ExInterlockedPushEntryList
 @ stdcall ExInterlockedRemoveHeadList(ptr ptr)
