@@ -378,7 +378,7 @@
 398 stub UserMSG_free_inst
 399 stub UserMSG_free_local
 401 stdcall OleLoadPictureEx(ptr long long ptr long long long ptr)
-402 stub OleLoadPictureFileEx
+402 stdcall OleLoadPictureFileEx(int128 long long long ptr) OleLoadPictureFileEx
 411 stdcall SafeArrayCreateVector(long long long)
 412 stdcall SafeArrayCopyData(ptr ptr)
 413 stdcall VectorFromBstr(ptr ptr)

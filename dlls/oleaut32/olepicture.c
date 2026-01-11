@@ -2601,6 +2601,38 @@ static HRESULT create_stream(const WCHAR *filename, IStream **stream)
 }
 
 /***********************************************************************
+ * OleLoadPictureFileEx (OLEAUT32.402)
+ */
+HRESULT WINAPI OleLoadPictureFileEx(
+        VARIANT    varFileName,
+        DWORD      xSizeDesired,
+        DWORD      ySizeDesired,
+        DWORD      dwFlags,
+        LPDISPATCH *lplpdispPicture /* out */)
+{
+    IStream *stream;
+    HRESULT hr;
+
+    TRACE("(%s,%p)\n", wine_dbgstr_variant(&varFileName), lplpdispPicture);
+
+    if (V_VT(&varFileName) != VT_BSTR)
+        return CTL_E_FILENOTFOUND;
+
+    hr = create_stream(V_BSTR(&varFileName), &stream);
+    if (hr != S_OK) {
+        if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+            return CTL_E_FILENOTFOUND;
+
+        return CTL_E_PATHFILEACCESSERROR;
+    }
+
+    hr = OleLoadPictureEx(stream, 0, FALSE,
+            &IID_IDispatch, xSizeDesired, ySizeDesired, dwFlags, (void **)lplpdispPicture);
+    IStream_Release(stream);
+    return hr;
+}
+
+/***********************************************************************
  * OleLoadPictureFile (OLEAUT32.422)
  */
 HRESULT WINAPI OleLoadPictureFile(VARIANT filename, IDispatch **picture)
