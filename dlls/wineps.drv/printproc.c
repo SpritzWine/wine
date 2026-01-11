@@ -2292,7 +2292,7 @@ static int WINAPI hmf_proc(HDC hdc, HANDLETABLE *htable,
             PSDRV_SetTextColor(data->ctx, GetTextColor(hdc));
 
             if (p->iRelative >= 0 || data->saved_dc_top + p->iRelative < 0)
-                return 0;
+                return ret;
             data->saved_dc_top += p->iRelative;
             data->break_extra = data->saved_dc[data->saved_dc_top].break_extra;
             data->break_rem = data->saved_dc[data->saved_dc_top].break_rem;
