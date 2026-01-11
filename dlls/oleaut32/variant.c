@@ -2943,6 +2943,67 @@ HRESULT WINAPI VarCmp(LPVARIANT left, LPVARIANT right, LCID lcid, DWORD flags)
 }
 
 /**********************************************************************
+ *              VarAnd_HandleNull
+ *
+ * Handles special cases when one operand of VarAnd is VT_NULL.
+ *
+ * PARAMETERS
+ *  Var    [I]  Pointer to the non-NULL VARIANT.
+ *  Type   [I]  VARTYPE of the non-NULL VARIANT.
+ *  resvt  [O]  Receives resulting type (typically VT_NULL or VT_BOOL).
+ *  result [O]  Receives the result VARIANT.
+ *
+ * RETURNS
+ *  Success: S_OK.
+ *  Failure: An HRESULT error code indicating the error.
+ */
+static HRESULT VarAnd_HandleNull(VARIANT *Var, VARTYPE Type, VARTYPE *resvt, VARIANT *result)
+{
+    HRESULT hres;
+    VARIANT_BOOL b;
+
+    switch (Type)
+    {
+        case VT_I1:   if (V_I1(Var)) *resvt = VT_NULL; break;
+        case VT_UI1:  if (V_UI1(Var)) *resvt = VT_NULL; break;
+        case VT_I2:   if (V_I2(Var)) *resvt = VT_NULL; break;
+        case VT_UI2:  if (V_UI2(Var)) *resvt = VT_NULL; break;
+        case VT_I4:   if (V_I4(Var)) *resvt = VT_NULL; break;
+        case VT_UI4:  if (V_UI4(Var)) *resvt = VT_NULL; break;
+        case VT_I8:   if (V_I8(Var)) *resvt = VT_NULL; break;
+        case VT_UI8:  if (V_UI8(Var)) *resvt = VT_NULL; break;
+        case VT_INT:  if (V_INT(Var)) *resvt = VT_NULL; break;
+        case VT_UINT: if (V_UINT(Var)) *resvt = VT_NULL; break;
+        case VT_BOOL: if (V_BOOL(Var)) *resvt = VT_NULL; break;
+        case VT_R4:   if (V_R4(Var)) *resvt = VT_NULL; break;
+        case VT_R8:   if (V_R8(Var)) *resvt = VT_NULL; break;
+        case VT_CY:   if (V_CY(Var).int64) *resvt = VT_NULL; break;
+        case VT_DECIMAL:
+            if (V_DECIMAL(Var).Hi32 || V_DECIMAL(Var).Lo64)
+                *resvt = VT_NULL;
+            break;
+
+        case VT_BSTR:
+            hres = VarBoolFromStr(V_BSTR(Var), LOCALE_USER_DEFAULT, VAR_LOCALBOOL, &b);
+            if (FAILED(hres))
+                return hres;
+            else if (b)
+            {
+                V_VT(result) = VT_NULL;
+            }
+            else
+            {
+                V_VT(result) = VT_BOOL;
+                V_BOOL(result) = b;
+            }
+            return S_OK;
+    }
+
+    V_VT(result) = *resvt;
+    return S_OK;
+}
+
+/**********************************************************************
  *              VarAnd [OLEAUT32.142]
  *
  * Computes the logical AND of two variants.
@@ -3048,52 +3109,11 @@ HRESULT WINAPI VarAnd(LPVARIANT left, LPVARIANT right, LPVARIANT result)
 
     if (leftvt == VT_NULL || rightvt == VT_NULL)
     {
-        /*
-         * Special cases for when left variant is VT_NULL
-         * (VT_NULL & 0 = VT_NULL, VT_NULL & value = value)
-         */
         if (leftvt == VT_NULL)
-        {
-            VARIANT_BOOL b;
-            switch(rightvt)
-            {
-            case VT_I1:   if (V_I1(right)) resvt = VT_NULL; break;
-            case VT_UI1:  if (V_UI1(right)) resvt = VT_NULL; break;
-            case VT_I2:   if (V_I2(right)) resvt = VT_NULL; break;
-            case VT_UI2:  if (V_UI2(right)) resvt = VT_NULL; break;
-            case VT_I4:   if (V_I4(right)) resvt = VT_NULL; break;
-            case VT_UI4:  if (V_UI4(right)) resvt = VT_NULL; break;
-            case VT_I8:   if (V_I8(right)) resvt = VT_NULL; break;
-            case VT_UI8:  if (V_UI8(right)) resvt = VT_NULL; break;
-            case VT_INT:  if (V_INT(right)) resvt = VT_NULL; break;
-            case VT_UINT: if (V_UINT(right)) resvt = VT_NULL; break;
-            case VT_BOOL: if (V_BOOL(right)) resvt = VT_NULL; break;
-            case VT_R4:   if (V_R4(right)) resvt = VT_NULL; break;
-            case VT_R8:   if (V_R8(right)) resvt = VT_NULL; break;
-            case VT_CY:
-                if(V_CY(right).int64)
-                    resvt = VT_NULL;
-                break;
-            case VT_DECIMAL:
-                if (V_DECIMAL(right).Hi32 || V_DECIMAL(right).Lo64)
-                    resvt = VT_NULL;
-                break;
-            case VT_BSTR:
-                hres = VarBoolFromStr(V_BSTR(right),
-                LOCALE_USER_DEFAULT, VAR_LOCALBOOL, &b);
-                if (FAILED(hres))
-                    return hres;
-                else if (b)
-                    V_VT(result) = VT_NULL;
-                else
-                {
-                    V_VT(result) = VT_BOOL;
-                    V_BOOL(result) = b;
-                }
-                goto VarAnd_Exit;
-            }
-        }
-        V_VT(result) = resvt;
+            hres = VarAnd_HandleNull(right, rightvt, &resvt, result);
+        else
+            hres = VarAnd_HandleNull(left, leftvt, &resvt, result);
+        if (FAILED(hres)) return hres;
         goto VarAnd_Exit;
     }
 
@@ -3115,7 +3135,13 @@ HRESULT WINAPI VarAnd(LPVARIANT left, LPVARIANT right, LPVARIANT result)
             hres = VariantChangeType(&varLeft,&varLeft,
             VARIANT_LOCALBOOL, VT_BOOL);
         if (SUCCEEDED(hres) && V_VT(&varLeft) != resvt)
+        {
+            if (V_VT(&varLeft) == VT_BSTR)
+            {
+                if (d >= I4_MIN && d <= I4_MAX) resvt = VT_I4;
+            }
             hres = VariantChangeType(&varLeft,&varLeft,0,resvt);
+        }
         if (FAILED(hres)) goto VarAnd_Exit;
     }
 
@@ -3131,9 +3157,27 @@ HRESULT WINAPI VarAnd(LPVARIANT left, LPVARIANT right, LPVARIANT result)
             hres = VariantChangeType(&varRight, &varRight,
                 VARIANT_LOCALBOOL, VT_BOOL);
         if (SUCCEEDED(hres) && V_VT(&varRight) != resvt)
+        {
+            if (V_VT(&varRight) == VT_BSTR)
+            {
+                if (d >= I4_MIN && d <= I4_MAX) resvt = VT_I4;
+            }
             hres = VariantChangeType(&varRight, &varRight, 0, resvt);
+        }
         if (FAILED(hres)) goto VarAnd_Exit;
     }
+
+    if (V_VT(&varLeft) != resvt)
+    {
+        hres = VariantChangeType(&varLeft, &varLeft, 0, resvt);
+        if (FAILED(hres)) goto VarAnd_Exit;
+    }
+
+    if (V_VT(&varRight) != resvt)
+    {
+        hres = VariantChangeType(&varRight, &varRight, 0, resvt);
+        if (FAILED(hres))  goto VarAnd_Exit;
+    }    
 
     V_VT(result) = resvt;
     switch(resvt)
