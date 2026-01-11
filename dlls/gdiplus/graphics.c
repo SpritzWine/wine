@@ -3288,8 +3288,8 @@ GpStatus WINGDIPAPI GdipDrawImagePointsRect(GpGraphics *graphics, GpImage *image
             graphics->scale, image->xres, image->yres, bitmap->format,
             imageAttributes ? imageAttributes->outside_color : 0);
 
-        if (ptf[1].Y != ptf[0].Y || ptf[2].X != ptf[0].X ||
-            ptf[1].X - ptf[0].X != srcwidth || ptf[2].Y - ptf[0].Y != srcheight ||
+        if (pti[1].y != pti[0].y || pti[2].x != pti[0].x||
+            pti[1].x - pti[0].x != gdip_round(srcwidth) || pti[2].y - pti[0].y != gdip_round(srcheight) ||
             srcx < 0 || srcy < 0 ||
             srcx + srcwidth > bitmap->width || srcy + srcheight > bitmap->height)
             do_resampling = TRUE;
