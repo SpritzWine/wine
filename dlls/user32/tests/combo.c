@@ -626,20 +626,20 @@ static void test_editselection_focus(DWORD style)
 
     SendMessageA(hCombo, WM_SETFOCUS, 0, (LPARAM)hEdit);
     ok(setsel_start == 0, "Unexpected EM_SETSEL start value; got %ld\n", setsel_start);
-    todo_wine ok(setsel_end == INT_MAX, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
+    ok(setsel_end == INT_MAX, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
     ok(hCBN_SetFocus == hCombo, "Wrong handle set by CBN_SETFOCUS; got %p\n", hCBN_SetFocus);
     ok(GetFocus() == hEdit, "hEdit should have keyboard focus\n");
 
     SendMessageA(hMainWnd, WM_NEXTDLGCTL, (WPARAM)hButton, TRUE);
     ok(setsel_start == 0, "Unexpected EM_SETSEL start value; got %ld\n", setsel_start);
-    todo_wine ok(setsel_end == 0, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
+    ok(setsel_end == 0, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
     ok(hCBN_KillFocus == hCombo, "Wrong handle set by CBN_KILLFOCUS; got %p\n", hCBN_KillFocus);
     ok(GetFocus() == hButton, "hButton should have keyboard focus\n");
 
     SendMessageA(hCombo, WM_SETTEXT, 0, (LPARAM)wine_test);
     SendMessageA(hMainWnd, WM_NEXTDLGCTL, (WPARAM)hCombo, TRUE);
     ok(setsel_start == 0, "Unexpected EM_SETSEL start value; got %ld\n", setsel_start);
-    todo_wine ok(setsel_end == INT_MAX, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
+    ok(setsel_end == INT_MAX, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
     ok(hCBN_SetFocus == hCombo, "Wrong handle set by CBN_SETFOCUS; got %p\n", hCBN_SetFocus);
     ok(GetFocus() == hEdit, "hEdit should have keyboard focus\n");
     SendMessageA(hCombo, WM_GETTEXT, sizeof(buffer), (LPARAM)buffer);
@@ -647,7 +647,7 @@ static void test_editselection_focus(DWORD style)
 
     SendMessageA(hMainWnd, WM_NEXTDLGCTL, (WPARAM)hButton, TRUE);
     ok(setsel_start == 0, "Unexpected EM_SETSEL start value; got %ld\n", setsel_start);
-    todo_wine ok(setsel_end == 0, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
+    ok(setsel_end == 0, "Unexpected EM_SETSEL end value; got %ld\n", setsel_end);
     ok(hCBN_KillFocus == hCombo, "Wrong handle set by CBN_KILLFOCUS; got %p\n", hCBN_KillFocus);
     ok(GetFocus() == hButton, "hButton should have keyboard focus\n");
     len = SendMessageA(hCombo, CB_GETEDITSEL, 0, 0);

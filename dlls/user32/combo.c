@@ -1132,6 +1132,7 @@ static LRESULT COMBO_Command( LPHEADCOMBO lphc, WPARAM wParam, HWND hWnd )
                TRACE("[%p]: edit [%p] got focus\n", lphc->self, lphc->hWndEdit );
 
 		COMBO_SetFocus( lphc );
+		SendMessageW( lphc->hWndEdit, EM_SETSEL, 0, INT_MAX );
 	        break;
 
 	   case (EN_KILLFOCUS >> 8):
@@ -1145,6 +1146,7 @@ static LRESULT COMBO_Command( LPHEADCOMBO lphc, WPARAM wParam, HWND hWnd )
 		 */
 
 		COMBO_KillFocus( lphc );
+		SendMessageW( lphc->hWndEdit, EM_SETSEL, 0, 0 );
 		break;
 
 
@@ -1760,7 +1762,7 @@ LRESULT ComboWndProc_common( HWND hwnd, UINT message, WPARAM wParam, LPARAM lPar
                    NtUserSetFocus( lphc->hWndEdit );
                    /* The first time focus is received, select all the text */
                    if( !(lphc->wState & CBF_BEENFOCUSED) ) {
-                       SendMessageW(lphc->hWndEdit, EM_SETSEL, 0, -1);
+                       SendMessageW(lphc->hWndEdit, EM_SETSEL, 0, INT_MAX);
                        lphc->wState |= CBF_BEENFOCUSED;
                    }
                }
