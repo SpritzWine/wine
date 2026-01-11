@@ -110,11 +110,9 @@ BOOL WINAPI VWIN32_DeviceIoControl(DWORD dwIoControlCode,
     switch (dwIoControlCode)
     {
     case VWIN32_DIOC_DOS_IOCTL:
-    case 0x10: /* Int 0x21 call, call it VWIN_DIOC_INT21 ? */
     case VWIN32_DIOC_DOS_INT13:
     case VWIN32_DIOC_DOS_INT25:
     case VWIN32_DIOC_DOS_INT26:
-    case 0x29: /* Int 0x31 call, call it VWIN_DIOC_INT31 ? */
     case VWIN32_DIOC_DOS_DRIVEINFO:
         {
             CONTEXT cxt;
@@ -126,6 +124,7 @@ BOOL WINAPI VWIN32_DeviceIoControl(DWORD dwIoControlCode,
                    "eax=0x%08lx, ebx=0x%08lx, ecx=0x%08lx, "
                    "edx=0x%08lx, esi=0x%08lx, edi=0x%08lx\n",
                    (dwIoControlCode == VWIN32_DIOC_DOS_IOCTL)? "VWIN32_DIOC_DOS_IOCTL" :
+                   (dwIoControlCode == VWIN32_DIOC_DOS_INT13)? "VWIN32_DIOC_DOS_INT13" :
                    (dwIoControlCode == VWIN32_DIOC_DOS_INT25)? "VWIN32_DIOC_DOS_INT25" :
                    (dwIoControlCode == VWIN32_DIOC_DOS_INT26)? "VWIN32_DIOC_DOS_INT26" :
                    (dwIoControlCode == VWIN32_DIOC_DOS_DRIVEINFO)? "VWIN32_DIOC_DOS_DRIVEINFO" :  "???",
@@ -136,9 +135,20 @@ BOOL WINAPI VWIN32_DeviceIoControl(DWORD dwIoControlCode,
 
             switch (dwIoControlCode)
             {
-            case VWIN32_DIOC_DOS_IOCTL: /* Call int 21h */
-            case 0x10: /* Int 0x21 call, call it VWIN_DIOC_INT21 ? */
+            case VWIN32_DIOC_DOS_IOCTL: /* Call int 21h 4400h - 4411h */
+                if ((pIn->reg_EAX & 0xff00) != 0x4400)
+                {
+                    TRACE( "Invalid VWIN32_DIOC_DOS_IOCTL function 0x%lx\n", (pIn->reg_EAX & 0xffff) );
+                    return FALSE;
+                }
+                intnum = 0x21;
+                break;
             case VWIN32_DIOC_DOS_DRIVEINFO:        /* Call int 21h 730x */
+                if ((pIn->reg_EAX & 0xff00) != 0x7300)
+                {
+                    TRACE( "Invalid VWIN32_DIOC_DOS_DRIVEINFO function 0x%lx\n", (pIn->reg_EAX & 0xffff) );
+                    return FALSE;
+                }
                 intnum = 0x21;
                 break;
             case VWIN32_DIOC_DOS_INT13:
@@ -149,9 +159,6 @@ BOOL WINAPI VWIN32_DeviceIoControl(DWORD dwIoControlCode,
                 break;
             case VWIN32_DIOC_DOS_INT26:
                 intnum = 0x26;
-                break;
-            case 0x29: /* Int 0x31 call, call it VWIN_DIOC_INT31 ? */
-                intnum = 0x31;
                 break;
             }
 
