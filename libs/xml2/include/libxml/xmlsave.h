@@ -74,16 +74,21 @@ XMLPUBFUN int
 XMLPUBFUN int
 		xmlSaveClose		(xmlSaveCtxtPtr ctxt);
 XMLPUBFUN int
+		xmlSaveFinish		(xmlSaveCtxtPtr ctxt);
+XMLPUBFUN int
 		xmlSaveSetEscape	(xmlSaveCtxtPtr ctxt,
 					 xmlCharEncodingOutputFunc escape);
 XMLPUBFUN int
 		xmlSaveSetAttrEscape	(xmlSaveCtxtPtr ctxt,
 					 xmlCharEncodingOutputFunc escape);
 
+XML_DEPRECATED
 XMLPUBFUN int
                 xmlThrDefIndentTreeOutput(int v);
+/* XML_DEPRECATED - at 2.13, replacement added at v2.14 */
 XMLPUBFUN const char *
                 xmlThrDefTreeIndentString(const char * v);
+XML_DEPRECATED
 XMLPUBFUN int
                 xmlThrDefSaveNoEmptyTags(int v);
 

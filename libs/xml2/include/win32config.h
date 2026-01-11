@@ -5,9 +5,6 @@
 #define HAVE_STAT
 #define HAVE_FCNTL_H
 
-#include <io.h>
-#include <direct.h>
-
 #if defined(__MINGW32__) || (defined(_MSC_VER) && _MSC_VER >= 1600)
   #define HAVE_STDINT_H
 #endif

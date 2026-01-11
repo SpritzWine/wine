@@ -23,6 +23,10 @@
 #define WINAPI __stdcall
 #endif
 
+#ifndef BCRYPT_SUCCESS
+#define BCRYPT_SUCCESS(status) (((NTSTATUS)(status)) >= 0)
+#endif
+
 #ifndef IN
 #define IN
 #endif
