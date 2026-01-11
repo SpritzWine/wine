@@ -6280,21 +6280,19 @@ static void test_block_formats_creation(void)
         {MAKEFOURCC('D','X','T','5'), "D3DFMT_DXT5", SUPPORT_DXT5, 4, 4, 16, TRUE,  FALSE},
         {MAKEFOURCC('Y','U','Y','2'), "D3DFMT_YUY2", SUPPORT_YUY2, 2, 1, 4,  FALSE, TRUE },
         {MAKEFOURCC('U','Y','V','Y'), "D3DFMT_UYVY", SUPPORT_UYVY, 2, 1, 4,  FALSE, TRUE },
+        {MAKEFOURCC('I','V','5','0'), "D3DFMT_UYVY", SUPPORT_UYVY, 2, 1, 4,  FALSE, TRUE },
+        {MAKEFOURCC('N','O','P','E'), "D3DFMT_UYVY", SUPPORT_UYVY, 2, 1, 4,  FALSE, TRUE },
     };
     static const struct
     {
         DWORD caps, caps2;
         const char *name;
         BOOL overlay;
+        BOOL allow_nondxt;
+        BOOL allow_all;
     }
     types[] =
     {
-        /* DDSCAPS_OFFSCREENPLAIN | DDSCAPS_SYSTEMMEMORY fails to create any fourcc
-         * surface with DDERR_INVALIDPIXELFORMAT. Don't care about it for now.
-         *
-         * Nvidia returns E_FAIL on DXTN DDSCAPS_OFFSCREENPLAIN | DDSCAPS_VIDEOMEMORY.
-         * Other hw / drivers successfully create those surfaces. Ignore them, this
-         * suggests that no game uses this, otherwise Nvidia would support it. */
         {
             DDSCAPS_VIDEOMEMORY | DDSCAPS_TEXTURE, 0,
             "videomemory texture", FALSE
@@ -6310,7 +6308,22 @@ static void test_block_formats_creation(void)
         {
             DDSCAPS_TEXTURE, DDSCAPS2_TEXTUREMANAGE,
             "managed texture", FALSE
-        }
+        },
+        {
+            DDSCAPS_OFFSCREENPLAIN, 0,
+            "offscreen plain surface", FALSE,
+            .allow_nondxt = TRUE, .allow_all = TRUE,
+        },
+        {
+            DDSCAPS_VIDEOMEMORY | DDSCAPS_OFFSCREENPLAIN, 0,
+            "videomemory offscreen plain surface", FALSE,
+            .allow_nondxt = TRUE, .allow_all = TRUE,
+        },
+        {
+            DDSCAPS_SYSTEMMEMORY | DDSCAPS_OFFSCREENPLAIN, 0,
+            "systemmemory offscreen plain surface", FALSE,
+            .allow_nondxt = TRUE,
+        },
     };
     enum size_type
     {
@@ -6425,18 +6438,29 @@ static void test_block_formats_creation(void)
                      * behavior on windows because I have no hardware that doesn't at
                      * least support np2_conditional. There's probably no HW that
                      * supports DXTN textures but no conditional np2 textures. */
-                    if (!support && !(types[j].caps & DDSCAPS_SYSTEMMEMORY))
-                        expect_hr = DDERR_INVALIDPARAMS;
-                    else if (formats[i].create_size_checked && !block_aligned)
+
+                    if (formats[i].create_size_checked && !block_aligned)
                     {
                         expect_hr = DDERR_INVALIDPARAMS;
-                        if (!(types[j].caps & DDSCAPS_TEXTURE))
+                    }
+                    else if (types[j].caps & DDSCAPS_OFFSCREENPLAIN)
+                    {
+                        expect_hr = types[j].caps & DDSCAPS_VIDEOMEMORY ? E_NOTIMPL : DDERR_INVALIDPIXELFORMAT;
+                        if (types[j].caps & DDSCAPS_SYSTEMMEMORY)
                             todo = TRUE;
                     }
+                    else if (!support && !(types[j].caps & DDSCAPS_SYSTEMMEMORY))
+                        expect_hr = DDERR_INVALIDPARAMS;
                     else
                         expect_hr = D3D_OK;
 
                     hr = IDirectDraw7_CreateSurface(ddraw, &ddsd, &surface, NULL);
+                    if (hr == DD_OK && types[j].caps & DDSCAPS_OFFSCREENPLAIN)
+                    {
+                        BOOL is_dxt = (formats[i].fourcc & MAKEFOURCC(0xff,0xff,0xff,0)) == MAKEFOURCC('D','X','T',0);
+                        if (types[j].allow_all || (types[j].allow_nondxt && !is_dxt))
+                            expect_hr = DD_OK;
+                    }
                     todo_wine_if (todo)
                         ok(hr == expect_hr,
                                 "Got unexpected hr %#lx for format %s, resource type %s, size %ux%u, expected %#lx.\n",
