@@ -110,6 +110,7 @@ struct key_value
     unsigned int      type;    /* value type */
     data_size_t       len;     /* value data length in bytes */
     void             *data;    /* pointer to value data */
+    unsigned int      order;
 };
 
 #define MIN_SUBKEYS  8   /* min. number of allocated subkeys per key */
@@ -242,7 +243,9 @@ static void dump_value( const struct key_value *value, FILE *f )
     {
         fputc( '\"', f );
         count = 1 + dump_strW( value->name, value->namelen, f, "\"\"" );
-        count += fprintf( f, "\"=" );
+        count += fprintf( f, "\"$" );
+        count += fprintf( f, "%x", value->order );
+        fputc( '=', f );
     }
     else count = fprintf( f, "@=" );
 
@@ -1144,7 +1147,7 @@ static struct key_value *find_value( const struct key *key, const struct unicode
 }
 
 /* insert a new value; the index must have been returned by find_value */
-static struct key_value *insert_value( struct key *key, const struct unicode_str *name, int index )
+static struct key_value *insert_value( struct key *key, const struct unicode_str *name, int index, int order )
 {
     struct key_value *value;
     WCHAR *new_name = NULL;
@@ -1166,6 +1169,7 @@ static struct key_value *insert_value( struct key *key, const struct unicode_str
     value->namelen = name->len;
     value->len     = 0;
     value->data    = NULL;
+    value->order   = order == -1 ? key->last_value : order;
     return value;
 }
 
@@ -1208,7 +1212,7 @@ static void set_value( struct key *key, const struct unicode_str *name,
 
     if (!value)
     {
-        if (!(value = insert_value( key, name, index )))
+        if (!(value = insert_value( key, name, index, -1 )))
         {
             free( ptr );
             return;
@@ -1252,7 +1256,7 @@ static void get_value( struct key *key, const struct unicode_str *name, int *typ
 /* enumerate a key value */
 static void enum_value( struct key *key, int i, int info_class, struct enum_key_value_reply *reply )
 {
-    struct key_value *value;
+    struct key_value *value = NULL;
 
     if (key->flags & KEY_PREDEF)
     {
@@ -1265,8 +1269,21 @@ static void enum_value( struct key *key, int i, int info_class, struct enum_key_
     {
         void *data;
         data_size_t namelen, maxlen;
+        for(int j = 0; j <= key->last_value; j++)
+        {
+            if (key->values[j].order == i)
+            {
+                value = &key->values[j];
+                break;
+            }
+        }
 
-        value = &key->values[i];
+        if (!value)
+        {
+            set_error( STATUS_OBJECT_NAME_NOT_FOUND );
+            return;
+        }
+
         reply->type = value->type;
         namelen = value->namelen;
 
@@ -1311,6 +1328,7 @@ static void delete_value( struct key *key, const struct unicode_str *name )
 {
     struct key_value *value;
     int i, index, nb_values;
+    int order;
 
     if (key->flags & KEY_PREDEF)
     {
@@ -1324,9 +1342,18 @@ static void delete_value( struct key *key, const struct unicode_str *name )
         return;
     }
     if (debug_level > 1) dump_operation( key, value, "Delete" );
+    order = value->order;
     free( value->name );
     free( value->data );
-    for (i = index; i < key->last_value; i++) key->values[i] = key->values[i + 1];
+    for (i = index; i < key->last_value; i++)
+    {
+        if (key->values[i].order > order) key->values[i].order--;
+        key->values[i] = key->values[i + 1];
+    }
+    for (int j = 0; j <= index; j++)
+    {
+        if (key->values[j].order > order) key->values[j].order--;
+    }
     key->last_value--;
     touch_key( key, REG_NOTIFY_CHANGE_LAST_SET );
 
@@ -1590,6 +1617,8 @@ static struct key_value *parse_value_name( struct key *key, const char *buffer, 
     struct key_value *value;
     struct unicode_str name;
     int index;
+    char buf[512] = {0};
+    int order = -1;
 
     if (!get_file_tmp_space( info, strlen(buffer) * sizeof(WCHAR) )) return NULL;
     name.str = info->tmp;
@@ -1607,10 +1636,24 @@ static struct key_value *parse_value_name( struct key *key, const char *buffer, 
         name.len -= sizeof(WCHAR);  /* terminating null */
     }
     while (isspace(buffer[*len])) (*len)++;
+    if (buffer[*len] == '$')
+    {
+        const char *order_start = buffer + *len + 1;
+        int i = 0;
+        while(order_start[i] != '=')
+        {
+            buf[i] = order_start[i];
+            if (!isxdigit(buf[i])) goto error;
+            i++;
+        }
+        if (!i) goto error;
+        order = strtoul( buf, NULL, 16 );
+        (*len) += i + 1;
+    }
     if (buffer[*len] != '=') goto error;
     (*len)++;
     while (isspace(buffer[*len])) (*len)++;
-    if (!(value = find_value( key, &name, &index ))) value = insert_value( key, &name, index );
+    if (!(value = find_value( key, &name, &index ))) value = insert_value( key, &name, index , order );
     return value;
 
  error:

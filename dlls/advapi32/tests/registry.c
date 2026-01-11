@@ -2541,7 +2541,7 @@ static void test_rw_order(void)
     DWORD dw = 0;
     static const char keyname[] = "test_rw_order";
     char value_buf[2];
-    DWORD values, value_len, value_name_max_len;
+    DWORD values, value_len, value_name_max_len, res;
     LSTATUS ret;
 
     RegDeleteKeyA(HKEY_CURRENT_USER, keyname);
@@ -2570,13 +2570,31 @@ static void test_rw_order(void)
     ok(strcmp(value_buf, "A") == 0, "Expected name \"A\", got %s\n", value_buf);
     value_len = 2;
     ok(!RegEnumValueA(hKey, 1, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
-    todo_wine ok(strcmp(value_buf, "C") == 0, "Expected name \"C\", got %s\n", value_buf);
+    ok(strcmp(value_buf, "C") == 0, "Expected name \"C\", got %s\n", value_buf);
     value_len = 2;
     ok(!RegEnumValueA(hKey, 2, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
-    todo_wine ok(strcmp(value_buf, "D") == 0, "Expected name \"D\", got %s\n", value_buf);
+    ok(strcmp(value_buf, "D") == 0, "Expected name \"D\", got %s\n", value_buf);
     value_len = 2;
     ok(!RegEnumValueA(hKey, 3, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
-    todo_wine ok(strcmp(value_buf, "B") == 0, "Expected name \"B\", got %s\n", value_buf);
+    ok(strcmp(value_buf, "B") == 0, "Expected name \"B\", got %s\n", value_buf);
+
+    res = RegDeleteValueA( hKey, "C" );
+    ok(res == ERROR_SUCCESS, "expected ERROR_SUCCESS, got %ld\n", res);
+    ok(!RegSetValueExA(hKey, "C", 0, REG_DWORD, (LPBYTE)&dw, sizeof(dw)),
+       "RegSetValueExA for value \"C\" failed\n");
+
+    value_len = 2;
+    ok(!RegEnumValueA(hKey, 0, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
+    ok(strcmp(value_buf, "A") == 0, "Expected name \"A\", got %s\n", value_buf);
+    value_len = 2;
+    ok(!RegEnumValueA(hKey, 1, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
+    ok(strcmp(value_buf, "D") == 0, "Expected name \"D\", got %s\n", value_buf);
+    value_len = 2;
+    ok(!RegEnumValueA(hKey, 2, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
+    ok(strcmp(value_buf, "B") == 0, "Expected name \"B\", got %s\n", value_buf);
+    value_len = 2;
+    ok(!RegEnumValueA(hKey, 3, value_buf, &value_len, NULL, NULL, NULL, NULL), "RegEnumValueA failed\n");
+    ok(strcmp(value_buf, "C") == 0, "Expected name \"C\", got %s\n", value_buf);
 
     ok(!RegDeleteKeyA(HKEY_CURRENT_USER, keyname), "Failed to delete key\n");
 }
