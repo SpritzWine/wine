@@ -169,6 +169,17 @@ static void set_wow64_environment(WCHAR **env)
     RegCloseKey(hkey);
 }
 
+
+HRESULT WINAPI CreateAppContainerProfile(PCWSTR container_name, PCWSTR display_name, PCWSTR description,
+                                         SID_AND_ATTRIBUTES *capabilities, DWORD capability_count,
+                                         SID **container_sid)
+{
+    FIXME("(%s, %s, %s, %p, %ld, %p): stub\n", debugstr_w(container_name), debugstr_w(display_name),
+          debugstr_w(description), capabilities, capability_count, container_sid);
+
+    return E_NOTIMPL;
+}
+
 BOOL WINAPI CreateEnvironmentBlock( LPVOID* lpEnvironment,
                      HANDLE hToken, BOOL bInherit )
 {
@@ -333,6 +344,21 @@ BOOL WINAPI CreateEnvironmentBlock( LPVOID* lpEnvironment,
     return TRUE;
 }
 
+HRESULT WINAPI DeleteAppContainerProfile(PCWSTR pContainerName)
+{
+    FIXME("(%s): stub\n", debugstr_w(pContainerName));
+
+    /* S_OK is returned if the context and arguments aren't invalid */
+    return S_OK;
+}
+
+HRESULT WINAPI DeriveAppContainerSidFromAppContainerName( PCWSTR pContainerName, PSID *ppSid )
+{
+    FIXME("(%s, %p): stub\n", debugstr_w(pContainerName), ppSid);
+
+    return E_NOTIMPL;
+}
+
 BOOL WINAPI DestroyEnvironmentBlock(LPVOID lpEnvironment)
 {
     NTSTATUS r;
@@ -342,6 +368,13 @@ BOOL WINAPI DestroyEnvironmentBlock(LPVOID lpEnvironment)
     if (r == STATUS_SUCCESS)
         return TRUE;
     return FALSE;
+}
+
+HANDLE WINAPI EnterCriticalPolicySection(BOOL bMachine)
+{
+    FIXME("(%x)\n", bMachine);
+    SetLastError(ERROR_ACCESS_DENIED);
+    return NULL;
 }
 
 BOOL WINAPI ExpandEnvironmentStringsForUserA( HANDLE hToken, LPCSTR lpSrc,
@@ -368,6 +401,37 @@ BOOL WINAPI ExpandEnvironmentStringsForUserW( HANDLE hToken, LPCWSTR lpSrc,
     return ret;
 }
 
+BOOL WINAPI GetAllUsersProfileDirectoryA( LPSTR lpProfileDir, LPDWORD lpcchSize )
+{
+    FIXME("%p %p\n", lpProfileDir, lpcchSize);
+    return FALSE;
+}
+
+BOOL WINAPI GetAllUsersProfileDirectoryW( LPWSTR lpProfileDir, LPDWORD lpcchSize )
+{
+    FIXME("%p %p\n", lpProfileDir, lpcchSize);
+    return FALSE;
+}
+
+HRESULT WINAPI GetAppContainerFolderPath( PCWSTR pSidStr, PWSTR *ppPath )
+{
+    FIXME("(%s, %p): stub\n", debugstr_w(pSidStr), ppPath);
+    return E_NOTIMPL;
+}
+
+HRESULT WINAPI GetAppContainerRegistryLocation( REGSAM dwAccess, PHKEY pRegistryKey )
+{
+    FIXME("(%lx, %p): stub\n", dwAccess, pRegistryKey);
+    return E_NOTIMPL;
+}
+
+DWORD WINAPI GetAppliedGPOListW( DWORD dwFlags, LPCWSTR pMachineName, PSID pSidUser, GUID *pGuidExtension,
+    PGROUP_POLICY_OBJECTW *ppGPOList )
+{
+    FIXME("(%lx %s %p %s %p)\n", dwFlags, debugstr_w(pMachineName), pSidUser, debugstr_guid(pGuidExtension), ppGPOList);
+    return ERROR_ACCESS_DENIED;
+}
+
 BOOL WINAPI GetDefaultUserProfileDirectoryA( LPSTR lpProfileDir, LPDWORD lpcchSize )
 {
     FIXME("%p %p\n", lpProfileDir, lpcchSize );
@@ -378,84 +442,6 @@ BOOL WINAPI GetDefaultUserProfileDirectoryW( LPWSTR lpProfileDir, LPDWORD lpcchS
 {
     FIXME("%p %p\n", lpProfileDir, lpcchSize );
     return FALSE;
-}
-
-BOOL WINAPI GetUserProfileDirectoryA( HANDLE hToken, LPSTR lpProfileDir,
-                     LPDWORD lpcchSize )
-{
-    BOOL ret;
-    WCHAR *dirW = NULL;
-
-    TRACE( "%p %p %p\n", hToken, lpProfileDir, lpcchSize );
-
-    if (!lpProfileDir || !lpcchSize)
-    {
-        SetLastError( ERROR_INVALID_PARAMETER );
-        return FALSE;
-    }
-    if (!(dirW = HeapAlloc( GetProcessHeap(), 0, *lpcchSize * sizeof(WCHAR) )))
-        return FALSE;
-
-    if ((ret = GetUserProfileDirectoryW( hToken, dirW, lpcchSize )))
-        WideCharToMultiByte( CP_ACP, 0, dirW, *lpcchSize, lpProfileDir, *lpcchSize, NULL, NULL );
-
-    HeapFree( GetProcessHeap(), 0, dirW );
-    return ret;
-}
-
-BOOL WINAPI GetUserProfileDirectoryW( HANDLE hToken, LPWSTR lpProfileDir,
-                     LPDWORD lpcchSize )
-{
-    TOKEN_USER *t;
-    WCHAR *userW = NULL, *dirW = NULL;
-    DWORD len, dir_len, domain_len;
-    SID_NAME_USE use;
-    BOOL ret = FALSE;
-
-    TRACE( "%p %p %p\n", hToken, lpProfileDir, lpcchSize );
-
-    if (!lpcchSize)
-    {
-        SetLastError( ERROR_INVALID_PARAMETER );
-        return FALSE;
-    }
-
-    len = 0;
-    GetTokenInformation( hToken, TokenUser, NULL, 0, &len );
-    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) return FALSE;
-    if (!(t = HeapAlloc( GetProcessHeap(), 0, len ))) return FALSE;
-    if (!GetTokenInformation( hToken, TokenUser, t, len, &len )) goto done;
-
-    len = domain_len = 0;
-    LookupAccountSidW( NULL, t->User.Sid, NULL, &len, NULL, &domain_len, NULL );
-    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) goto done;
-    if (!(userW = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) ))) goto done;
-    if (!LookupAccountSidW( NULL, t->User.Sid, userW, &len, NULL, &domain_len, &use )) goto done;
-
-    dir_len = 0;
-    GetProfilesDirectoryW( NULL, &dir_len );
-    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) goto done;
-    if (!(dirW = HeapAlloc( GetProcessHeap(), 0, (dir_len + 1) * sizeof(WCHAR) ))) goto done;
-    if (!GetProfilesDirectoryW( dirW, &dir_len )) goto done;
-
-    len += dir_len + 2;
-    if (*lpcchSize < len || !lpProfileDir)
-    {
-        SetLastError( ERROR_INSUFFICIENT_BUFFER );
-        *lpcchSize = len;
-        goto done;
-    }
-    lstrcpyW( lpProfileDir, dirW );
-    lstrcatW( lpProfileDir, L"\\" );
-    lstrcatW( lpProfileDir, userW );
-    *lpcchSize = len;
-    ret = TRUE;
-
-done:
-    HeapFree( GetProcessHeap(), 0, t );
-    HeapFree( GetProcessHeap(), 0, userW );
-    HeapFree( GetProcessHeap(), 0, dirW );
-    return ret;
 }
 
 static const char ProfileListA[] = "Software\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList";
@@ -580,22 +566,94 @@ end:
     return ret;
 }
 
-BOOL WINAPI GetAllUsersProfileDirectoryA( LPSTR lpProfileDir, LPDWORD lpcchSize )
-{
-    FIXME("%p %p\n", lpProfileDir, lpcchSize);
-    return FALSE;
-}
-
-BOOL WINAPI GetAllUsersProfileDirectoryW( LPWSTR lpProfileDir, LPDWORD lpcchSize )
-{
-    FIXME("%p %p\n", lpProfileDir, lpcchSize);
-    return FALSE;
-}
-
 BOOL WINAPI GetProfileType( DWORD *pdwFlags )
 {
     FIXME("%p\n", pdwFlags );
     *pdwFlags = 0;
+    return TRUE;
+}
+
+BOOL WINAPI GetUserProfileDirectoryA( HANDLE hToken, LPSTR lpProfileDir,
+                     LPDWORD lpcchSize )
+{
+    BOOL ret;
+    WCHAR *dirW = NULL;
+
+    TRACE( "%p %p %p\n", hToken, lpProfileDir, lpcchSize );
+
+    if (!lpProfileDir || !lpcchSize)
+    {
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return FALSE;
+    }
+    if (!(dirW = HeapAlloc( GetProcessHeap(), 0, *lpcchSize * sizeof(WCHAR) )))
+        return FALSE;
+
+    if ((ret = GetUserProfileDirectoryW( hToken, dirW, lpcchSize )))
+        WideCharToMultiByte( CP_ACP, 0, dirW, *lpcchSize, lpProfileDir, *lpcchSize, NULL, NULL );
+
+    HeapFree( GetProcessHeap(), 0, dirW );
+    return ret;
+}
+
+BOOL WINAPI GetUserProfileDirectoryW( HANDLE hToken, LPWSTR lpProfileDir,
+                     LPDWORD lpcchSize )
+{
+    TOKEN_USER *t;
+    WCHAR *userW = NULL, *dirW = NULL;
+    DWORD len, dir_len, domain_len;
+    SID_NAME_USE use;
+    BOOL ret = FALSE;
+
+    TRACE( "%p %p %p\n", hToken, lpProfileDir, lpcchSize );
+
+    if (!lpcchSize)
+    {
+        SetLastError( ERROR_INVALID_PARAMETER );
+        return FALSE;
+    }
+
+    len = 0;
+    GetTokenInformation( hToken, TokenUser, NULL, 0, &len );
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) return FALSE;
+    if (!(t = HeapAlloc( GetProcessHeap(), 0, len ))) return FALSE;
+    if (!GetTokenInformation( hToken, TokenUser, t, len, &len )) goto done;
+
+    len = domain_len = 0;
+    LookupAccountSidW( NULL, t->User.Sid, NULL, &len, NULL, &domain_len, NULL );
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) goto done;
+    if (!(userW = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) ))) goto done;
+    if (!LookupAccountSidW( NULL, t->User.Sid, userW, &len, NULL, &domain_len, &use )) goto done;
+
+    dir_len = 0;
+    GetProfilesDirectoryW( NULL, &dir_len );
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) goto done;
+    if (!(dirW = HeapAlloc( GetProcessHeap(), 0, (dir_len + 1) * sizeof(WCHAR) ))) goto done;
+    if (!GetProfilesDirectoryW( dirW, &dir_len )) goto done;
+
+    len += dir_len + 2;
+    if (*lpcchSize < len || !lpProfileDir)
+    {
+        SetLastError( ERROR_INSUFFICIENT_BUFFER );
+        *lpcchSize = len;
+        goto done;
+    }
+    lstrcpyW( lpProfileDir, dirW );
+    lstrcatW( lpProfileDir, L"\\" );
+    lstrcatW( lpProfileDir, userW );
+    *lpcchSize = len;
+    ret = TRUE;
+
+done:
+    HeapFree( GetProcessHeap(), 0, t );
+    HeapFree( GetProcessHeap(), 0, userW );
+    HeapFree( GetProcessHeap(), 0, dirW );
+    return ret;
+}
+
+BOOL WINAPI LeaveCriticalPolicySection(HANDLE hSection)
+{
+    FIXME("(%p)\n", hSection);
     return TRUE;
 }
 
@@ -619,36 +677,16 @@ BOOL WINAPI RegisterGPNotification( HANDLE event, BOOL machine )
     return TRUE;
 }
 
-BOOL WINAPI UnregisterGPNotification( HANDLE event )
-{
-    FIXME("%p\n", event );
-    return TRUE;
-}
-
 BOOL WINAPI UnloadUserProfile( HANDLE hToken, HANDLE hProfile )
 {
     FIXME("(%p, %p): stub\n", hToken, hProfile);
     return FALSE;
 }
 
-HANDLE WINAPI EnterCriticalPolicySection(BOOL bMachine)
+BOOL WINAPI UnregisterGPNotification( HANDLE event )
 {
-    FIXME("(%x)\n", bMachine);
-    SetLastError(ERROR_ACCESS_DENIED);
-    return NULL;
-}
-
-BOOL WINAPI LeaveCriticalPolicySection(HANDLE hSection)
-{
-    FIXME("(%p)\n", hSection);
+    FIXME("%p\n", event );
     return TRUE;
-}
-
-DWORD WINAPI GetAppliedGPOListW(DWORD dwFlags, LPCWSTR pMachineName, PSID pSidUser, GUID *pGuidExtension,
-        PGROUP_POLICY_OBJECTW *ppGPOList)
-{
-    FIXME("(%lx %s %p %s %p)\n", dwFlags, debugstr_w(pMachineName), pSidUser, debugstr_guid(pGuidExtension), ppGPOList);
-    return ERROR_ACCESS_DENIED;
 }
 
 /******************************************************************************
@@ -686,14 +724,4 @@ BOOL WINAPI USERENV_138( int csidl, LPCSTR lnk_dir, LPCSTR lnk_filename,
             debugstr_a(comment), debugstr_a(loc_filename_resfile), loc_filename_resid );
 
     return FALSE;
-}
-
-HRESULT WINAPI CreateAppContainerProfile(PCWSTR container_name, PCWSTR display_name, PCWSTR description,
-                                         SID_AND_ATTRIBUTES *capabilities, DWORD capability_count,
-                                         SID **container_sid)
-{
-    FIXME("(%s, %s, %s, %p, %ld, %p): stub\n", debugstr_w(container_name), debugstr_w(display_name),
-          debugstr_w(description), capabilities, capability_count, container_sid);
-
-    return E_NOTIMPL;
 }
