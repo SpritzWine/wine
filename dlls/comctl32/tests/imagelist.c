@@ -2581,7 +2581,6 @@ static void test_alpha(BOOL v6)
         }
 
         image_list_get_image_bits_by_bitmap(himl, i / 2, bits);
-        todo_wine_if(v6 && i != 0 && i != 2 && i != 4 && i != 6 && i != 12 && i != 18)
         ok(colour_match(bits[0], expected[0]) && colour_match(bits[1], expected[1]),
                 "Got bits [%08X, %08X], expected [%08X, %08X].\n",
                 bits[0], bits[1], expected[0], expected[1]);
@@ -2640,7 +2639,7 @@ static void test_alpha(BOOL v6)
         }
 
         image_list_get_image_bits_by_bitmap(himl, i / 2, bits);
-        todo_wine_if(i != 0 && i != 2 && i != 4 && i != 6 && (!v6 || i != 18))
+        todo_wine_if(i != 0 && i != 2 && i != 4 && i != 6 && !v6)
         ok(colour_match(bits[0], expected[0]) && colour_match(bits[1], expected[1]),
                 "Got bits [%08X, %08X], expected [%08X, %08X].\n",
                 bits[0], bits[1], expected[0], expected[1]);
@@ -2695,13 +2694,11 @@ static void test_alpha(BOOL v6)
         }
 
         image_list_get_image_bits_by_bitmap(himl, i / 2, bits);
-        todo_wine_if(v6 && i != 0 && i != 2 && i != 4 && i != 6 && i != 18)
         ok(colour_match(bits[0], expected[0]) && colour_match(bits[1], expected[1]),
                 "Got bits [%08X, %08X], expected [%08X, %08X].\n",
                 bits[0], bits[1], expected[0], expected[1]);
 
         image_list_get_image_bits_by_draw(himl, i / 2, bits);
-        todo_wine_if(v6 && i != 0 && i != 2 && i != 4 && i != 6 && i != 18)
         ok(colour_match(bits[0], expected[0]) && colour_match(bits[1], expected[1]),
                 "Got bits [%08X, %08X], expected [%08X, %08X].\n",
                 bits[0], bits[1], expected[0], expected[1]);
