@@ -247,18 +247,104 @@ BOOL WINAPI GetFileNameFromBrowseAW(
     return GetFileNameFromBrowseA(hwndOwner, lpstrFile, nMaxFile, lpstrInitialDir, lpstrDefExt, lpstrFilter, lpstrTitle);
 }
 
+static DWORD ReadSetting(HKEY hKey, LPCSTR pszName, DWORD dwDefault)
+{
+  DWORD dwData = 0, dwDataSize = sizeof(dwData);
+  if (hKey && !RegQueryValueExA(hKey, pszName, 0, 0, (LPBYTE)&dwData, &dwDataSize))
+    return dwData;
+  return dwDefault;
+}
+
 /*************************************************************************
  * SHGetSetSettings				[SHELL32.68]
  */
 VOID WINAPI SHGetSetSettings(LPSHELLSTATE lpss, DWORD dwMask, BOOL bSet)
 {
+  static const CHAR szSubKey[] = "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced";
+  const UINT fAdvanced = SSF_SHOWSUPERHIDDEN | SSF_SHOWCOMPCOLOR | \
+                         SSF_AUTOCHECKSELECT | SSF_ICONSONLY;
+  HKEY hKey;
+  DWORD dwData;
+  C_ASSERT(sizeof(SHELLSTATE) == 32);
+  C_ASSERT(FIELD_OFFSET(SHELLSTATE, lParamSort) == 12);
+
   if(bSet)
   {
-    FIXME("%p 0x%08lx TRUE\n", lpss, dwMask);
+    const UINT fAdvancedWrite = fAdvanced | SSF_SHOWALLOBJECTS | SSF_SHOWEXTENSIONS;
+
+    TRACE("%p 0x%08lx TRUE\n", lpss, dwMask);
+    if (!lpss)
+    {
+      /* TODO: Increment GLOBALCOUNTER_SHELLSETTINGSCHANGED */
+      return;
+    }
+
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, szSubKey, 0, 0, 0, KEY_WRITE, 0, &hKey, 0))
+      return;
+
+    if (dwMask & SSF_SHOWALLOBJECTS)
+    {
+      dwData = lpss->fShowAllObjects ? 1 : 2;
+      RegSetValueExA(hKey, "Hidden", 0, REG_DWORD, (LPBYTE)&dwData, sizeof(dwData));
+    }
+    if (dwMask & SSF_SHOWEXTENSIONS)
+    {
+      dwData = lpss->fShowExtensions ? 0 : 1; /* Reversed logic */
+      RegSetValueExA(hKey, "HideFileExt", 0, REG_DWORD, (LPBYTE)&dwData, sizeof(dwData));
+    }
+    if (dwMask & SSF_SHOWCOMPCOLOR)
+    {
+      dwData = lpss->fShowCompColor != FALSE;
+      RegSetValueExA(hKey, "ShowCompColor", 0, REG_DWORD, (LPBYTE)&dwData, sizeof(dwData));
+    }
+    if (dwMask & SSF_SHOWSUPERHIDDEN)
+    {
+      dwData = lpss->fShowSuperHidden != FALSE;
+      RegSetValueExA(hKey, "ShowSuperHidden", 0, REG_DWORD, (LPBYTE)&dwData, sizeof(dwData));
+    }
+    if (dwMask & SSF_AUTOCHECKSELECT)
+    {
+      dwData = lpss->fAutoCheckSelect != FALSE;
+      RegSetValueExA(hKey, "AutoCheckSelect", 0, REG_DWORD, (LPBYTE)&dwData, sizeof(dwData));
+    }
+    if (dwMask & SSF_ICONSONLY)
+    {
+      dwData = lpss->fIconsOnly != FALSE;
+      RegSetValueExA(hKey, "IconsOnly", 0, REG_DWORD, (LPBYTE)&dwData, sizeof(dwData));
+    }
+
+    if (dwMask & fAdvancedWrite)
+    {
+      SHGetSetSettings(NULL, 0, TRUE); /* Update global counter */
+      SendMessageTimeoutA(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)"ShellState",
+                          SMTO_ABORTIFHUNG, 1000 * 2, NULL);
+    }
+    RegCloseKey(hKey);
   }
   else
   {
     SHGetSettings((LPSHELLFLAGSTATE)lpss,dwMask);
+
+    if (dwMask & SSF_STARTPANELON)
+    {
+      lpss->fStartPanelOn = TRUE; /* New start menu is on by default (and always on in Win7+) */
+      lpss->fShowStartPage = FALSE; /* Whistler beta feature, always off */
+    }
+
+    if (!(dwMask & fAdvanced) || RegOpenKeyExA(HKEY_CURRENT_USER, szSubKey, 0, KEY_READ, &hKey))
+      hKey = NULL;
+
+    if (dwMask & SSF_SHOWCOMPCOLOR)
+      lpss->fShowCompColor = ReadSetting(hKey, "ShowCompColor", 0) != FALSE;
+    if (dwMask & SSF_SHOWSUPERHIDDEN)
+      lpss->fShowSuperHidden = ReadSetting(hKey, "ShowSuperHidden", 0) != FALSE;
+    if (dwMask & SSF_AUTOCHECKSELECT)
+      lpss->fAutoCheckSelect = ReadSetting(hKey, "AutoCheckSelect", 0) != FALSE;
+    if (dwMask & SSF_ICONSONLY)
+      lpss->fIconsOnly = ReadSetting(hKey, "IconsOnly", 0) != FALSE;
+
+    if (hKey)
+      RegCloseKey(hKey);
   }
 }
 
@@ -274,34 +360,36 @@ VOID WINAPI SHGetSettings(LPSHELLFLAGSTATE lpsfs, DWORD dwMask)
 {
 	HKEY	hKey;
 	DWORD	dwData;
-	DWORD	dwDataSize = sizeof (DWORD);
+	C_ASSERT(sizeof(SHELLFLAGSTATE) == 4);
 
 	TRACE("(%p 0x%08lx)\n",lpsfs,dwMask);
 
 	if (RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
 				 0, 0, 0, KEY_ALL_ACCESS, 0, &hKey, 0))
-	  return;
+	  hKey = NULL;
 
-	if ( (SSF_SHOWEXTENSIONS & dwMask) && !RegQueryValueExA(hKey, "HideFileExt", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	  lpsfs->fShowExtensions  = ((dwData == 0) ?  0 : 1);
+	if (SSF_SHOWEXTENSIONS & dwMask)
+	  lpsfs->fShowExtensions = ReadSetting(hKey, "HideFileExt", 0) == FALSE;  /* Reversed logic */
 
-	if ( (SSF_SHOWINFOTIP & dwMask) && !RegQueryValueExA(hKey, "ShowInfoTip", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	  lpsfs->fShowInfoTip  = ((dwData == 0) ?  0 : 1);
+	if (SSF_SHOWINFOTIP & dwMask)
+	  lpsfs->fShowInfoTip = ReadSetting(hKey, "ShowInfoTip", 0) != FALSE;
 
-	if ( (SSF_DONTPRETTYPATH & dwMask) && !RegQueryValueExA(hKey, "DontPrettyPath", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	  lpsfs->fDontPrettyPath  = ((dwData == 0) ?  0 : 1);
+	if (SSF_DONTPRETTYPATH & dwMask)
+	  lpsfs->fDontPrettyPath = ReadSetting(hKey, "DontPrettyPath", 0) != FALSE;
 
-	if ( (SSF_HIDEICONS & dwMask) && !RegQueryValueExA(hKey, "HideIcons", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	  lpsfs->fHideIcons  = ((dwData == 0) ?  0 : 1);
+	if (SSF_HIDEICONS & dwMask)
+	  lpsfs->fHideIcons = ReadSetting(hKey, "HideIcons", 0) != FALSE;
 
-	if ( (SSF_MAPNETDRVBUTTON & dwMask) && !RegQueryValueExA(hKey, "MapNetDrvBtn", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	  lpsfs->fMapNetDrvBtn  = ((dwData == 0) ?  0 : 1);
+	if (SSF_MAPNETDRVBUTTON & dwMask)
+	  lpsfs->fMapNetDrvBtn = ReadSetting(hKey, "MapNetDrvBtn", 0) != FALSE;
 
-	if ( (SSF_SHOWATTRIBCOL & dwMask) && !RegQueryValueExA(hKey, "ShowAttribCol", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	  lpsfs->fShowAttribCol  = ((dwData == 0) ?  0 : 1);
+	if (SSF_SHOWATTRIBCOL & dwMask)
+	  lpsfs->fShowAttribCol = ReadSetting(hKey, "ShowAttribCol", 0) != FALSE;
 
-	if (((SSF_SHOWALLOBJECTS | SSF_SHOWSYSFILES) & dwMask) && !RegQueryValueExA(hKey, "Hidden", 0, 0, (LPBYTE)&dwData, &dwDataSize))
-	{ if (dwData == 0)
+	if ((SSF_SHOWALLOBJECTS | SSF_SHOWSYSFILES) & dwMask)
+	{
+	  dwData = ReadSetting(hKey, "Hidden", 0);
+	  if (dwData == 0)
 	  { if (SSF_SHOWALLOBJECTS & dwMask)	lpsfs->fShowAllObjects  = 0;
 	    if (SSF_SHOWSYSFILES & dwMask)	lpsfs->fShowSysFiles  = 0;
 	  }
@@ -314,7 +402,8 @@ VOID WINAPI SHGetSettings(LPSHELLFLAGSTATE lpsfs, DWORD dwMask)
 	    if (SSF_SHOWSYSFILES & dwMask)	lpsfs->fShowSysFiles  = -1;
 	  }
 	}
-	RegCloseKey (hKey);
+	if (hKey)
+	  RegCloseKey (hKey);
 
 	TRACE("-- 0x%04x\n", *(WORD*)lpsfs);
 }

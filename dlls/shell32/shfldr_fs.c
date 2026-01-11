@@ -754,16 +754,10 @@ IShellFolder_fnGetUIObjectOf (IShellFolder2 * iface,
 static BOOL SHELL_FS_HideExtension(LPCWSTR szPath)
 {
     HKEY hKey;
-    DWORD dwData;
-    DWORD dwDataSize = sizeof (DWORD);
     BOOL doHide = FALSE; /* The default value is FALSE (win98 at least) */
-
-    if (!RegCreateKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
-                         0, 0, 0, KEY_ALL_ACCESS, 0, &hKey, 0)) {
-        if (!RegQueryValueExW(hKey, L"HideFileExt", 0, 0, (LPBYTE) &dwData, &dwDataSize))
-            doHide = dwData;
-        RegCloseKey (hKey);
-    }
+    SHELLFLAGSTATE shellstate;
+    SHGetSettings(&shellstate, SSF_SHOWEXTENSIONS);
+    doHide = !shellstate.fShowExtensions;
 
     if (!doHide) {
         LPWSTR ext = PathFindExtensionW(szPath);

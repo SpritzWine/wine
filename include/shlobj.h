@@ -1177,9 +1177,14 @@ typedef struct
     BOOL fSepProcess: 1;
     BOOL fStartPanelOn: 1;
     BOOL fShowStartPage: 1;
-    UINT fSpareFlags : 13;
+    BOOL fAutoCheckSelect : 1;
+    BOOL fIconsOnly : 1;
+    BOOL fShowTypeOverlay : 1;
+    UINT fSpareFlags : 10;
     UINT :15; /* Required for proper binary layout with gcc */
 } SHELLSTATE, *LPSHELLSTATE;
+
+WINSHELLAPI VOID WINAPI SHGetSetSettings(LPSHELLSTATE lpss, DWORD dwMask, BOOL bSet);
 
 /**********************************************************************
  * SHGetSettings ()
@@ -1220,6 +1225,10 @@ WINSHELLAPI VOID WINAPI SHGetSettings(LPSHELLFLAGSTATE lpsfs, DWORD dwMask);
 #define SSF_MAPNETDRVBUTTON		0x1000
 #define SSF_NOCONFIRMRECYCLE		0x8000
 #define SSF_HIDEICONS			0x4000
+#define SSF_SHOWSUPERHIDDEN		0x00040000
+#define SSF_STARTPANELON		0x00200000
+#define SSF_AUTOCHECKSELECT		0x00800000
+#define SSF_ICONSONLY			0x01000000
 
 /****************************************************************************
 * SHRestricted API
