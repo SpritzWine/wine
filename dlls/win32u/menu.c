@@ -4282,7 +4282,10 @@ static BOOL track_menu( HMENU hmenu, UINT flags, int x, int y, HWND hwnd, const 
                     }
 
                 default:
-                    NtUserTranslateMessage( &msg, 0 );
+                    if (mt.hCurrentMenu == mt.hTopMenu)
+                        exit_menu = menu_key_escape( &mt, flags );
+                    else
+                        NtUserTranslateMessage( &msg, 0 );
                     break;
                 }
                 break;  /* WM_KEYDOWN */
