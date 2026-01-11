@@ -1274,7 +1274,12 @@ static LRESULT WINAPI dde_server_wndprocA(HWND hwnd, UINT msg, WPARAM wparam, LP
 
         if ((cmd = GlobalLock((HGLOBAL)hi)))
         {
-            ack.fAck = !lstrcmpA(cmd, exec_cmdA) || !lstrcmpW((LPCWSTR)cmd, exec_cmdW);
+            SIZE_T size;
+            BOOL maybe_w, maybe_a;
+            size = GlobalSize((HGLOBAL)hi);
+            maybe_w = (size % sizeof(WCHAR) == 0) && ((WCHAR *)cmd)[size / sizeof(WCHAR) - 1] == 0;
+            maybe_a = cmd[size - 1] == 0;
+            ack.fAck = (maybe_a && !lstrcmpA(cmd, exec_cmdA)) || (maybe_w && !lstrcmpW((LPCWSTR)cmd, exec_cmdW));
 
             switch (step % 5)
             {
@@ -1407,7 +1412,12 @@ static LRESULT WINAPI dde_server_wndprocW(HWND hwnd, UINT msg, WPARAM wparam, LP
 
         if ((cmd = GlobalLock((HGLOBAL)hi)))
         {
-            ack.fAck = !lstrcmpA(cmd, exec_cmdA) || !lstrcmpW((LPCWSTR)cmd, exec_cmdW);
+            SIZE_T size;
+            BOOL maybe_w, maybe_a;
+            size = GlobalSize((HGLOBAL)hi);
+            maybe_w = (size % sizeof(WCHAR) == 0) && ((WCHAR *)cmd)[size / sizeof(WCHAR) - 1] == 0;
+            maybe_a = cmd[size - 1] == 0;
+            ack.fAck = (maybe_a && !lstrcmpA(cmd, exec_cmdA)) || (maybe_w && !lstrcmpW((LPCWSTR)cmd, exec_cmdW));
 
             switch (step % 5)
             {
@@ -2454,13 +2464,16 @@ static HDDEDATA CALLBACK server_end_to_end_callback(UINT uType, UINT uFmt, HCONV
         if (winetest_debug > 1) trace("msg %u strA \"%s\" strW %s\n", msg_index, buffer, wine_dbgstr_w((WCHAR*)buffer));
 
         str_index = msg_index - 4;
-        cmd_w = test_cmd_w_to_w[str_index - 1];
         size_a = strlen(test_cmd_a_to_a) + 1;
-        size_w = (lstrlenW(cmd_w) + 1) * sizeof(WCHAR);
         size_a_to_w = MultiByteToWideChar( CP_ACP, 0, test_cmd_a_to_a, -1, test_cmd_a_to_w,
                                            ARRAY_SIZE(test_cmd_a_to_w)) * sizeof(WCHAR);
-        size_w_to_a = WideCharToMultiByte( CP_ACP, 0, cmd_w, -1,
-                                           test_cmd_w_to_a, sizeof(test_cmd_w_to_a), NULL, NULL );
+        if (str_index)
+        {
+            cmd_w = test_cmd_w_to_w[str_index - 1];
+            size_w = (lstrlenW(cmd_w) + 1) * sizeof(WCHAR);
+            size_w_to_a = WideCharToMultiByte( CP_ACP, 0, cmd_w, -1,
+                                               test_cmd_w_to_a, sizeof(test_cmd_w_to_a), NULL, NULL );
+        }
         switch (str_index)
         {
         case 0:  /* ANSI string */
