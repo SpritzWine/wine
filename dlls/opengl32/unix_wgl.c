@@ -1259,29 +1259,22 @@ static void make_context_current( TEB *teb, const struct opengl_funcs *funcs, HD
     }
     else
     {
-        const char *str = (const char *)funcs->p_glGetString( GL_EXTENSIONS );
-        size_t len = strlen( str );
-        const char *p;
-        char *ext;
-        if (!str) str = "";
-        if ((len = strlen( str )) && str[len - 1] == ' ') len--;
-        if (*str) size++;
-        for (p = str; p < str + len; p++) if (*p == ' ') size++;
-        if (!(extensions = malloc( size * sizeof(*extensions) + len + 1 ))) return;
-        ext = (char *)&extensions[size];
-        memcpy( ext, str, len );
-        ext[len] = 0;
-        if (*ext) extensions[count++] = ext;
-        while (*ext)
+        const char *str, *ptr;
+        char *out;
+
+        if (!(str = (const char *)funcs->p_glGetString( GL_EXTENSIONS ))) str = "";
+        for (ptr = str; *ptr; ptr++) if (ptr == str || ptr[-1] == ' ') size++;
+
+        if (!(extensions = malloc( size * sizeof(*extensions) + (ptr - str + 1) ))) return;
+
+        for (out = (char *)&extensions[size], ptr = str; *ptr; out++, ptr++)
         {
-            if (*ext == ' ')
-            {
-                *ext = 0;
-                extensions[count++] = ext + 1;
-            }
-            ext++;
+            if (ptr == str || ptr[-1] == ' ') extensions[count++] = out;
+            *out = *ptr == ' ' ? 0 : *ptr;
         }
-        assert( count + ARRAYSIZE(legacy_extensions) - 1 == size );
+        if (ptr != str) *out = 0;
+
+        assert( count + ARRAY_SIZE(legacy_extensions) - 1 == size );
     }
 
     if (!disabled && !(disabled = query_opengl_option( "DisabledExtensions" ))) disabled = "";
