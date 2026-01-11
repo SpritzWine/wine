@@ -4740,7 +4740,7 @@ static BOOL HTTP_ParseDate(LPCWSTR value, FILETIME *ft)
 {
     BOOL ret;
 
-    if (!wcscmp(value, L"0"))
+    if (!wcscmp(value, L"0") || !wcscmp(value, L"-1"))
     {
         ft->dwLowDateTime = ft->dwHighDateTime = 0;
         ret = TRUE;
