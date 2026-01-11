@@ -10,6 +10,10 @@ AC_INIT([Wine],[WINE_VERSION],[wine-devel@winehq.org],[wine],[https://www.winehq
 AC_CONFIG_SRCDIR(server/atom.c)
 AC_CONFIG_HEADERS(include/config.h)
 
+dnl Add the include path for wine_lib.h to CFLAGS early (before AC_PROG_CC)
+dnl Use actual path for configure/makedep, not Makefile variables
+CFLAGS="$CFLAGS -I$srcdir/rust"
+
 dnl Work around install-sh requirement in autoconf <= 2.69
 AC_PREREQ([2.69d],[AC_CONFIG_AUX_DIR(tools)],
                   [AC_PROVIDE([AC_CONFIG_AUX_DIR_DEFAULT])ac_aux_dir="${srcdir}/tools"])
@@ -91,6 +95,9 @@ AC_ARG_WITH(wine64,    AS_HELP_STRING([--with-wine64=DIR],[use the 64-bit Wine i
 
 AC_CANONICAL_HOST
 AC_SUBST(srcdir)
+
+dnl Set up Wine Rust API library paths and flags
+dnl This must come after AC_CANONICAL_HOST so that host_cpu is properly set
 
 AS_IF([test "x$enable_sast" = xyes],[CC=${CC:-clang}
 with_mingw=${with_mingw:-clang}
@@ -196,6 +203,45 @@ case $host_os in
     with_pthread=${with_pthread:-no}
     ;;
 esac
+
+dnl Set up Wine Rust API library paths and flags based on host architecture
+dnl This must come after HOST_ARCH is determined
+case "$HOST_ARCH" in
+  i386)
+    RUST_TARGET="i686-unknown-linux-gnu"
+    ;;
+  x86_64)
+    RUST_TARGET="x86_64-unknown-linux-gnu"
+    ;;
+  aarch64)
+    RUST_TARGET="aarch64-unknown-linux-gnu"
+    ;;
+  arm)
+    RUST_TARGET="armv7-unknown-linux-gnueabihf"
+    ;;
+  *)
+    RUST_TARGET="$host_cpu-unknown-linux-gnu"
+    ;;
+esac
+AC_SUBST(RUST_TARGET)
+
+dnl Set the Rust library directory (for Makefile use)
+RUST_LIB_DIR="\$(top_srcdir)/rust/target/$RUST_TARGET/release/deps"
+AC_SUBST(RUST_LIB_DIR)
+
+dnl Set Wine API library linking flags with absolute rpath for runtime linking
+dnl Use $ac_pwd for absolute path during configure, and keep relative path for Makefile
+WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
+AC_SUBST(WINE_API_LDFLAGS)
+
+dnl Set Wine API DLL flags variable that programs can use with -mwinerust
+WINE_API_DLLFLAGS="-mwinerust"
+AC_SUBST(WINE_API_DLLFLAGS)
+
+dnl Export RUST_TARGET for winegcc to use
+export RUST_TARGET
+dnl Export Wine object directory for winegcc
+export WINE_OBJDIR="$ac_pwd"
 
 AC_SUBST(toolsdir,[$with_wine_tools])
 AC_MSG_CHECKING([for the directory containing the Wine tools])
@@ -962,6 +1008,9 @@ AC_SUBST(TOP_INSTALL_LIB,"")
 AC_SUBST(TOP_INSTALL_DEV,"")
 AC_SUBST(WINELOADER_LDFLAGS,"")
 AC_SUBST(WINEPRELOADER_LDFLAGS,"")
+
+dnl Note: Wine API library flags should be added to EXTRADLLFLAGS in programs that use wine_lib.h
+dnl The flags are available in WINE_API_DLLFLAGS variable
 LIBEXT="so"
 WINE_PATH_SONAME_TOOLS
 WINE_CONFIG_HELPERS
@@ -3431,6 +3480,7 @@ WINE_CONFIG_MAKEFILE(dlls/wldp)
 WINE_CONFIG_MAKEFILE(dlls/wldp/tests)
 WINE_CONFIG_MAKEFILE(dlls/wmadmod)
 WINE_CONFIG_MAKEFILE(dlls/wmasf)
+WINE_CONFIG_MAKEFILE(rust)
 WINE_CONFIG_MAKEFILE(dlls/wmi)
 WINE_CONFIG_MAKEFILE(dlls/wmilib.sys)
 WINE_CONFIG_MAKEFILE(dlls/wminet_utils)
