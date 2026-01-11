@@ -1097,8 +1097,16 @@ static HRESULT WINAPI drive_Invoke(IDrive *iface, DISPID dispIdMember,
 static HRESULT WINAPI drive_get_Path(IDrive *iface, BSTR *path)
 {
     struct drive *This = impl_from_IDrive(iface);
-    FIXME("(%p)->(%p): stub\n", This, path);
-    return E_NOTIMPL;
+    TRACE("(%p)->(%p)\n", This, path);
+
+    if (!path)
+        return E_POINTER;
+
+    *path = SysAllocStringLen(This->root, 2);
+    if (!*path)
+        return E_OUTOFMEMORY;
+
+    return S_OK;
 }
 
 static HRESULT WINAPI drive_get_DriveLetter(IDrive *iface, BSTR *letter)

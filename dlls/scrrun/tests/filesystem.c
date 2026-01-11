@@ -1471,7 +1471,7 @@ static void test_DriveCollection(void)
     while (IEnumVARIANT_Next(enumvar, 1, &var, &fetched) == S_OK) {
         IDrive *drive = (IDrive*)V_DISPATCH(&var);
         DriveTypeConst type;
-        BSTR str;
+        BSTR str, path;
 
         hr = IDrive_get_DriveType(drive, &type);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -1482,7 +1482,17 @@ static void test_DriveCollection(void)
         hr = IDrive_get_DriveLetter(drive, &str);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
         ok(SysStringLen(str) == 1, "got string %s\n", wine_dbgstr_w(str));
+
+        hr = IDrive_get_Path(drive, NULL);
+        ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
+
+        hr = IDrive_get_Path(drive, &path);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        ok(SysStringLen(path) == 2 && path[0] == str[0] && path[1] == ':',
+             "got string %s\n", wine_dbgstr_w(path));
+
         SysFreeString(str);
+        SysFreeString(path);
 
         hr = IDrive_get_IsReady(drive, NULL);
         ok(hr == E_POINTER, "Unexpected hr %#lx.\n", hr);
