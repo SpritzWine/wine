@@ -39,6 +39,28 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
+HRESULT WINAPI SLGetSLIDList(HSLC handle, UINT queryType, const SLID *query, UINT returnType, UINT *count, SLID **data)
+{
+    FIXME("(%p %u %p %u %p %p) stub\n", handle, queryType, query, returnType, count, data);
+
+    *count = 0;
+    *data = (SLID *)0xdeadbeef;
+
+    return S_OK;
+}
+
+HRESULT WINAPI SLInstallLicense(HSLC handle, UINT count, const BYTE *data, SLID *file)
+{
+    UINT i;
+    FIXME("(%p %u %p %p) stub\n", handle, count, data, file);
+
+    for (i = 0; i < count; i++) {
+        memset(&file[i], 0, sizeof(SLID));
+    }
+
+    return S_OK;
+}
+
 HRESULT WINAPI SLOpen(HSLC *handle)
 {
     FIXME("(%p) stub\n", handle );
