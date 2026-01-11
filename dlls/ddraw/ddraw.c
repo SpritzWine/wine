@@ -1309,8 +1309,9 @@ HRESULT ddraw_get_d3dcaps(const struct ddraw *ddraw, D3DDEVICEDESC7 *caps)
     caps->dpcLineCaps.dwTextureFilterCaps = wined3d_caps.TextureFilterCaps;
     caps->dpcLineCaps.dwTextureAddressCaps = wined3d_caps.TextureAddressCaps;
 
-    caps->dwMaxTextureWidth = wined3d_caps.MaxTextureWidth;
-    caps->dwMaxTextureHeight = wined3d_caps.MaxTextureHeight;
+    /* Some games (like "warning forever") assume the texture size fits a signed 16bit integer, so we limit the size artificially */
+    caps->dwMaxTextureWidth = min(wined3d_caps.MaxTextureWidth, 16384);
+    caps->dwMaxTextureHeight = min(wined3d_caps.MaxTextureHeight, 16384);
 
     caps->dwMaxTextureRepeat = wined3d_caps.MaxTextureRepeat;
     caps->dwMaxTextureAspectRatio = wined3d_caps.MaxTextureAspectRatio;
