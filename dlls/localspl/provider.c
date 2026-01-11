@@ -2044,16 +2044,18 @@ static BOOL myAddPrinterDriverEx(DWORD level, LPBYTE pDriverInfo, DWORD dwFileCo
 
     RegCloseKey(hdrv);
     hui = driver_load(env, di.pConfigFile);
-    pDrvDriverEvent = (void *)GetProcAddress(hui, "DrvDriverEvent");
-    if (hui && pDrvDriverEvent) {
+    if (hui) {
+        pDrvDriverEvent = (void *)GetProcAddress(hui, "DrvDriverEvent");
+        if (pDrvDriverEvent) {
 
-        /* Support for DrvDriverEvent is optional */
-        TRACE("DRIVER_EVENT_INITIALIZE for %s (%s)\n", debugstr_w(di.pName), debugstr_w(di.pConfigFile));
-        /* MSDN: level for DRIVER_INFO is 1 to 3 */
-        res = pDrvDriverEvent(DRIVER_EVENT_INITIALIZE, 3, (LPBYTE) &di, 0);
-        TRACE("got %d from DRIVER_EVENT_INITIALIZE\n", res);
+            /* Support for DrvDriverEvent is optional */
+            TRACE("DRIVER_EVENT_INITIALIZE for %s (%s)\n", debugstr_w(di.pName), debugstr_w(di.pConfigFile));
+            /* MSDN: level for DRIVER_INFO is 1 to 3 */
+            res = pDrvDriverEvent(DRIVER_EVENT_INITIALIZE, 3, (LPBYTE) &di, 0);
+            TRACE("got %d from DRIVER_EVENT_INITIALIZE\n", res);
+        }
+        FreeLibrary(hui);
     }
-    FreeLibrary(hui);
 
     TRACE("=> TRUE with %lu\n", GetLastError());
     return TRUE;
