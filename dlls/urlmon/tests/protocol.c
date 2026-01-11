@@ -3578,7 +3578,11 @@ static void test_http_protocol(void)
 
     trace("Testing http protocol (redirected, binding)...\n");
     bindf = BINDF_ASYNCHRONOUS | BINDF_ASYNCSTORAGE | BINDF_PULLDATA | BINDF_FROMURLMON | BINDF_NOWRITECACHE;
-    test_http_protocol_url(redirect_url, HTTP_TEST, TEST_REDIRECT|TEST_USEBINDING, TYMED_NULL);
+    test_http_protocol_url(redirect_url, HTTP_TEST, TEST_REDIRECT | TEST_USEBINDING, TYMED_NULL);
+
+    trace("Testing http protocol (redirected, disable auto redirect, binding)...\n");
+    bindf = BINDF_ASYNCHRONOUS | BINDF_ASYNCSTORAGE | BINDF_PULLDATA | BINDF_FROMURLMON | BINDF_NOWRITECACHE;
+    test_http_protocol_url(redirect_url, HTTP_TEST, TEST_REDIRECT | TEST_DISABLEAUTOREDIRECT | TEST_USEBINDING, TYMED_NULL);
 
     /* This is a bit ugly. We unconditionally disable this test on Wine. This won't work until we have
      * support for reading from cache via HTTP layer in wininet. Until then, Wine will fail badly, affecting
