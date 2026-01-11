@@ -1,0 +1,37 @@
+---
+name: Ping Integration Test Suite
+
+description: |
+    This suite defines integration test configurations for the ping program,
+    supporting both C and Rust implementations. It includes architecture detection,
+    compilation instructions, and a list of supported programs.
+
+architectures:
+    - x86_64
+    - arm64
+    - i386
+
+compilation:
+    c:
+        description: Compile the original C-based ping program.
+        command: |
+            gcc -o ping /workspace/programs/ping/ping_main.c \
+              -I/opt/wine/include \
+              -L/opt/wine/lib \
+              -lwinsock2 -licmpapi -lws2_32
+    rust:
+        description: Compile the Rust-based ping program.
+        command: |
+            cargo build --release
+        working_dir: /workspace/rust/src_programs/ping
+
+programs:
+    - name: ping
+      type: c
+      path: /workspace/programs/ping/ping_main.c
+      description: Original Windows C implementation of ping.
+
+    - name: rust_ping
+      type: rust
+      path: /workspace/rust/src_programs/ping/
+      description: Rust-based implementation of ping.
