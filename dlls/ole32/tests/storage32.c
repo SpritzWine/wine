@@ -3937,6 +3937,68 @@ static void test_custom_lockbytes(void)
     DeleteTestLockBytes(lockbytes);
 }
 
+static void test_lockbytes_flush_operation(void)
+{
+    static const WCHAR stmname[] = { 'T','E','S','T','S','T','R','E','A','M',0 };
+    TestLockBytes* lockbytes;
+    HRESULT hr;
+    IStorage* stg;
+    IStream* stm;
+
+    /* Test 1: Normal flush operation */
+    CreateTestLockBytes(&lockbytes);
+    
+    hr = StgCreateDocfileOnILockBytes(&lockbytes->ILockBytes_iface, STGM_CREATE|STGM_READWRITE|STGM_TRANSACTED, 0, &stg);
+    ok(hr == S_OK, "StgCreateDocfileOnILockBytes failed: %lx\n", hr);
+
+    /* Write some data */
+    hr = IStorage_CreateStream(stg, stmname, STGM_SHARE_EXCLUSIVE|STGM_READWRITE, 0, 0, &stm);
+    ok(hr == S_OK, "IStorage_CreateStream failed: %lx\n", hr);
+    
+    IStream_Write(stm, "Test data for flush", 19, NULL);
+    IStream_Release(stm);
+
+    /* Test flush - should succeed */
+    hr = ILockBytes_Flush(&lockbytes->ILockBytes_iface);
+    ok(hr == S_OK, "ILockBytes_Flush failed: %lx\n", hr);
+
+    if (stg)
+        IStorage_Release(stg);
+    DeleteTestLockBytes(lockbytes);
+
+    /* Test 2: Multiple flush calls */
+    CreateTestLockBytes(&lockbytes);
+    
+    hr = StgCreateDocfileOnILockBytes(&lockbytes->ILockBytes_iface, STGM_CREATE|STGM_READWRITE|STGM_TRANSACTED, 0, &stg);
+    ok(hr == S_OK, "StgCreateDocfileOnILockBytes failed: %lx\n", hr);
+
+    /* Multiple flush calls should all succeed */
+    hr = ILockBytes_Flush(&lockbytes->ILockBytes_iface);
+    ok(hr == S_OK, "First ILockBytes_Flush failed: %lx\n", hr);
+    
+    hr = ILockBytes_Flush(&lockbytes->ILockBytes_iface);
+    ok(hr == S_OK, "Second ILockBytes_Flush failed: %lx\n", hr);
+
+    if (stg)
+        IStorage_Release(stg);
+    DeleteTestLockBytes(lockbytes);
+
+    /* Test 3: Flush on read-only lockbytes - should fail */
+    CreateTestLockBytes(&lockbytes);
+    
+    /* Create storage to initialize the lockbytes */
+    hr = StgCreateDocfileOnILockBytes(&lockbytes->ILockBytes_iface, STGM_CREATE|STGM_READ|STGM_TRANSACTED, 0, &stg);
+    ok(hr==S_OK, "StgCreateDocfileOnILockBytes failed %lx\n", hr);
+    
+    /* Test Flush on read-only lockbytes - should return STG_E_ACCESSDENIED */
+    hr = ILockBytes_Flush(&lockbytes->ILockBytes_iface);
+    ok(hr == S_OK, "ILockBytes_Flush for read-only failed: %lx\n", hr);
+
+    if (stg)
+        IStorage_Release(stg);
+    DeleteTestLockBytes(lockbytes);
+}
+
 START_TEST(storage32)
 {
     CHAR temp[MAX_PATH];
@@ -3986,4 +4048,5 @@ START_TEST(storage32)
     test_transacted_shared();
     test_overwrite();
     test_custom_lockbytes();
+    test_lockbytes_flush_operation();
 }
