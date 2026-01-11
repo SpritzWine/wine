@@ -644,6 +644,11 @@ static void dialog_handle_event( msi_dialog *dialog, const WCHAR *control, const
         SetWindowTextW( ctrl->hwnd, path );
         free( path );
     }
+    else if ( !wcscmp ( attribute, L"SelectionBrowseButton" ) )
+    {
+        const WCHAR *directory = MSI_RecordGetString( rec, 1 );
+        EnableWindow(ctrl->hwnd, directory != NULL);
+    }
     else
     {
         FIXME("Attribute %s not being set\n", debugstr_w(attribute));
@@ -1007,11 +1012,32 @@ end:
     return hBitmap;
 }
 
+static UINT dialog_find_browse_event( MSIRECORD *rec, void *param )
+{
+    msi_dialog *dialog = param;
+    LPCWSTR condition, event;
+    UINT r;
+
+    condition = MSI_RecordGetString( rec, 5 );
+    r = MSI_EvaluateConditionW( dialog->package, condition );
+    if (r == MSICONDITION_TRUE || r == MSICONDITION_NONE)
+    {
+        event = MSI_RecordGetString( rec, 3 );
+        if (!wcscmp(event, L"SelectionBrowse"))
+        {
+            return ERROR_SUCCESS;
+        }
+    }
+    return ERROR_NOT_FOUND;
+}
+
 static UINT dialog_button_control( msi_dialog *dialog, MSIRECORD *rec )
 {
     struct control *control;
     UINT attributes, style, cx = 0, cy = 0, flags = 0;
     WCHAR *name = NULL;
+    MSIQUERY *view;
+    UINT r;
 
     TRACE("%p %p\n", dialog, rec);
 
@@ -1055,6 +1081,19 @@ static UINT dialog_button_control( msi_dialog *dialog, MSIRECORD *rec )
         }
         else ERR("Failed to load bitmap %s\n", debugstr_w(name));
     }
+
+    r = MSI_OpenQuery( dialog->package->db, &view,
+                         L"SELECT * FROM `ControlEvent` WHERE `Dialog_` = '%s' AND `Control_` = '%s' ORDER BY `Ordering`",
+                         dialog->name, control->name );
+    if (r != ERROR_SUCCESS)
+        return r;
+
+    r = MSI_IterateRecords( view, 0, dialog_find_browse_event, dialog );
+    if (r == ERROR_SUCCESS)
+    {
+        event_subscribe(dialog, L"SelectionPath", control->name, L"SelectionBrowseButton");
+    }
+    msiobj_release( &view->hdr );
 
     free( name );
     return ERROR_SUCCESS;
