@@ -771,6 +771,7 @@ struct test_stream_sink
 struct test_media_sink
 {
     IMFMediaSink IMFMediaSink_iface;
+    IMFClockStateSink IMFClockStateSink_iface;
     LONG refcount;
     IMFMediaTypeHandler *handler;
     IMFPresentationClock *clock;
@@ -785,15 +786,25 @@ static struct test_media_sink *impl_from_IMFMediaSink(IMFMediaSink *iface)
 
 static HRESULT WINAPI test_media_sink_QueryInterface(IMFMediaSink *iface, REFIID riid, void **obj)
 {
+    struct test_media_sink *sink = impl_from_IMFMediaSink(iface);
+
     if (IsEqualIID(riid, &IID_IMFMediaSink)
             || IsEqualIID(riid, &IID_IUnknown))
     {
-        IMFMediaSink_AddRef((*obj = iface));
-        return S_OK;
+        *obj = iface;
+    }
+    else if (IsEqualIID(riid, &IID_IMFClockStateSink))
+    {
+        *obj = &sink->IMFClockStateSink_iface;
+    }
+    else
+    {
+        *obj = NULL;
+        return E_NOINTERFACE;
     }
 
-    *obj = NULL;
-    return E_NOINTERFACE;
+    IUnknown_AddRef((IUnknown*)*obj);
+    return S_OK;
 }
 
 static ULONG WINAPI test_media_sink_AddRef(IMFMediaSink *iface)
@@ -883,8 +894,13 @@ static HRESULT WINAPI test_media_sink_SetPresentationClock(IMFMediaSink *iface, 
 
     if (expect_test_media_sink_SetPresentationClock)
     {
-        if (sink->clock) IMFPresentationClock_Release(clock);
+        if (sink->clock)
+        {
+            IMFPresentationClock_RemoveClockStateSink(sink->clock, &sink->IMFClockStateSink_iface);
+            IMFPresentationClock_Release(sink->clock);
+        }
         IMFPresentationClock_AddRef(sink->clock = clock);
+        IMFPresentationClock_AddClockStateSink(sink->clock, &sink->IMFClockStateSink_iface);
         hr = S_OK;
     }
     else
@@ -918,6 +934,9 @@ static HRESULT WINAPI test_media_sink_Shutdown(IMFMediaSink *iface)
 
     if (sink->clock)
     {
+        if (sink->stream)
+            IMFPresentationClock_RemoveClockStateSink(sink->clock, &sink->IMFClockStateSink_iface);
+
         IMFPresentationClock_Release(sink->clock);
         sink->clock = NULL;
     }
@@ -1001,6 +1020,80 @@ static struct test_stream_sink *impl_from_IMFStreamSink(IMFStreamSink *iface)
     return CONTAINING_RECORD(iface, struct test_stream_sink, IMFStreamSink_iface);
 }
 
+static struct test_media_sink *test_media_sink_from_IMFClockStateSink(IMFClockStateSink *iface)
+{
+    return CONTAINING_RECORD(iface, struct test_media_sink, IMFClockStateSink_iface);
+}
+
+static HRESULT WINAPI test_media_sink_clock_sink_QueryInterface(IMFClockStateSink *iface, REFIID riid, void **obj)
+{
+    struct test_media_sink *sink = test_media_sink_from_IMFClockStateSink(iface);
+    return IMFMediaSink_QueryInterface(&sink->IMFMediaSink_iface, riid, obj);
+}
+
+static ULONG WINAPI test_media_sink_clock_sink_AddRef(IMFClockStateSink *iface)
+{
+    struct test_media_sink *sink = test_media_sink_from_IMFClockStateSink(iface);
+    return IMFMediaSink_AddRef(&sink->IMFMediaSink_iface);
+}
+
+static ULONG WINAPI test_media_sink_clock_sink_Release(IMFClockStateSink *iface)
+{
+    struct test_media_sink *sink = test_media_sink_from_IMFClockStateSink(iface);
+    return IMFMediaSink_Release(&sink->IMFMediaSink_iface);
+}
+
+static HRESULT test_media_sink_clock_sink_onclock_event(IMFClockStateSink *iface, enum object_state state, MediaEventType met)
+{
+    struct test_media_sink *sink = test_media_sink_from_IMFClockStateSink(iface);
+    PROPVARIANT propvar;
+    HRESULT hr;
+
+    add_object_state(&actual_object_state_record, state);
+    PropVariantInit(&propvar);
+    hr = IMFStreamSink_QueueEvent(&sink->stream->IMFStreamSink_iface, met, &GUID_NULL, S_OK, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    return hr;
+}
+
+static HRESULT WINAPI test_media_sink_clock_sink_OnClockStart(IMFClockStateSink *iface, MFTIME system_time, LONGLONG offset)
+{
+    return test_media_sink_clock_sink_onclock_event(iface, SINK_ON_CLOCK_START, MEStreamSinkStarted);
+}
+
+static HRESULT WINAPI test_media_sink_clock_sink_OnClockStop(IMFClockStateSink *iface, MFTIME system_time)
+{
+    return test_media_sink_clock_sink_onclock_event(iface, SINK_ON_CLOCK_STOP, MEStreamSinkStopped);
+}
+
+static HRESULT WINAPI test_media_sink_clock_sink_OnClockPause(IMFClockStateSink *iface, MFTIME system_time)
+{
+    return test_media_sink_clock_sink_onclock_event(iface, SINK_ON_CLOCK_PAUSE, MEStreamSinkPaused);
+}
+
+static HRESULT WINAPI test_media_sink_clock_sink_OnClockRestart(IMFClockStateSink *iface, MFTIME system_time)
+{
+    return test_media_sink_clock_sink_onclock_event(iface, SINK_ON_CLOCK_RESTART, MEStreamSinkStarted);
+}
+
+static HRESULT WINAPI test_media_sink_clock_sink_OnClockSetRate(IMFClockStateSink *iface, MFTIME system_time, float rate)
+{
+    return test_media_sink_clock_sink_onclock_event(iface, SINK_ON_CLOCK_SETRATE, MEStreamSinkRateChanged);
+}
+
+static const IMFClockStateSinkVtbl test_media_sink_clock_sink_vtbl =
+{
+   test_media_sink_clock_sink_QueryInterface,
+   test_media_sink_clock_sink_AddRef,
+   test_media_sink_clock_sink_Release,
+   test_media_sink_clock_sink_OnClockStart,
+   test_media_sink_clock_sink_OnClockStop,
+   test_media_sink_clock_sink_OnClockPause,
+   test_media_sink_clock_sink_OnClockRestart,
+   test_media_sink_clock_sink_OnClockSetRate,
+};
+
 static HRESULT WINAPI test_stream_sink_QueryInterface(IMFStreamSink *iface, REFIID riid, void **obj)
 {
     struct test_stream_sink *impl = impl_from_IMFStreamSink(iface);
@@ -1009,25 +1102,24 @@ static HRESULT WINAPI test_stream_sink_QueryInterface(IMFStreamSink *iface, REFI
             || IsEqualIID(riid, &IID_IMFMediaEventGenerator)
             || IsEqualIID(riid, &IID_IUnknown))
     {
-        IMFStreamSink_AddRef((*obj = iface));
-        return S_OK;
+        *obj = iface;
     }
-
-    if (IsEqualIID(riid, &IID_IMFAttributes) && impl->attributes)
+    else if (IsEqualIID(riid, &IID_IMFAttributes) && impl->attributes)
     {
-        IMFAttributes_AddRef((*obj = impl->attributes));
-        return S_OK;
+        *obj = impl->attributes;
     }
-
-    if (IsEqualIID(riid, &IID_IMFGetService))
+    else if (IsEqualIID(riid, &IID_IMFGetService))
     {
         *obj = &impl->IMFGetService_iface;
-        IMFGetService_AddRef(&impl->IMFGetService_iface);
-        return S_OK;
+    }
+    else
+    {
+        *obj = NULL;
+        return E_NOINTERFACE;
     }
 
-    *obj = NULL;
-    return E_NOINTERFACE;
+    IUnknown_AddRef((IUnknown*)*obj);
+    return S_OK;
 }
 
 static ULONG WINAPI test_stream_sink_AddRef(IMFStreamSink *iface)
@@ -1266,6 +1358,7 @@ static struct test_media_sink *create_test_media_sink(IMFMediaTypeHandler *handl
 
     sink = calloc(1, sizeof(*sink));
     sink->IMFMediaSink_iface.lpVtbl = &test_media_sink_vtbl;
+    sink->IMFClockStateSink_iface.lpVtbl = &test_media_sink_clock_sink_vtbl;
     sink->refcount = 1;
     if (handler)
         IMFMediaTypeHandler_AddRef(sink->handler = handler);
@@ -8202,9 +8295,7 @@ static void test_media_session_seek(void)
     static const struct object_state_record expected_seek_start_no_pending_request_records = {{SOURCE_STOP, MFT_FLUSH, SOURCE_START, SINK_FLUSH, SINK_ON_CLOCK_START}, 5};
     static const struct object_state_record expected_seek_start_pending_request_records = {{SOURCE_STOP, MFT_FLUSH, SOURCE_START, MFT_PROCESS_OUTPUT, SOURCE_REQUEST_SAMPLE, SINK_FLUSH, SINK_ON_CLOCK_START}, 7};
 
-    struct test_seek_clock_sink *test_seek_clock_sink;
     MFT_OUTPUT_STREAM_INFO output_stream_info = {0};
-    IMFPresentationClock *presentation_clock;
     struct test_callback *test_callback;
     struct test_media_sink *media_sink;
     struct test_source *media_source;
@@ -8216,7 +8307,6 @@ static void test_media_session_seek(void)
     PROPVARIANT propvar;
     IMFMediaType *type;
     IMFTransform *mft;
-    IMFClock *clock;
     UINT32 status;
     HRESULT hr;
     INT i;
@@ -8256,16 +8346,6 @@ static void test_media_session_seek(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     IMFTopology_Release(topology);
 
-    test_seek_clock_sink = create_test_seek_clock_sink();
-
-    hr = IMFMediaSession_GetClock(session, &clock);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFClock_QueryInterface(clock, &IID_IMFPresentationClock, (void **)&presentation_clock);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    hr = IMFPresentationClock_AddClockStateSink(presentation_clock, &test_seek_clock_sink->IMFClockStateSink_iface);
-    ok(hr == S_OK, "Failed to add a sink, hr %#lx.\n", hr);
-    IMFClock_Release(clock);
-
     callback = create_test_callback(TRUE);
     test_callback = impl_from_IMFAsyncCallback(callback);
     PropVariantInit(&propvar);
@@ -8291,9 +8371,6 @@ static void test_media_session_seek(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok(status == MF_TOPOSTATUS_STARTED_SOURCE, "Unexpected status %d.\n", status);
     PropVariantClear(&propvar);
-
-    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -8345,11 +8422,6 @@ static void test_media_session_seek(void)
     hr = IMFMediaSession_Pause(session);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-    Sleep(20);
-
-    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkPaused, &GUID_NULL, S_OK, &propvar);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-
     hr = wait_media_event(session, callback, MESessionPaused, 1000, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
@@ -8365,11 +8437,6 @@ static void test_media_session_seek(void)
     hr = IMFMediaSession_Start(session, NULL, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     PropVariantClear(&propvar);
-
-    Sleep(20);
-
-    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -8404,11 +8471,6 @@ static void test_media_session_seek(void)
     hr = IMFMediaSession_Pause(session);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
-    Sleep(20);
-
-    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkPaused, &GUID_NULL, S_OK, &propvar);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-
     hr = wait_media_event(session, callback, MESessionPaused, 1000, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
@@ -8427,11 +8489,6 @@ static void test_media_session_seek(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     PropVariantClear(&propvar);
 
-    Sleep(20);
-
-    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-
     hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
@@ -8447,9 +8504,6 @@ static void test_media_session_seek(void)
     flaky
     compare_object_states(&actual_object_state_record, &expected_seek_start_pending_request_records);
 
-    IMFPresentationClock_RemoveClockStateSink(presentation_clock, &test_seek_clock_sink->IMFClockStateSink_iface);
-    IMFPresentationClock_Release(presentation_clock);
-    IMFClockStateSink_Release(&test_seek_clock_sink->IMFClockStateSink_iface);
     IMFAsyncCallback_Release(callback);
     IMFTransform_Release(mft);
 
