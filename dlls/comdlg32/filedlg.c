@@ -647,7 +647,7 @@ void COMDLG32_GetCanonicalPath(PCIDLIST_ABSOLUTE pidlAbsCurrent,
  *
  * Creates a delimited list of filenames.
  */
-int COMDLG32_SplitFileNames(LPWSTR lpstrEdit, UINT nStrLen, LPWSTR *lpstrFileList, UINT *sizeUsed)
+int COMDLG32_SplitFileNames(LPCWSTR lpstrEdit, UINT nStrLen, LPWSTR *lpstrFileList, UINT *sizeUsed)
 {
 	UINT nStrCharCount = 0;	/* index in src buffer */
 	UINT nFileIndex = 0;	/* index in dest buffer */
