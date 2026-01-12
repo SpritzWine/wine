@@ -413,7 +413,7 @@ static const struct nls_update_font_list
     /* Arabic */
     { 1256, 720, "vgaoem.fon", "vgaf1256.fon", "vgas1256.fon",
       "coue1256.fon", "sere1256.fon", "smae1256.fon", "ssee1256.fon", "ssef1256.fon",
-      "Microsoft Sans Serif","Times New Roman",
+      "Tahoma","Times New Roman",
       "Fixedsys,178", "System,178",
       "Courier New,178", "MS Serif,178", "Small Fonts,178",
       "MS Sans Serif,178", "MS Sans Serif,178", "MS Serif,178"
