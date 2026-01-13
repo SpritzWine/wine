@@ -34,6 +34,7 @@
 #include "ddk/mountmgr.h"
 #include "wine/debug.h"
 #include "mprres.h"
+#include "shlwapi.h"
 #include "wnetpriv.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(mpr);
@@ -2483,10 +2484,9 @@ DWORD WINAPI WNetGetConnectionW( LPCWSTR lpLocalName,
             case DRIVE_FIXED:
             case DRIVE_CDROM:
                 TRACE("file is local\n");
+            default:
                 ret = WN_NOT_CONNECTED;
                 break;
-            default:
-                ret = WN_BAD_LOCALNAME;
             }
         }
         else
@@ -2528,44 +2528,169 @@ DWORD WINAPI WNetSetConnectionW( LPCWSTR lpName, DWORD dwProperty,
 DWORD WINAPI WNetGetUniversalNameA ( LPCSTR lpLocalPath, DWORD dwInfoLevel,
                                      LPVOID lpBuffer, LPDWORD lpBufferSize )
 {
-    DWORD err, size;
+    DWORD err;
 
-    FIXME( "(%s, 0x%08lX, %p, %p): stub\n",
-           debugstr_a(lpLocalPath), dwInfoLevel, lpBuffer, lpBufferSize);
+    LPWSTR wLocalPath = NULL;
+
+    LPVOID wBuffer = NULL;
+    DWORD wBufferSize = 1024;
+
+    UNIVERSAL_NAME_INFOW *uniInfoW = NULL;
+    REMOTE_NAME_INFOW *remInfoW = NULL;
+
+    DWORD outSize;
+
+    TRACE("(%s, %ld, %p, %p)\n", debugstr_a(lpLocalPath), dwInfoLevel,
+        lpBuffer, lpBufferSize);
+
+    // Check that buffer size is provided
+    if (lpBufferSize == NULL)
+    {
+        err = WN_BAD_POINTER;
+        goto out;
+    }
+
+    // Prepare parameters
+    wLocalPath = strdupAtoW(lpLocalPath);
+    if (!wLocalPath)
+    {
+        err = WN_OUT_OF_MEMORY;
+        goto out;
+    }
+
+    // Get wide universal name
+    wBuffer = HeapAlloc(GetProcessHeap(), 0, wBufferSize);
+    err = WNetGetUniversalNameW(wLocalPath, dwInfoLevel, wBuffer, &wBufferSize);
+    if (err == WN_MORE_DATA)
+    {
+        wBuffer = HeapReAlloc(GetProcessHeap(), 0, wBuffer, wBufferSize);
+        if (!wBuffer)
+        {
+            err = WN_OUT_OF_MEMORY;
+            goto out;
+        }
+
+        err = WNetGetUniversalNameW(wLocalPath, dwInfoLevel, wBuffer, &wBufferSize);
+    }
+
+    // Check for errors
+    if (err != WN_NO_ERROR)
+        goto out;
+
+    // Check for invalid parameters
+    if (lpBuffer == NULL)
+    {
+        err = WN_BAD_POINTER;
+        goto out;
+    }
+    else if (*lpBufferSize == 0)
+    {
+        err = WN_BAD_VALUE;
+        goto out;
+    }
+
+    // Estimate size needed to convert result
+    uniInfoW = wBuffer;
+    remInfoW = wBuffer;
 
     switch (dwInfoLevel)
     {
-    case UNIVERSAL_NAME_INFO_LEVEL:
+        case UNIVERSAL_NAME_INFO_LEVEL:
+        {
+            outSize = sizeof(UNIVERSAL_NAME_INFOA);
+            outSize += WideCharToMultiByte(CP_ACP, 0,
+                uniInfoW->lpUniversalName, -1, NULL, 0, NULL, NULL);
+
+            break;
+        }
+        case REMOTE_NAME_INFO_LEVEL:
+            outSize = sizeof(REMOTE_NAME_INFOA);
+            outSize += WideCharToMultiByte(CP_ACP, 0,
+                remInfoW->lpUniversalName, -1, NULL, 0, NULL, NULL);
+
+            outSize += WideCharToMultiByte(CP_ACP, 0,
+                remInfoW->lpConnectionName, -1, NULL, 0, NULL, NULL);
+
+            outSize += WideCharToMultiByte(CP_ACP, 0,
+                remInfoW->lpRemainingPath, -1, NULL, 0, NULL, NULL);
+
+            break;
+
+        default:
+            err = WN_BAD_LEVEL;
+            goto out;
+            break;
+    }
+
+    // Make sure we have enough output buffer space
+    if (*lpBufferSize < outSize)
     {
-        LPUNIVERSAL_NAME_INFOA info = lpBuffer;
-
-        if (GetDriveTypeA(lpLocalPath) != DRIVE_REMOTE)
-        {
-            err = ERROR_NOT_CONNECTED;
-            break;
-        }
-
-        size = sizeof(*info) + lstrlenA(lpLocalPath) + 1;
-        if (*lpBufferSize < size)
-        {
-            err = WN_MORE_DATA;
-            break;
-        }
-        info->lpUniversalName = (char *)info + sizeof(*info);
-        lstrcpyA(info->lpUniversalName, lpLocalPath);
-        err = WN_NO_ERROR;
-        break;
-    }
-    case REMOTE_NAME_INFO_LEVEL:
-        err = WN_NOT_CONNECTED;
-        break;
-
-    default:
-        err = WN_BAD_VALUE;
-        break;
+        *lpBufferSize = outSize;
+        err = WN_MORE_DATA;
+        goto out;
     }
 
-    SetLastError(err);
+    // Convert result
+    switch (dwInfoLevel)
+    {
+        case UNIVERSAL_NAME_INFO_LEVEL:
+        {
+            UNIVERSAL_NAME_INFOA *out = lpBuffer;
+
+            // Convert universal name
+            out->lpUniversalName = (LPSTR)(out + 1);
+            WideCharToMultiByte(CP_ACP, 0, uniInfoW->lpUniversalName, -1,
+                out->lpUniversalName, (outSize - sizeof(UNIVERSAL_NAME_INFOA)),
+                NULL, NULL);
+
+            break;
+        }
+        case REMOTE_NAME_INFO_LEVEL:
+        {
+            REMOTE_NAME_INFOA *out = lpBuffer;
+
+            int wrote = 0;
+            int remains = outSize - sizeof(REMOTE_NAME_INFOA);
+
+            // Convert universal name
+            out->lpUniversalName = (LPSTR)(out + 1);
+            wrote = WideCharToMultiByte(CP_ACP, 0, remInfoW->lpUniversalName, -1,
+                out->lpUniversalName, remains, NULL, NULL);
+
+            remains -= wrote;
+
+            // Convert connection name
+            out->lpConnectionName = out->lpUniversalName + wrote;
+            wrote = WideCharToMultiByte(CP_ACP, 0, remInfoW->lpConnectionName, -1,
+                out->lpConnectionName, remains, NULL, NULL);
+
+            remains -= wrote;
+
+            // Convert remaining path
+            out->lpRemainingPath = out->lpConnectionName + wrote;
+            wrote = WideCharToMultiByte(CP_ACP, 0, remInfoW->lpRemainingPath, -1,
+                out->lpRemainingPath, remains, NULL, NULL);
+
+            remains -= wrote;
+            break;
+        }
+        default:
+            err = WN_BAD_LEVEL;
+            goto out;
+            break;
+    }
+
+out:
+    if (wBuffer)
+        HeapFree(GetProcessHeap(), 0, wBuffer);
+
+    if (wLocalPath)
+        HeapFree(GetProcessHeap(), 0, wLocalPath);
+
+    if (err != WN_NO_ERROR)
+        SetLastError(err);
+
+    TRACE("Returning %ld\n", err);
     return err;
 }
 
@@ -2575,45 +2700,160 @@ DWORD WINAPI WNetGetUniversalNameA ( LPCSTR lpLocalPath, DWORD dwInfoLevel,
 DWORD WINAPI WNetGetUniversalNameW ( LPCWSTR lpLocalPath, DWORD dwInfoLevel,
                                      LPVOID lpBuffer, LPDWORD lpBufferSize )
 {
-    DWORD err, size;
+    DWORD err = WN_NO_ERROR;
 
-    FIXME( "(%s, 0x%08lX, %p, %p): stub\n",
-           debugstr_w(lpLocalPath), dwInfoLevel, lpBuffer, lpBufferSize);
+    WCHAR drive[3] = {'\0'};
+    LPCWSTR remainingPath = NULL;
+
+    int tries = 2;
+
+    LPWSTR remoteName = NULL;
+    DWORD remoteNameSize = MAX_PATH;
+
+    DWORD uniNameSize;
+    DWORD outSize;
+
+    TRACE("(%s, %ld, %p, %p)\n", debugstr_w(lpLocalPath), dwInfoLevel,
+        lpBuffer, lpBufferSize);
+
+    // Check that buffer size is provided
+    if (lpBufferSize == NULL)
+    {
+        err = WN_BAD_POINTER;
+        goto out;
+    }
+
+    // Extract local path drive letter and remaining path
+    if (lpLocalPath)
+    {
+        drive[0] = lpLocalPath[0];
+        drive[1] = lpLocalPath[1];
+
+        remainingPath = lpLocalPath + 2;
+    }
+
+    // Try getting remote name for local device
+    while (tries)
+    {
+        tries--;
+
+        remoteName = HeapAlloc(GetProcessHeap(), 0, remoteNameSize);
+        if (!remoteName)
+        {
+            err = WN_OUT_OF_MEMORY;
+            break;
+        }
+
+        err = WNetGetConnectionW(drive, remoteName, &remoteNameSize);
+        if (err == WN_MORE_DATA)
+        {
+            HeapFree(GetProcessHeap(), 0, remoteName);
+            remoteName = NULL;
+            continue;
+        }
+
+        break;
+    };
+
+    // Check for errors
+    if (err != WN_NO_ERROR)
+        goto out;
+
+    // Check for invalid parameters
+    if (lpBuffer == NULL)
+    {
+        err = WN_BAD_POINTER;
+        goto out;
+    }
+    else if (*lpBufferSize == 0)
+    {
+        err = WN_BAD_VALUE;
+        goto out;
+    }
+
+    // Calculate required size for output
+    uniNameSize = sizeof(WCHAR) *
+        (lstrlenW(remoteName) + lstrlenW(remainingPath) + 1 /*NULL*/);
 
     switch (dwInfoLevel)
     {
-    case UNIVERSAL_NAME_INFO_LEVEL:
+        case UNIVERSAL_NAME_INFO_LEVEL:
+            outSize = sizeof(UNIVERSAL_NAME_INFOW) + uniNameSize;
+            break;
+
+        case REMOTE_NAME_INFO_LEVEL:
+            outSize = sizeof(REMOTE_NAME_INFOW) + uniNameSize;
+            outSize += sizeof(WCHAR) * (lstrlenW(remoteName) + 1 /*NULL*/);
+            outSize += sizeof(WCHAR) * (lstrlenW(remainingPath) + 1 /*NULL*/);
+            break;
+
+        default:
+            err = WN_BAD_LEVEL;
+            goto out;
+            break;
+    }
+
+    // Check if we have enough result buffer space
+    if (*lpBufferSize < outSize)
     {
-        LPUNIVERSAL_NAME_INFOW info = lpBuffer;
-
-        if (GetDriveTypeW(lpLocalPath) != DRIVE_REMOTE)
-        {
-            err = ERROR_NOT_CONNECTED;
-            break;
-        }
-
-        size = sizeof(*info) + (lstrlenW(lpLocalPath) + 1) * sizeof(WCHAR);
-        if (*lpBufferSize < size)
-        {
-            *lpBufferSize = size;
-            err = WN_MORE_DATA;
-            break;
-        }
-        info->lpUniversalName = (LPWSTR)((char *)info + sizeof(*info));
-        lstrcpyW(info->lpUniversalName, lpLocalPath);
-        err = WN_NO_ERROR;
-        break;
-    }
-    case REMOTE_NAME_INFO_LEVEL:
-        err = WN_NO_NETWORK;
-        break;
-
-    default:
-        err = WN_BAD_VALUE;
-        break;
+        *lpBufferSize = outSize;
+        err = WN_MORE_DATA;
+        goto out;
     }
 
-    if (err != WN_NO_ERROR) SetLastError(err);
+    // Proceed to copying
+    switch (dwInfoLevel)
+    {
+        case UNIVERSAL_NAME_INFO_LEVEL:
+        {
+            UNIVERSAL_NAME_INFOW *out = (UNIVERSAL_NAME_INFOW *)lpBuffer;
+
+            // Copy universal name
+            out->lpUniversalName = (LPWSTR)(out + 1);
+            wnsprintfW(out->lpUniversalName, (uniNameSize / sizeof(WCHAR)),
+                L"%ls%ls", remoteName, remainingPath);
+
+            break;
+        }
+        case REMOTE_NAME_INFO_LEVEL:
+        {
+            REMOTE_NAME_INFOW *out = (REMOTE_NAME_INFOW *)lpBuffer;
+
+            // Copy universal name
+            out->lpUniversalName = (LPWSTR)(out + 1);
+            wnsprintfW(out->lpUniversalName, (uniNameSize / sizeof(WCHAR)),
+                L"%ls%ls", remoteName, remainingPath);
+
+            // Copy connection name
+            out->lpConnectionName =
+                out->lpUniversalName + lstrlenW(out->lpUniversalName) + 1;
+
+            wnsprintfW(out->lpConnectionName, (lstrlenW(remoteName) + 1 /*NULL*/),
+                L"%ls", remoteName);
+
+            // Copy remaining path
+            out->lpRemainingPath =
+                out->lpConnectionName + lstrlenW(out->lpConnectionName) + 1;
+
+            wnsprintfW(out->lpRemainingPath, (lstrlenW(remainingPath) + 1 /*NULL*/),
+                L"%ls", remainingPath);
+
+            break;
+        }
+        default:
+            err = WN_BAD_LEVEL;
+            goto out;
+            break;
+    }
+
+out:
+    if (remoteName)
+        HeapFree(GetProcessHeap(), 0, remoteName);
+
+    if (err != WN_NO_ERROR)
+        SetLastError(err);
+
+    TRACE("Returning %ld\n", err);
     return err;
 }
 
