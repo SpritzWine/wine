@@ -681,6 +681,12 @@ static LRESULT WINAPI ie_window_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM 
         return process_dochost_tasks(&This->doc_host);
     case WM_UPDATEADDRBAR:
         return update_addrbar(This, lparam);
+    case WM_PAINT:
+    {
+        LRESULT ret = DefWindowProcW(hwnd, msg, wparam, lparam);
+        InvalidateRect(This->doc_host.hwnd, NULL, TRUE);
+        return ret;
+    }
     }
     return DefWindowProcW(hwnd, msg, wparam, lparam);
 }

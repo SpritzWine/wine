@@ -377,6 +377,14 @@ static LRESULT WINAPI doc_view_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     switch(msg) {
     case WM_SIZE:
         return resize_document(This, LOWORD(lParam), HIWORD(lParam));
+    case WM_PAINT:
+    {
+        LRESULT ret = DefWindowProcW(hwnd, msg, wParam, lParam);
+        HWND child = NULL;
+        while ((child = FindWindowExW(hwnd, child, NULL, NULL)))
+            RedrawWindow(child, NULL, 0, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+        return ret;
+    }
     }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);

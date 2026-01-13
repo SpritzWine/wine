@@ -87,6 +87,12 @@ static LRESULT WINAPI shell_embedding_proc(HWND hwnd, UINT msg, WPARAM wParam, L
     case WM_KILLFOCUS:
         notify_on_focus(This, FALSE);
         break;
+    case WM_PAINT:
+    {
+        LRESULT ret = DefWindowProcW(hwnd, msg, wParam, lParam);
+        InvalidateRect(This->doc_host.hwnd, NULL, TRUE);
+        return ret;
+    }
     }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
