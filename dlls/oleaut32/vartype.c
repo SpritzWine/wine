@@ -4051,6 +4051,41 @@ HRESULT WINAPI VarCyCmpR8(CY cyLeft, double dblRight)
 }
 
 /************************************************************************
+ * SetVarConversionLocaleSetting (OLEAUT32.325)
+ *
+ * Sets Automation specific National Language Support (NLS) flags.
+ *
+ * PARAMS
+ *  dwFlags  [I] Flag
+ *
+ * RETURNS
+ *  Success: S_OK.
+ */
+HRESULT SetVarConversionLocaleSetting(/* in */ ULONG dwFlags)
+{
+    FIXME("%d, partial stub!\n", dwFlags);
+    return S_OK;
+}
+
+/************************************************************************
+ * GetVarConversionLocaleSetting (OLEAUT32.326)
+ *
+ * Gets Automation specific National Language Support (NLS) flags.
+ *
+ * PARAMS
+ *  dwFlags  [O] Flag
+ *
+ * RETURNS
+ *  Success: S_OK.
+ */
+HRESULT GetVarConversionLocaleSetting(/* out */ ULONG *dwFlags)
+{
+    FIXME("partial stub!\n");
+    if (dwFlags) *dwFlags = 0;
+    return S_OK;
+}
+
+/************************************************************************
  * VarCyMulI8 (OLEAUT32.329)
  *
  * Multiply a VT_CY by a VT_I8.

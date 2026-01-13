@@ -313,8 +313,8 @@
 319 stdcall VarDateFromUdateEx(ptr long long ptr)
 322 stdcall GetRecordInfoFromGuids(ptr long long long ptr ptr)
 323 stdcall GetRecordInfoFromTypeInfo(ptr ptr)
-325 stub SetVarConversionLocaleSetting
-326 stub GetVarConversionLocaleSetting
+325 stdcall SetVarConversionLocaleSetting(long)
+326 stdcall GetVarConversionLocaleSetting(ptr)
 327 stdcall SetOaNoCache()
 329 stdcall VarCyMulI8(int64 int64 ptr)
 330 stdcall VarDateFromUdate(ptr long ptr)
