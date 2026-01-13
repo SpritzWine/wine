@@ -4180,10 +4180,11 @@ static HRESULT WINAPI VideoWindow_put_Visible(IVideoWindow *iface, LONG Visible)
 
     hr = GetTargetInterface(This, &IID_IVideoWindow, (LPVOID*)&pVideoWindow);
 
+    LeaveCriticalSection(&This->cs);
+
+
     if (hr == S_OK)
         hr = IVideoWindow_put_Visible(pVideoWindow, Visible);
-
-    LeaveCriticalSection(&This->cs);
 
     return hr;
 }
