@@ -2097,6 +2097,34 @@ static void check_tls_index(HANDLE dll, BOOL tls_initialized)
     ok(found_dll, "Couldn't find dll %p in module list\n", dll);
 }
 
+static BOOL is_old_loader_struct(void)
+{
+    LDR_DATA_TABLE_ENTRY *mod, *mod2;
+    LDR_DDAG_NODE *ddag_node;
+    NTSTATUS status;
+    HMODULE hexe;
+
+    /* Check for old LDR data strcuture. */
+    hexe = GetModuleHandleW( NULL );
+    ok( !!hexe, "Got NULL exe handle.\n" );
+    status = LdrFindEntryForAddress( hexe, &mod );
+    ok( !status, "got %#lx.\n", status );
+    if (!(ddag_node = mod->DdagNode))
+    {
+        win_skip( "DdagNode is NULL, skipping tests.\n" );
+        return TRUE;
+    }
+    ok( !!ddag_node->Modules.Flink, "Got NULL module link.\n" );
+    mod2 = CONTAINING_RECORD(ddag_node->Modules.Flink, LDR_DATA_TABLE_ENTRY, NodeModuleLink);
+    ok( mod2 == mod || broken( (void **)mod2 == (void **)mod - 1 ), "got %p, expected %p.\n", mod2, mod );
+    if (mod2 != mod)
+    {
+        win_skip( "Old LDR_DATA_TABLE_ENTRY structure, skipping tests.\n" );
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static int tls_init_fn_output;
 
 static DWORD WINAPI tls_thread_fn(void* tlsidx_v)
@@ -2220,6 +2248,7 @@ static void test_import_resolution(void)
         ADD_RELOC( tls.EndAddressOfRawData );
         data.tls.AddressOfIndex = nt.OptionalHeader.ImageBase + DATA_RVA( &data.tls_index );
         ADD_RELOC( tls.AddressOfIndex );
+        data.tls.Characteristics = IMAGE_SCN_ALIGN_1024BYTES;
         strcpy( data.tls_data, "hello world" );
         data.tls_index = 9999;
         data.tls_index_hi = 9999;
@@ -2283,6 +2312,14 @@ static void test_import_resolution(void)
             ok( ptr->tls_index < 32, "wrong tls index %d\n", ptr->tls_index );
             str = ((char **)NtCurrentTeb()->ThreadLocalStoragePointer)[ptr->tls_index];
             ok( !strcmp( str, "hello world" ), "wrong tls data '%s' at %p\n", str, str );
+            if (!is_old_loader_struct())
+            {
+                SIZE_T s;
+                /* should be aligned on 1024 bytes, 10 lower bits at 0 */
+                ok( !((DWORD_PTR)str & 0x3ff), "wrong alignment %p\n", str );
+                s = HeapSize( GetProcessHeap(), 0, ((void **)str)[-1] );
+                ok( s != (SIZE_T)-1, "Error %Ix\n", s);
+            }
             ok(ptr->tls_index_hi == 0, "TLS Index written as a short, high half: %d\n", ptr->tls_index_hi);
             check_tls_index(mod, ptr->tls_index != 9999);
             FreeLibrary( mod );
