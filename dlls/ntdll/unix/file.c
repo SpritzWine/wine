@@ -1380,27 +1380,32 @@ static BOOL is_hidden_file( const char *name )
  */
 static ULONG hash_short_file_name( const WCHAR *name, int length, LPWSTR buffer )
 {
-    static const char hash_chars[32] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
+    static const char hash_chars[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!#$&'()-@^_`{}~ABCDEFGHIJKLM";
 
     LPCWSTR p, ext, end = name + length;
     LPWSTR dst;
-    unsigned short hash;
+    unsigned int hash;
     int i;
 
-    /* Compute the hash code of the file name */
-    /* If you know something about hash functions, feel free to */
-    /* insert a better algorithm here... */
+    /* Compute the hash code of the file name using MurmurOAAT Hash */
+    /* https://github.com/aappleby/smhasher/blob/61a0530f28277f2e850bfc39600ce61d02b518de/src/Hashes.cpp#L66 */
     if (!is_case_sensitive)
     {
-        for (p = name, hash = 0xbeef; p < end - 1; p++)
-            hash = (hash<<3) ^ (hash>>5) ^ towlower(*p) ^ (towlower(p[1]) << 8);
-        hash = (hash<<3) ^ (hash>>5) ^ towlower(*p); /* Last character */
+        for (p = name, hash = 0xdeadbeef; p < end; p++)
+        {
+            hash ^= towlower(*p);
+            hash *= 0x5bd1e995;
+            hash ^= hash >> 15;
+        }
     }
     else
     {
-        for (p = name, hash = 0xbeef; p < end - 1; p++)
-            hash = (hash << 3) ^ (hash >> 5) ^ *p ^ (p[1] << 8);
-        hash = (hash << 3) ^ (hash >> 5) ^ *p;  /* Last character */
+        for (p = name, hash = 0xdeadbeef; p < end; p++)
+        {
+            hash ^= *p;
+            hash *= 0x5bd1e995;
+            hash ^= hash >> 15;
+        }
     }
 
     /* Find last dot for start of the extension */
@@ -1420,9 +1425,9 @@ static ULONG hash_short_file_name( const WCHAR *name, int length, LPWSTR buffer 
     while (i-- >= 0) *dst++ = '~';
 
     /* Insert hash code converted to 3 ASCII chars */
-    *dst++ = hash_chars[(hash >> 10) & 0x1f];
-    *dst++ = hash_chars[(hash >> 5) & 0x1f];
-    *dst++ = hash_chars[hash & 0x1f];
+    *dst++ = hash_chars[(hash >> 12) & 0x3f];
+    *dst++ = hash_chars[(hash >> 6) & 0x3f];
+    *dst++ = hash_chars[hash & 0x3f];
 
     /* Copy the first 3 chars of the extension (if any) */
     if (ext)
