@@ -22,6 +22,12 @@
       printf '\e[36;1mPreparing environment for Wine\e[0m\n'
     - export BASEDIR=$PWD
     - export PATH=$BASEDIR/usr/local/bin:$PATH
+    - |
+      if [ "${USE_32ON64-}" ]
+      then
+        mv -f "$BASEDIR/usr/local/bin/wine64" "$BASEDIR/usr/local/bin/wine"
+        mv -f "$BASEDIR/usr/local/bin/wine64-preloader" "$BASEDIR/usr/local/bin/wine-preloader"
+      fi
     - export DISPLAY=:0
     - export LC_ALL=C.UTF-8
     - export LP_NUM_THREADS=4
@@ -70,6 +76,26 @@ test-linux-64:
   script:
     - export WINETEST_COLOR=1
     - wine usr/local/lib/wine/x86_64-windows/winetest.exe -q -q -o - -J winetest.xml $INCLUDE_TESTS
+  artifacts:
+    when: always
+    paths:
+      - winetest.xml
+    reports:
+      junit: winetest.xml
+
+test-linux-32on64:
+  extends: .wine-test
+  variables:
+    EXCLUDE_TESTS: "d3d11:d3d11 d3d9:d3d9ex d3d9:visual"
+    USE_32ON64: "1"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+      when: manual
+  needs:
+    - job: build-linux
+  script:
+    - export WINETEST_COLOR=1
+    - wine usr/local/lib/wine/i386-windows/winetest.exe -q -q -o - -J winetest.xml -n $EXCLUDE_TESTS
   artifacts:
     when: always
     paths:
