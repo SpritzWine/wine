@@ -3370,7 +3370,7 @@ static void EDIT_WM_ContextMenu(EDITSTATE *es, INT x, INT y)
  */
 static INT EDIT_WM_GetText(const EDITSTATE *es, INT count, LPWSTR dst, BOOL unicode)
 {
-    if(!count) return 0;
+    if(!count || !dst) return 0;
 
     if(unicode)
     {

@@ -274,9 +274,13 @@ LRESULT WINPROC_CallProcAtoW( winproc_callback_t callback, HWND hwnd, UINT msg, 
             LPSTR str = (LPSTR)lParam;
             DWORD len = wParam * sizeof(WCHAR);
 
-            if (!(ptr = get_buffer( buffer, sizeof(buffer), len ))) break;
+            if (!str)
+                ptr = NULL;
+            else if (!(ptr = get_buffer( buffer, sizeof(buffer), len )))
+                break;
+
             ret = callback( hwnd, msg, wParam, (LPARAM)ptr, result, arg );
-            if (wParam)
+            if (wParam && str)
             {
                 len = 0;
                 if (*result)

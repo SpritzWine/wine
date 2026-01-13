@@ -1394,6 +1394,22 @@ static void test_edit_control_6(void)
     ret = SendMessageA(hWnd, WM_GETTEXT, MAXLEN, (LPARAM)buf);
     ok(ret == strlen(str), "Expected %s, got len %ld\n", str, ret);
     ok(!strcmp(buf, str), "Expected %s, got %s\n", str, buf);
+
+    ret = SendMessageW(hWnd, WM_GETTEXT, 0, (LPARAM)NULL);
+    ok(ret == 0, "Expected 0, got len %ld\n", ret);
+    ret = SendMessageW(hWnd, WM_GETTEXT, MAXLEN, (LPARAM)NULL);
+    ok(ret == 0, "Expected 0, got len %ld\n", ret);
+    ret = SendMessageA(hWnd, WM_GETTEXT, 0, (LPARAM)NULL);
+    ok(ret == 0, "Expected 0, got len %ld\n", ret);
+
+    if (0) /* Crashes on Windows. */
+    {
+        ret = SendMessageA(hWnd, WM_GETTEXT, 1, (LPARAM)NULL);
+        ok(ret == 0, "Expected 0, got len %ld\n", ret);
+        ret = SendMessageA(hWnd, WM_GETTEXT, MAXLEN, (LPARAM)NULL);
+        ok(ret == 0, "Expected 0, got len %ld\n", ret);
+    }
+
     buf[0] = 0;
     ret = SendMessageA(hWnd, WM_DESTROY, 0, 0);
     ok(ret == 0, "Expected 0, got %ld\n", ret);
@@ -3284,6 +3300,43 @@ static void test_paste(void)
     DestroyWindow(hMultilineEdit);
 }
 
+static void test_WM_ASKCBFORMATNAME(void)
+{
+    char buf[MAXLEN];
+    HWND hwnd;
+    LONG ret;
+    HANDLE ret2;
+
+    hwnd = CreateWindowExA(0, "EDIT", "Test", 0, 10, 10, 1, 1, NULL, NULL, hinst, NULL);
+    ok(hwnd != NULL, "Failed to create edit control.\n");
+
+    ret = open_clipboard(hwnd);
+    ok(ret == TRUE, "Expected %d, got %ld (error %lu)", TRUE, ret, GetLastError());
+    ret = EmptyClipboard();
+    ok(ret == TRUE, "Expected %d, got %ld\n", TRUE, ret);
+
+    SetClipboardViewer(hwnd);
+    ret2 = SetClipboardData(CF_OWNERDISPLAY, NULL);
+    ok(ret2 == NULL, "Expected NULL, got %p\n", ret2);
+
+    ret = SendMessageA(hwnd, WM_ASKCBFORMATNAME, 0, (LPARAM)NULL);
+    ok(ret == FALSE, "Expected %d, got %ld\n", FALSE, ret);
+    ret = SendMessageA(hwnd, WM_ASKCBFORMATNAME, MAXLEN, (LPARAM)NULL);
+    ok(ret == FALSE, "Expected %d, got %ld\n", FALSE, ret);
+
+    memset(buf, 0, sizeof(buf));
+    ret = SendMessageA(hwnd, WM_ASKCBFORMATNAME, 0, (LPARAM)buf);
+    ok(ret == FALSE, "Expected %d, got %ld\n", FALSE, ret);
+    ok(strcmp(buf, "") == 0, "Expected NULL, got %s\n", buf);
+    memset(buf, 0, sizeof(buf));
+    ret = SendMessageA(hwnd, WM_ASKCBFORMATNAME, MAXLEN, (LPARAM)buf);
+    ok(ret == FALSE, "Expected %d, got %ld\n", FALSE, ret);
+    ok(strcmp(buf, "") == 0, "Expected NULL, got %s\n", buf);
+
+    CloseClipboard();
+    DestroyWindow(hwnd);
+}
+
 static void test_EM_GETLINE(void)
 {
     HWND hwnd[2];
@@ -3553,6 +3606,7 @@ START_TEST(edit)
     test_contextmenu();
     test_EM_GETHANDLE();
     test_paste();
+    test_WM_ASKCBFORMATNAME();
     test_EM_GETLINE();
     test_wordbreak_proc();
     test_dbcs_WM_CHAR();
