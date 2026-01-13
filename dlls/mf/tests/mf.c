@@ -5286,6 +5286,80 @@ if (SUCCEEDED(hr))
     CoUninitialize();
 }
 
+#define check_event(generator, expected_type, timeout_msecs) check_event_(__LINE__, FALSE, FALSE, generator, expected_type, timeout_msecs)
+#define todo_check_event(generator, expected_type, timeout_msecs) check_event_(__LINE__, FALSE, TRUE, generator, expected_type, timeout_msecs)
+#define ensure_no_events(generator, timeout_msecs) check_event_(__LINE__, TRUE, FALSE, generator, 0, timeout_msecs)
+#define todo_ensure_no_events(generator, timeout_msecs) check_event_(__LINE__, TRUE, TRUE, generator, 0, timeout_msecs)
+static void check_event_(unsigned int line, BOOLEAN no_event, BOOLEAN is_todo, IMFMediaEventGenerator *generator, MediaEventType expected_type, DWORD timeout_msecs)
+{
+    MediaEventType event_type;
+    HRESULT hr;
+    IMFAsyncCallback *callback = create_test_callback(TRUE);
+    struct test_callback *impl = impl_from_IMFAsyncCallback(callback);
+
+    hr = IMFMediaEventGenerator_BeginGetEvent(generator, callback, (IUnknown *)generator);
+    ok_(__FILE__, line)(hr == S_OK, "Unexpected hr %#lx for BeginGetEvent.\n", hr);
+
+    hr = WaitForSingleObject(impl->event, timeout_msecs);
+    if (hr == WAIT_TIMEOUT)
+    {
+        /* Manually resolve the async callback, so later GetEvent won't return MF_E_MULTIPLE_SUBSCRIBERS. */
+        hr = IMFMediaEventGenerator_QueueEvent(generator, MEUnknown, &GUID_NULL, S_OK, NULL);
+        ok_(__FILE__, line)(hr == S_OK, "Unexpected hr %#lx for QueueEvent.\n", hr);
+        hr = WaitForSingleObject(impl->event, 100);
+        ok_(__FILE__, line)(hr == WAIT_OBJECT_0, "Unexpected hr %#lx for WaitForSingleObject.\n", hr);
+        IMFAsyncCallback_Release(callback); /* Might have 1 reference because we are racing with the work queue who is also releasing the callback. */
+
+        todo_wine_if(is_todo) ok_(__FILE__, line)(no_event, "Expected event %lu but got timeout.\n", expected_type);
+        return;
+    }
+
+    hr = IMFMediaEvent_GetType(impl->media_event, &event_type);
+    ok_(__FILE__, line)(hr == S_OK, "Unexpected hr %#lx for GetType.\n", hr);
+    todo_wine_if(is_todo) ok_(__FILE__, line)(!no_event && event_type == expected_type, "Unexpected event type %lu.\n", event_type);
+
+    IMFAsyncCallback_Release(callback); /* Same as above, might have 1 reference. */
+}
+
+static void get_events_until(IMFMediaEventGenerator *generator, MediaEventType expected_type)
+{
+    MediaEventType event_type;
+    HRESULT hr;
+    IMFMediaEvent *event;
+
+    while (1)
+    {
+        hr = IMFMediaEventGenerator_GetEvent(generator,0, &event);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+        hr = IMFMediaEvent_GetType(event, &event_type);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        if (event_type == expected_type)
+            break;
+
+        IMFMediaEvent_Release(event);
+    }
+}
+
+static unsigned int drain_events(IMFMediaEventGenerator *generator)
+{
+    IMFMediaEvent *event;
+    HRESULT hr;
+    unsigned int count = 0;
+
+    while (1)
+    {
+        hr = IMFMediaEventGenerator_GetEvent(generator, MF_EVENT_FLAG_NO_WAIT, &event);
+        if (hr == MF_E_NO_EVENTS_AVAILABLE)
+            break;
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        IMFMediaEvent_Release(event);
+
+        count++;
+    }
+    return count;
+}
+
 static void test_evr(void)
 {
     static const float supported_rates[] =
@@ -5295,9 +5369,13 @@ static void test_evr(void)
     IMFVideoSampleAllocatorCallback *allocator_callback;
     IMFStreamSink *stream_sink, *stream_sink2;
     IMFVideoDisplayControl *display_control;
+    IMFMediaEventGenerator *event_generator;
     IMFMediaType *media_type, *media_type2;
     IMFPresentationTimeSource *time_source;
+    unsigned int i, dropped_event_count;
+    DWORD flags, count, characteristics;
     IMFVideoSampleAllocator *allocator;
+    IMFMediaSinkPreroll *sink_preroll;
     IMFMediaTypeHandler *type_handler;
     IMFVideoRenderer *video_renderer;
     IMFPresentationClock *clock;
@@ -5306,11 +5384,10 @@ static void test_evr(void)
     UINT32 attr_count, value;
     IMFActivate *activate;
     HWND window, window2;
+    IMFMediaEvent *event;
     IMFRateSupport *rs;
-    DWORD flags, count;
     LONG sample_count;
     IMFSample *sample;
-    unsigned int i;
     UINT64 window3;
     float rate;
     HRESULT hr;
@@ -5783,6 +5860,158 @@ todo_wine {
     ok(ref == 0, "Release returned %ld\n", ref);
     ref = IMFPresentationClock_Release(clock);
     ok(ref == 0, "Release returned %ld\n", ref);
+
+    hr = MFCreateVideoRendererActivate(window, &activate);
+    ok(hr == S_OK, "Failed to create activate object, hr %#lx.\n", hr);
+
+    hr = IMFActivate_ActivateObject(activate, &IID_IMFMediaSink, (void **)&sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ref = IMFActivate_Release(activate);
+    ok(ref == 0, "Release returned %ld\n", ref);
+
+    hr = MFCreateSystemTimeSource(&time_source);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = MFCreatePresentationClock(&clock);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFPresentationClock_SetTimeSource(clock, time_source);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFPresentationTimeSource_Release(time_source);
+
+    hr = IMFMediaSink_SetPresentationClock(sink, clock);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaSink_GetStreamSinkById(sink, 0, &stream_sink);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = MFGetService((IUnknown *)stream_sink, &MR_VIDEO_ACCELERATION_SERVICE, &IID_IMFVideoSampleAllocator, (void **)&allocator);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFStreamSink_GetMediaTypeHandler(stream_sink, &type_handler);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = MFCreateMediaType(&media_type);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaType_SetGUID(media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaType_SetGUID(media_type, &MF_MT_SUBTYPE, &MFVideoFormat_RGB32);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaType_SetUINT64(media_type, &MF_MT_FRAME_SIZE, (UINT64)640 << 32 | 480);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaType_SetUINT32(media_type, &MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    media_type2 = (void *)0x1;
+    hr = IMFMediaTypeHandler_IsMediaTypeSupported(type_handler, media_type, &media_type2);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(!media_type2, "Unexpected media type %p.\n", media_type2);
+
+    hr = IMFStreamSink_QueryInterface(stream_sink, &IID_IMFMediaEventGenerator, (void **)&event_generator);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    /* Check that no events are generated before media type is set. */
+    hr = IMFPresentationClock_Start(clock, 0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    todo_ensure_no_events(event_generator, 100);
+
+    hr = IMFPresentationClock_Stop(clock);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    get_events_until(event_generator, MEStreamSinkStopped);
+
+    /* Check for events after media type is set. */
+    hr = IMFMediaTypeHandler_SetCurrentMediaType(type_handler, media_type);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFMediaType_Release(media_type);
+    IMFMediaTypeHandler_Release(type_handler);
+
+    hr = IMFPresentationClock_Start(clock, 0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    /* Wine generates an extra MEStreamSinkRequestSample event before StreamSinkStarted. */
+    todo_check_event(event_generator, MEStreamSinkStarted, 100);
+    todo_check_event(event_generator, MEStreamSinkRequestSample, 100);
+    dropped_event_count = drain_events(event_generator);
+    todo_wine ok(dropped_event_count == 0, "Extra %u events generated.\n", dropped_event_count);
+
+    hr = IMFPresentationClock_Stop(clock);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    get_events_until(event_generator, MEStreamSinkStopped);
+
+    hr = IMFMediaSink_GetCharacteristics(sink, &characteristics);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(characteristics & MEDIASINK_CAN_PREROLL, "Unexpected characteristics %#lx.\n", characteristics);
+
+    hr = IMFMediaSink_QueryInterface(sink, &IID_IMFMediaSinkPreroll, (void **)&sink_preroll);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaSinkPreroll_NotifyPreroll(sink_preroll, 0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFVideoSampleAllocator_InitializeSampleAllocator(allocator, 8, media_type);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    sample_count = 0;
+    do {
+        MediaEventType event_type;
+        hr = IMFMediaEventGenerator_GetEvent(event_generator, 0, &event);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        hr = IMFMediaEvent_GetType(event, &event_type);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+        if (event_type == MEStreamSinkPrerolled)
+            break;
+        ok(event_type == MEStreamSinkRequestSample, "Unexpected event %lu.\n", event_type);
+        if (event_type != MEStreamSinkRequestSample)
+            break;
+
+        hr = IMFVideoSampleAllocator_AllocateSample(allocator, &sample);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        hr = IMFSample_SetSampleTime(sample, 10000000 / 60 * sample_count);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        hr = IMFSample_SetSampleDuration(sample, 10000000 / 60);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        /* Note: Native returns E_NOINTERFACE if sample's buffer doesn't implement IMF2DBuffer;
+         *       And E_NOTIMPL if the buffer isn't a D3D buffer. But we accept either. */
+        hr = IMFStreamSink_ProcessSample(stream_sink, sample);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+        IMFSample_Release(sample);
+        IMFMediaEvent_Release(event);
+        sample_count++;
+    } while (TRUE);
+
+    hr = IMFPresentationClock_Pause(clock);
+    ok(hr == MF_E_INVALIDREQUEST, "Unexpected hr %#lx.\n", hr);
+    ensure_no_events(event_generator, 100);
+
+    hr = IMFPresentationClock_Start(clock, 0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    check_event(event_generator, MEStreamSinkStarted, 100);
+    check_event(event_generator, MEStreamSinkRequestSample, 100);
+
+    hr = IMFPresentationClock_Pause(clock);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    check_event(event_generator, MEStreamSinkPaused, 100);
+
+    hr = IMFMediaSinkPreroll_NotifyPreroll(sink_preroll, 10000000 / 60 * sample_count);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ensure_no_events(event_generator, 100);
+
+    hr = IMFPresentationClock_Start(clock, 10000000 / 60 * sample_count);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    todo_check_event(event_generator, MEStreamSinkStarted, 100);
+
+    IMFVideoSampleAllocator_Release(allocator);
+    IMFMediaSinkPreroll_Release(sink_preroll);
+    IMFPresentationClock_Release(clock);
+    IMFMediaEventGenerator_Release(event_generator);
+    IMFStreamSink_Release(stream_sink);
+    IMFMediaSink_Release(sink);
 
     DestroyWindow(window);
 
