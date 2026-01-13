@@ -438,7 +438,7 @@
 @ stub IoPageRead
 @ stub IoPnPDeliverServicePowerNotification
 @ stdcall IoQueryDeviceDescription(ptr ptr ptr ptr ptr ptr ptr ptr)
-@ stub IoQueryFileDosDeviceName
+@ stdcall IoQueryFileDosDeviceName(ptr ptr)
 @ stub IoQueryFileInformation
 @ stub IoQueryVolumeInformation
 @ stub IoQueueThreadIrp

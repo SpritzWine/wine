@@ -1979,6 +1979,16 @@ NTSTATUS WINAPI IoQueryDeviceDescription(PINTERFACE_TYPE itype, PULONG bus, PCON
 }
 
 /***********************************************************************
+ *           IoQueryFileDosDeviceName    (NTOSKRNL.EXE.@)
+ */
+NTSTATUS WINAPI IoQueryFileDosDeviceName(FILE_OBJECT *file, OBJECT_NAME_INFORMATION **name)
+{
+    FIXME("(%p, %p) stub!\n", file, name);
+    *name = NULL;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
  *           IoRegisterDriverReinitialization    (NTOSKRNL.EXE.@)
  */
 void WINAPI IoRegisterDriverReinitialization( PDRIVER_OBJECT obj, PDRIVER_REINITIALIZE reinit, PVOID context )
