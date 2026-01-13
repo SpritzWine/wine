@@ -3113,6 +3113,7 @@ struct test_grabber_callback
     IMFCollection *samples;
     HANDLE ready_event;
     HANDLE done_event;
+    BOOL is_shutdown;
 };
 
 static struct test_grabber_callback *impl_from_IMFSampleGrabberSinkCallback(IMFSampleGrabberSinkCallback *iface)
@@ -3227,6 +3228,9 @@ static HRESULT WINAPI test_grabber_callback_OnProcessSample(IMFSampleGrabberSink
 
 static HRESULT WINAPI test_grabber_callback_OnShutdown(IMFSampleGrabberSinkCallback *iface)
 {
+    struct test_grabber_callback *grabber = CONTAINING_RECORD(iface, struct test_grabber_callback, IMFSampleGrabberSinkCallback_iface);
+    grabber->is_shutdown = TRUE;
+
     return S_OK;
 }
 
@@ -4480,7 +4484,6 @@ static void test_sample_grabber_orientation(GUID subtype)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     IMFActivate_Release(sink_activate);
-    IMFMediaSession_Release(session);
     IMFMediaSource_Release(source);
 
     IMFSampleGrabberSinkCallback_Release(&grabber_callback->IMFSampleGrabberSinkCallback_iface);
@@ -4488,6 +4491,444 @@ static void test_sample_grabber_orientation(GUID subtype)
 done:
     hr = MFShutdown();
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+}
+
+struct activate_object_shim
+{
+    IMFActivate IMFActivate_iface;
+    LONG refcount;
+    
+    IMFActivate *inner;
+    BOOL is_shutdown;
+};
+
+static struct activate_object_shim *impl_from_IMFActivate(IMFActivate *iface)
+{
+    return CONTAINING_RECORD(iface, struct activate_object_shim, IMFActivate_iface);
+}
+
+static HRESULT WINAPI activate_object_shim_QueryInterface(IMFActivate *iface, REFIID riid, void **obj)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+
+    if (IsEqualIID(riid, &IID_IMFActivate) ||
+            IsEqualIID(riid, &IID_IMFAttributes) ||
+            IsEqualIID(riid, &IID_IUnknown))
+    {
+        *obj = &activate->IMFActivate_iface;
+        IMFActivate_AddRef(*obj);
+        return S_OK;
+    }
+
+    *obj = NULL;
+    return E_NOINTERFACE;
+}
+
+static ULONG WINAPI activate_object_shim_AddRef(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    ULONG ref = InterlockedIncrement(&activate->refcount);
+    return ref;
+}
+
+static ULONG WINAPI activate_object_shim_Release(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    ULONG ref = InterlockedDecrement(&activate->refcount);
+
+    if (!ref)
+    {
+        if (activate->inner)
+            IMFActivate_Release(activate->inner);
+        free(activate);
+    }
+
+    return ref;
+}
+
+static HRESULT WINAPI activate_object_shim_GetItem(IMFActivate *iface, REFGUID key, PROPVARIANT *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetItem(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_GetItemType(IMFActivate *iface, REFGUID key, MF_ATTRIBUTE_TYPE *type)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetItemType(activate->inner, key, type);
+}
+
+static HRESULT WINAPI activate_object_shim_CompareItem(IMFActivate *iface, REFGUID key, REFPROPVARIANT value, BOOL *result)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_CompareItem(activate->inner, key, value, result);
+}
+
+static HRESULT WINAPI activate_object_shim_Compare(IMFActivate *iface, IMFAttributes *theirs, MF_ATTRIBUTES_MATCH_TYPE type,
+        BOOL *result)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_Compare(activate->inner, theirs, type, result);
+}
+
+static HRESULT WINAPI activate_object_shim_GetUINT32(IMFActivate *iface, REFGUID key, UINT32 *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetUINT32(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_GetUINT64(IMFActivate *iface, REFGUID key, UINT64 *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetUINT64(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_GetDouble(IMFActivate *iface, REFGUID key, double *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetDouble(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_GetGUID(IMFActivate *iface, REFGUID key, GUID *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetGUID(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_GetStringLength(IMFActivate *iface, REFGUID key, UINT32 *length)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetStringLength(activate->inner, key, length);
+}
+
+static HRESULT WINAPI activate_object_shim_GetString(IMFActivate *iface, REFGUID key, WCHAR *value,
+        UINT32 size, UINT32 *length)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetString(activate->inner, key, value, size, length);
+}
+
+static HRESULT WINAPI activate_object_shim_GetAllocatedString(IMFActivate *iface, REFGUID key,
+        WCHAR **value, UINT32 *length)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetAllocatedString(activate->inner, key, value, length);
+}
+
+static HRESULT WINAPI activate_object_shim_GetBlobSize(IMFActivate *iface, REFGUID key, UINT32 *size)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetBlobSize(activate->inner, key, size);
+}
+
+static HRESULT WINAPI activate_object_shim_GetBlob(IMFActivate *iface, REFGUID key, UINT8 *buf,
+        UINT32 bufsize, UINT32 *blobsize)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetBlob(activate->inner, key, buf, bufsize, blobsize);
+}
+
+static HRESULT WINAPI activate_object_shim_GetAllocatedBlob(IMFActivate *iface, REFGUID key, UINT8 **buf, UINT32 *size)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetAllocatedBlob(activate->inner, key, buf, size);
+}
+
+static HRESULT WINAPI activate_object_shim_GetUnknown(IMFActivate *iface, REFGUID key, REFIID riid, void **ppv)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetUnknown(activate->inner, key, riid, ppv);
+}
+
+static HRESULT WINAPI activate_object_shim_SetItem(IMFActivate *iface, REFGUID key, REFPROPVARIANT value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetItem(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_DeleteItem(IMFActivate *iface, REFGUID key)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_DeleteItem(activate->inner, key);
+}
+
+static HRESULT WINAPI activate_object_shim_DeleteAllItems(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_DeleteAllItems(activate->inner);
+}
+
+static HRESULT WINAPI activate_object_shim_SetUINT32(IMFActivate *iface, REFGUID key, UINT32 value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetUINT32(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_SetUINT64(IMFActivate *iface, REFGUID key, UINT64 value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetUINT64(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_SetDouble(IMFActivate *iface, REFGUID key, double value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetDouble(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_SetGUID(IMFActivate *iface, REFGUID key, REFGUID value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetGUID(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_SetString(IMFActivate *iface, REFGUID key, const WCHAR *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetString(activate->inner, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_SetBlob(IMFActivate *iface, REFGUID key, const UINT8 *buf, UINT32 size)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetBlob(activate->inner, key, buf, size);
+}
+
+static HRESULT WINAPI activate_object_shim_SetUnknown(IMFActivate *iface, REFGUID key, IUnknown *unknown)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_SetUnknown(activate->inner, key, unknown);
+}
+
+static HRESULT WINAPI activate_object_shim_LockStore(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_LockStore(activate->inner);
+}
+
+static HRESULT WINAPI activate_object_shim_UnlockStore(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_UnlockStore(activate->inner);
+}
+
+static HRESULT WINAPI activate_object_shim_GetCount(IMFActivate *iface, UINT32 *count)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetCount(activate->inner, count);
+}
+
+static HRESULT WINAPI activate_object_shim_GetItemByIndex(IMFActivate *iface, UINT32 index, GUID *key, PROPVARIANT *value)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_GetItemByIndex(activate->inner, index, key, value);
+}
+
+static HRESULT WINAPI activate_object_shim_CopyAllItems(IMFActivate *iface, IMFAttributes *dest)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_CopyAllItems(activate->inner, dest);
+}
+
+static HRESULT WINAPI activate_object_shim_ActivateObject(IMFActivate *iface, REFIID riid, void **obj)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_ActivateObject(activate->inner, riid, obj);
+}
+
+static HRESULT WINAPI activate_object_shim_ShutdownObject(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+
+    activate->is_shutdown = TRUE;
+    return IMFActivate_ShutdownObject(activate->inner);
+}
+
+static HRESULT WINAPI activate_object_shim_DetachObject(IMFActivate *iface)
+{
+    struct activate_object_shim *activate = impl_from_IMFActivate(iface);
+    return IMFActivate_DetachObject(activate->inner);
+}
+
+static const IMFActivateVtbl activate_object_shim_vtbl =
+{
+    activate_object_shim_QueryInterface,
+    activate_object_shim_AddRef,
+    activate_object_shim_Release,
+    activate_object_shim_GetItem,
+    activate_object_shim_GetItemType,
+    activate_object_shim_CompareItem,
+    activate_object_shim_Compare,
+    activate_object_shim_GetUINT32,
+    activate_object_shim_GetUINT64,
+    activate_object_shim_GetDouble,
+    activate_object_shim_GetGUID,
+    activate_object_shim_GetStringLength,
+    activate_object_shim_GetString,
+    activate_object_shim_GetAllocatedString,
+    activate_object_shim_GetBlobSize,
+    activate_object_shim_GetBlob,
+    activate_object_shim_GetAllocatedBlob,
+    activate_object_shim_GetUnknown,
+    activate_object_shim_SetItem,
+    activate_object_shim_DeleteItem,
+    activate_object_shim_DeleteAllItems,
+    activate_object_shim_SetUINT32,
+    activate_object_shim_SetUINT64,
+    activate_object_shim_SetDouble,
+    activate_object_shim_SetGUID,
+    activate_object_shim_SetString,
+    activate_object_shim_SetBlob,
+    activate_object_shim_SetUnknown,
+    activate_object_shim_LockStore,
+    activate_object_shim_UnlockStore,
+    activate_object_shim_GetCount,
+    activate_object_shim_GetItemByIndex,
+    activate_object_shim_CopyAllItems,
+    activate_object_shim_ActivateObject,
+    activate_object_shim_ShutdownObject,
+    activate_object_shim_DetachObject,
+};
+
+struct IMFActivate *create_activate_object_shim(void)
+{
+    struct activate_object_shim *object;
+
+    if (!(object = calloc(1, sizeof(*object))))
+        return NULL;
+
+    object->IMFActivate_iface.lpVtbl = &activate_object_shim_vtbl;
+    object->refcount = 1;
+
+    return &object->IMFActivate_iface;
+}
+
+static void test_sample_grabber_shutdown(void)
+{
+    media_type_desc video_rgb32_desc =
+    {
+        ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Video),
+        ATTR_GUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32),
+    };
+
+    struct test_grabber_callback *grabber_callback;
+    struct activate_object_shim *activate_shim;
+    IMFTopologyNode *src_node, *sink_node;
+    IMFPresentationDescriptor *pd;
+    IMFAsyncCallback *callback;
+    IMFMediaType *output_type;
+    IMFMediaSession *session;
+    IMFStreamDescriptor *sd;
+    IMFMediaSource *source;
+    IMFTopology *topology;
+    PROPVARIANT propvar;
+    BOOL selected;
+    HRESULT hr;
+    ULONG ref;
+    DWORD res;
+
+    hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    ok(hr == S_OK, "Failed to start up, hr %#lx.\n", hr);
+
+    if (!(source = create_media_source(L"test.mp4", L"video/mp4")))
+    {
+        win_skip("MP4 media source is not supported, skipping tests.\n");
+        return;
+    }
+
+    callback = create_test_callback(TRUE);
+    grabber_callback = impl_from_IMFSampleGrabberSinkCallback(create_test_grabber_callback());
+    activate_shim = impl_from_IMFActivate(create_activate_object_shim());
+
+    grabber_callback->ready_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    ok(!!grabber_callback->ready_event, "CreateEventW failed, error %lu\n", GetLastError());
+    grabber_callback->done_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    ok(!!grabber_callback->done_event, "CreateEventW failed, error %lu\n", GetLastError());
+
+    hr = MFCreateMediaSession(NULL, &session);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &sink_node);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = MFCreateTopologyNode(MF_TOPOLOGY_SOURCESTREAM_NODE, &src_node);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = MFCreateTopology(&topology);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFTopology_AddNode(topology, sink_node);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFTopology_AddNode(topology, src_node);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFTopologyNode_ConnectOutput(src_node, 0, sink_node, 0);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaSource_CreatePresentationDescriptor(source, &pd);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFPresentationDescriptor_GetStreamDescriptorByIndex(pd, 0, &selected, &sd);
+    ok(selected, "got selected %u.\n", !!selected);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    init_source_node(source, -1, src_node, pd, sd);
+    IMFTopologyNode_Release(src_node);
+    IMFPresentationDescriptor_Release(pd);
+    IMFStreamDescriptor_Release(sd);
+
+    hr = MFCreateMediaType(&output_type);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    init_media_type(output_type, video_rgb32_desc, -1);
+    hr = MFCreateSampleGrabberSinkActivate(output_type, &grabber_callback->IMFSampleGrabberSinkCallback_iface, &activate_shim->inner);
+    ok(hr == S_OK, "Failed to create grabber sink, hr %#lx.\n", hr);
+    IMFMediaType_Release(output_type);
+
+    hr = IMFTopologyNode_SetObject(sink_node, (IUnknown *)&activate_shim->IMFActivate_iface);
+    ok(hr == S_OK, "Failed to set object, hr %#lx.\n", hr);
+    hr = IMFTopologyNode_SetUINT32(sink_node, &MF_TOPONODE_CONNECT_METHOD, MF_CONNECT_ALLOW_DECODER);
+    ok(hr == S_OK, "Failed to set connect method, hr %#lx.\n", hr);
+    IMFTopologyNode_Release(sink_node);
+
+    hr = IMFTopology_SetUINT32(topology, &MF_TOPOLOGY_ENUMERATE_SOURCE_TYPES, TRUE);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = IMFMediaSession_SetTopology(session, 0, topology);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFTopology_Release(topology);
+
+    propvar.vt = VT_EMPTY;
+    hr = IMFMediaSession_Start(session, &GUID_NULL, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    res = WaitForSingleObject(grabber_callback->ready_event, 5000);
+    ok(!res, "WaitForSingleObject returned %#lx\n", res);
+    CloseHandle(grabber_callback->ready_event);
+    grabber_callback->ready_event = NULL;
+
+    SetEvent(grabber_callback->done_event);
+
+    hr = IMFMediaSession_Close(session);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = wait_media_event(session, callback, MESessionClosed, 1000, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(propvar.vt == VT_EMPTY, "got vt %u\n", propvar.vt);
+
+    hr = IMFMediaSession_Shutdown(session);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(grabber_callback->is_shutdown, "Samplegrabber wasn't shut down.\n");
+    todo_wine ok(!activate_shim->is_shutdown, "Activate Object was shut down.\n");
+
+    hr = IMFMediaSource_Shutdown(source);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    IMFMediaSource_Release(source);
+
+    hr = IMFActivate_ShutdownObject(&activate_shim->IMFActivate_iface);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ref = IMFActivate_Release(&activate_shim->IMFActivate_iface);
+    ok(!ref, "Unexpected ref %lu.\n", ref);
+    ref = IMFMediaSession_Release(session);
+    ok(!ref || broken(ref == 1) /* Windows rarely fails this. */, "Unexpected ref %lu.\n", ref);
+
+    hr = MFShutdown();
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    IMFSampleGrabberSinkCallback_Release(&grabber_callback->IMFSampleGrabberSinkCallback_iface);
 }
 
 static void test_quality_manager(void)
@@ -8457,6 +8898,7 @@ START_TEST(mf)
     test_sample_grabber_is_mediatype_supported();
     test_sample_grabber_orientation(MFVideoFormat_RGB32);
     test_sample_grabber_orientation(MFVideoFormat_NV12);
+    test_sample_grabber_shutdown();
     test_quality_manager();
     test_sar();
     test_evr();
