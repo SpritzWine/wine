@@ -47,14 +47,28 @@ void wined3d_swapchain_cleanup(struct wined3d_swapchain *swapchain)
 
     TRACE("Destroying swapchain %p.\n", swapchain);
 
+    for (i = 0; i < swapchain->device->context_count; i++)
+        if (swapchain->device->contexts[i]->swapchain == swapchain)
+            swapchain->device->contexts[i]->swapchain = NULL;
+
     wined3d_swapchain_state_cleanup(&swapchain->state);
     wined3d_swapchain_set_gamma_ramp(swapchain, 0, &swapchain->orig_gamma);
 
     /* Release the swapchain's draw buffers. Make sure swapchain->back_buffers[0]
      * is the last buffer to be destroyed, FindContext() depends on that. */
     if (swapchain->front_buffer)
-    {
         wined3d_texture_set_swapchain(swapchain->front_buffer, NULL);
+
+    if (swapchain->back_buffers)
+    {
+        i = swapchain->state.desc.backbuffer_count;
+
+        while (i--)
+            wined3d_texture_set_swapchain(swapchain->back_buffers[i], NULL);
+    }
+
+    if (swapchain->front_buffer)
+    {
         if (wined3d_texture_decref(swapchain->front_buffer))
             WARN("Something's still holding the front buffer (%p).\n", swapchain->front_buffer);
         swapchain->front_buffer = NULL;
@@ -66,7 +80,6 @@ void wined3d_swapchain_cleanup(struct wined3d_swapchain *swapchain)
 
         while (i--)
         {
-            wined3d_texture_set_swapchain(swapchain->back_buffers[i], NULL);
             if (wined3d_texture_decref(swapchain->back_buffers[i]))
                 WARN("Something's still holding back buffer %u (%p).\n", i, swapchain->back_buffers[i]);
         }
