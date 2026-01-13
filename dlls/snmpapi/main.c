@@ -504,8 +504,7 @@ LPSTR WINAPI SnmpUtilIdsToA(UINT *ids, UINT length)
     *oid = 0;
     for (i = 0; i < length; i++)
     {
-        sprintf(one, "%d", ids[i]);
-        len = strlen(one);
+        len = sprintf(one, "%d", ids[i]);
         if (left >= len)
         {
             strcat(oid, one);
