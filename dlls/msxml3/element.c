@@ -1661,7 +1661,31 @@ static HRESULT domelem_get_named_item(const xmlNodePtr node, BSTR name, IXMLDOMN
         return domelem_get_qualified_item(node, name, NULL, item);
 
     /* try to get namespace uri for supplied qualified name */
-    ns = xmlSearchNs(node->doc, node, prefix);
+    if (xmlStrEqual(prefix, BAD_CAST "xmlns") )
+    {
+        IUnknown *unk;
+
+        xmlFree(prefix);
+
+        ns = xmlSearchNs(node->doc, node, local);
+        xmlFree(local);
+        if (!ns)
+        {
+            if (item) *item = NULL;
+            return item ? S_FALSE : E_INVALIDARG;
+        }
+
+        unk = create_attribute(node, FALSE);
+        if (!unk)
+        {
+            return E_OUTOFMEMORY;
+        }
+        hr = IUnknown_QueryInterface(unk, &IID_IXMLDOMNode, (void**)item);
+        IUnknown_Release(unk);
+        return hr;
+    }
+    else
+        ns = xmlSearchNs(node->doc, node, prefix);
 
     xmlFree(prefix);
 
