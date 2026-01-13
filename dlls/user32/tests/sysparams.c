@@ -1184,8 +1184,11 @@ static void test_SPI_SETMENUDROPALIGNMENT( void )      /*     28 */
     {
         UINT v;
 
+        winetest_push_context("i=%d", i);
+
         rc=SystemParametersInfoA( SPI_SETMENUDROPALIGNMENT, vals[i], 0,
                                   SPIF_UPDATEINIFILE | SPIF_SENDCHANGE );
+        Sleep(500);
         if (!test_error_msg(rc,"SPI_SETMENUDROPALIGNMENT")) return;
         ok(rc, "%d: rc=%d err=%ld\n", i, rc, GetLastError());
         test_change_message( SPI_SETMENUDROPALIGNMENT, 0 );
@@ -1195,10 +1198,13 @@ static void test_SPI_SETMENUDROPALIGNMENT( void )      /*     28 */
                          vals[i] ? "1" : "0" );
 
         rc=SystemParametersInfoA( SPI_GETMENUDROPALIGNMENT, 0, &v, 0 );
+        Sleep(500);
         ok(rc, "%d: rc=%d err=%ld\n", i, rc, GetLastError());
         eq( v, vals[i], "SPI_{GET,SET}MENUDROPALIGNMENT", "%d" );
         eq( GetSystemMetrics( SM_MENUDROPALIGNMENT ), (int)vals[i],
             "SM_MENUDROPALIGNMENT", "%d" );
+
+        winetest_pop_context();
     }
 
     rc=SystemParametersInfoA( SPI_SETMENUDROPALIGNMENT, old_b, 0,
@@ -1345,9 +1351,12 @@ static void test_SPI_SETMOUSEBUTTONSWAP( void )        /*     33 */
 
     for (i=0;i<ARRAY_SIZE(vals);i++)
     {
+        winetest_push_context("i=%d", i);
+
         SetLastError(0xdeadbeef);
         rc=SystemParametersInfoA( SPI_SETMOUSEBUTTONSWAP, vals[i], 0,
                                   SPIF_UPDATEINIFILE | SPIF_SENDCHANGE );
+        Sleep(500);
         if (!test_error_msg(rc,"SPI_SETMOUSEBUTTONSWAP")) break;
 
         test_change_message( SPI_SETMOUSEBUTTONSWAP, 0 );
@@ -1357,10 +1366,13 @@ static void test_SPI_SETMOUSEBUTTONSWAP( void )        /*     33 */
         eq( GetSystemMetrics( SM_SWAPBUTTON ), (int)vals[i],
             "SM_SWAPBUTTON", "%d" );
         rc=SwapMouseButton((BOOL)vals[i^1]);
+        Sleep(500);
         eq( GetSystemMetrics( SM_SWAPBUTTON ), (int)vals[i^1],
             "SwapMouseButton", "%d" );
         ok( rc==(BOOL)vals[i], "SwapMouseButton does not return previous state (really %d)\n", rc );
         test_change_message( SPI_SETMOUSEBUTTONSWAP, 1 );
+
+        winetest_pop_context();
     }
 
     rc=SystemParametersInfoA( SPI_SETMOUSEBUTTONSWAP, vals[1], 0,
