@@ -26,6 +26,15 @@
 #include <shlobj.h>
 #include <dlgs.h>
 
+/* PickIconDlg message-box texts */
+#define IDS_PID_ICONFILEEXTENSIONS        100
+#define IDS_PID_DIALOGCOULDNOTBEDISPLAYED 101
+#define IDS_PID_FILEDOESNOTEXIST          102
+#define IDS_PID_PROCESSINGFAILURE         103
+#define IDS_PID_FILENOICONS               104
+#define IDS_PID_ICONSPARTLYLOADED         105
+#define IDS_PID_CHANGEICONPROBLEM         106
+
 /*
 	columntitles for the shellview
 */
@@ -155,6 +164,8 @@
 
 /* Note: this string is referenced from the registry*/
 #define IDS_RECYCLEBIN_FOLDER_NAME   8964
+
+#define IDD_PICKICONDLG            7
 
 /* Properties dialog */
 #define IDD_FILE_PROPERTIES        8
@@ -388,6 +399,13 @@ FIXME: Need to add them, but for now just let them use the same: searching.avi
 #define IDR_AVI_FILECOPY           161
 #define IDR_AVI_FILENUKE           163
 #define IDR_AVI_FILEDELETE         164
+
+/* PickIconDlg box */
+#define IDC_PICKICONDLG_LABELPATH   1001
+#define IDC_PICKICONDLG_EDIT        1002
+#define IDC_PICKICONDLG_CHANGE      1003
+#define IDC_PICKICONDLG_LABELICONS  1004
+#define IDC_PICKICONDLG_ICONS       1005
 
 /* about box */
 #define IDC_ABOUT_LICENSE        97
