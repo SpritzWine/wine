@@ -131,6 +131,7 @@ typedef struct tagLookInInfo
 
 static const char LookInInfosStr[] = "LookInInfos"; /* LOOKIN combo box property */
 static SIZE MemDialogSize = { 0, 0}; /* keep size of the (resizable) dialog */
+static RECT MemDialogPos = {-1, -1, -1, -1}; /* keep the position of the dialog */
 
 FileOpenDlgInfos *get_filedlg_infoptr(HWND hwnd)
 {
@@ -1317,6 +1318,12 @@ INT_PTR CALLBACK FileOpenDlgProc95(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
              GetWindowRect( hwnd, &rc );
              rc.right += client_adjusted.right - client.right;
              rc.bottom += client_adjusted.bottom - client.bottom;
+
+             if (MemDialogPos.left<0 && MemDialogPos.top<0) {
+                MemDialogPos.left=rc.left;             
+                MemDialogPos.top=rc.top;                 
+             }            
+                
              SetWindowPos(hwnd, 0, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_FRAMECHANGED | SWP_NOACTIVATE |
                  SWP_NOZORDER | SWP_NOMOVE);
 
@@ -1372,6 +1379,8 @@ INT_PTR CALLBACK FileOpenDlgProc95(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
                          0, 0, MemDialogSize.cx, MemDialogSize.cy,
                          SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
          }
+         /*move window*/
+         SetWindowPos(hwnd,NULL,MemDialogPos.left, MemDialogPos.top, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
 
          if(fodInfos->ofnInfos->Flags & OFN_EXPLORER)
              SendCustomDlgNotificationMessage(hwnd,CDN_SELCHANGE);
@@ -1406,6 +1415,8 @@ INT_PTR CALLBACK FileOpenDlgProc95(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
 
           if (fodInfos && fodInfos->ofnInfos->Flags & OFN_ENABLESIZING)
               MemDialogSize = fodInfos->sizedlg;
+
+          GetWindowRect(hwnd,&MemDialogPos);
 
           if (places_bar)
           {
