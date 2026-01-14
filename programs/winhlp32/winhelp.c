@@ -271,15 +271,7 @@ HLPFILE_WINDOWINFO*     WINHELP_GetWindowInfo(HLPFILE* hlpfile, LPCSTR name)
     {
         strcpy(mwi.type, "primary");
         strcpy(mwi.name, "main");
-        if (hlpfile && hlpfile->lpszTitle[0])
-        {
-            char tmp[40];
-            LoadStringA(Globals.hInstance, STID_WINE_HELP, tmp, sizeof(tmp));
-            _snprintf(mwi.caption, sizeof(mwi.caption), "%s %s - %s",
-                      hlpfile->lpszTitle, tmp, hlpfile->lpszPath);
-        }
-        else
-            LoadStringA(Globals.hInstance, STID_WINE_HELP, mwi.caption, sizeof(mwi.caption));
+        mwi.caption[0] = '\0';
         mwi.origin.x = mwi.origin.y = mwi.size.cx = mwi.size.cy = CW_USEDEFAULT;
         mwi.style = SW_SHOW;
         mwi.win_style = WS_OVERLAPPEDWINDOW;

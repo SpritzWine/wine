@@ -2055,9 +2055,16 @@ static BOOL HLPFILE_SystemCommands(HLPFILE* hlpfile)
     if (hlpfile->version <= 16)
     {
         char *str = (char*)buf + 0x15;
+        char tmp[40];
+        LPCSTR filename = strrchr(hlpfile->lpszPath, '\\');
+        size_t len;
 
-        hlpfile->lpszTitle = strdup(str);
-        if (!hlpfile->lpszTitle) return FALSE;
+        if (!filename) filename = hlpfile->lpszPath; else filename++;
+        LoadStringA(Globals.hInstance, STID_WINE_HELP, tmp, sizeof(tmp));
+        len = strlen(str) + 1 + strlen(tmp) + 3 + strlen(filename) + 1;
+        if (!(hlpfile->lpszTitle = malloc(len))) return FALSE;
+        _snprintf(hlpfile->lpszTitle, len, "%s %s - %s", str, tmp, filename);
+
         WINE_TRACE("Title: %s\n", debugstr_a(hlpfile->lpszTitle));
         /* Nothing more to parse */
         return TRUE;
@@ -2069,7 +2076,14 @@ static BOOL HLPFILE_SystemCommands(HLPFILE* hlpfile)
 	{
 	case 1:
             if (hlpfile->lpszTitle) {WINE_WARN("title\n"); break;}
-            hlpfile->lpszTitle = strdup(str);
+            if (*str)
+                hlpfile->lpszTitle = strdup(str);
+            else
+            {
+                char tmp[40];
+                LoadStringA(Globals.hInstance, STID_WINE_HELP, tmp, sizeof(tmp));
+                hlpfile->lpszTitle = strdup(tmp);
+            }
             if (!hlpfile->lpszTitle) return FALSE;
             WINE_TRACE("Title: %s\n", debugstr_a(hlpfile->lpszTitle));
             break;
@@ -2123,7 +2137,7 @@ static BOOL HLPFILE_SystemCommands(HLPFILE* hlpfile)
                 if (flags & 0x0002) strcpy(wi->name, &str[12]);
                 else wi->name[0] = '\0';
                 if (flags & 0x0004) strcpy(wi->caption, &str[21]);
-                else lstrcpynA(wi->caption, hlpfile->lpszTitle, sizeof(wi->caption));
+                else wi->caption[0] = '\0';
                 wi->origin.x = (flags & 0x0008) ? GET_USHORT(ptr, 76) : CW_USEDEFAULT;
                 wi->origin.y = (flags & 0x0010) ? GET_USHORT(ptr, 78) : CW_USEDEFAULT;
                 wi->size.cx = (flags & 0x0020) ? GET_USHORT(ptr, 80) : CW_USEDEFAULT;
