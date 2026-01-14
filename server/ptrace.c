@@ -48,6 +48,7 @@
 #endif
 #include <unistd.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "winternl.h"
@@ -135,7 +136,7 @@ static int handle_child_status( struct thread *thread, int pid, int status, int 
     {
         int sig = WSTOPSIG(status);
         if (debug_level && thread)
-            fprintf( stderr, "%04x: *signal* %s\n", thread->id, get_signal_name( sig ));
+            TRACE( "%04x: *signal* %s\n", thread->id, get_signal_name( sig ));
         if (sig != want_sig)
         {
             /* ignore other signals for now */
@@ -150,10 +151,10 @@ static int handle_child_status( struct thread *thread, int pid, int status, int 
         if (debug_level)
         {
             if (WIFSIGNALED(status))
-                fprintf( stderr, "%04x: *exited* %s\n",
+                TRACE( "%04x: *exited* %s\n",
                          thread->id, get_signal_name( WTERMSIG(status) ));
             else
-                fprintf( stderr, "%04x: *exited* status=%d\n",
+                TRACE( "%04x: *exited* status=%d\n",
                          thread->id, WEXITSTATUS(status) );
         }
     }
@@ -200,7 +201,7 @@ static int waitpid_thread( struct thread *thread, int signal )
             if (errno == EINTR)
             {
                 if (!watchdog_triggered()) continue;
-                if (debug_level) fprintf( stderr, "%04x: *watchdog* waitpid aborted\n", thread->id );
+                if (debug_level) TRACE( "%04x: *watchdog* waitpid aborted\n", thread->id );
             }
             else if (errno == ECHILD)  /* must have died */
             {
@@ -267,7 +268,7 @@ int send_thread_signal( struct thread *thread, int sig )
     }
 
     if (debug_level && ret != -1)
-        fprintf( stderr, "%04x: *sent signal* %s\n", thread->id, get_signal_name( sig ));
+        TRACE( "%04x: *sent signal* %s\n", thread->id, get_signal_name( sig ));
     return (ret != -1);
 }
 

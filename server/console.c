@@ -31,6 +31,7 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "handle.h"
@@ -746,7 +747,7 @@ static void console_dump( struct object *obj, int verbose )
 {
     struct console *console = (struct console *)obj;
     assert( obj->ops == &console_ops );
-    fprintf( stderr, "Console input active=%p server=%p\n",
+    TRACE( "Console input active=%p server=%p\n",
              console->active, console->server );
 }
 
@@ -845,7 +846,7 @@ static void screen_buffer_dump( struct object *obj, int verbose )
     struct screen_buffer *screen_buffer = (struct screen_buffer *)obj;
     assert( obj->ops == &screen_buffer_ops );
 
-    fprintf(stderr, "Console screen buffer input=%p\n", screen_buffer->input );
+    TRACE( "Console screen buffer input=%p\n", screen_buffer->input );
 }
 
 static void screen_buffer_destroy( struct object *obj )
@@ -892,7 +893,7 @@ static struct object *screen_buffer_get_sync( struct object *obj )
 static void console_server_dump( struct object *obj, int verbose )
 {
     assert( obj->ops == &console_server_ops );
-    fprintf( stderr, "Console server\n" );
+    TRACE( "Console server\n" );
 }
 
 static void console_server_destroy( struct object *obj )

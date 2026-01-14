@@ -138,11 +138,11 @@ sub DO_DUMP_FUNC($$@)
             elsif ($fmt =~ /^(%.*)\s+\((.*)\)/)
             {
                 my ($format, $cast) = ($1, $2);
-                push @trace_lines, "    fprintf( stderr, \"$prefix$var=$format\", ($cast)req->$var );\n";
+                push @trace_lines, "    TRACE_RAW( \"$prefix$var=$format\", ($cast)req->$var );\n";
             }
             else
             {
-                push @trace_lines, "    fprintf( stderr, \"$prefix$var=$fmt\", req->$var );\n";
+                push @trace_lines, "    TRACE_RAW( \"$prefix$var=$fmt\", req->$var );\n";
             }
 	}
 	else  # must be some varargs format

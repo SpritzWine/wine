@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -121,7 +122,7 @@ static void event_sync_dump( struct object *obj, int verbose )
 {
     struct event_sync *event = (struct event_sync *)obj;
     assert( obj->ops == &event_sync_ops );
-    fprintf( stderr, "Event manual=%d signaled=%d\n",
+    TRACE( "Event manual=%d signaled=%d\n",
              event->manual, event->signaled );
 }
 

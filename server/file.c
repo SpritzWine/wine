@@ -37,6 +37,7 @@
 #endif
 #include <poll.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -288,7 +289,7 @@ static void file_dump( struct object *obj, int verbose )
 {
     struct file *file = (struct file *)obj;
     assert( obj->ops == &file_ops );
-    fprintf( stderr, "File fd=%p\n", file->fd );
+    TRACE( "File fd=%p\n", file->fd );
 }
 
 static enum server_fd_type file_get_fd_type( struct fd *fd )

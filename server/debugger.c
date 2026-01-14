@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -301,7 +302,7 @@ static void debug_event_dump( struct object *obj, int verbose )
 {
     struct debug_event *debug_event = (struct debug_event *)obj;
     assert( obj->ops == &debug_event_ops );
-    fprintf( stderr, "Debug event sender=%p code=%d state=%d\n",
+    TRACE( "Debug event sender=%p code=%d state=%d\n",
              debug_event->sender, debug_event->data.code, debug_event->state );
 }
 
@@ -326,7 +327,7 @@ static void debug_obj_dump( struct object *obj, int verbose )
 {
     struct debug_obj *debug_obj = (struct debug_obj *)obj;
     assert( obj->ops == &debug_obj_ops );
-    fprintf( stderr, "Debug context head=%p tail=%p\n",
+    TRACE( "Debug context head=%p tail=%p\n",
              debug_obj->event_queue.next, debug_obj->event_queue.prev );
 }
 

@@ -30,6 +30,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -278,7 +279,7 @@ void init_memory(void)
 static void ranges_dump( struct object *obj, int verbose )
 {
     struct ranges *ranges = (struct ranges *)obj;
-    fprintf( stderr, "Memory ranges count=%u\n", ranges->count );
+    TRACE( "Memory ranges count=%u\n", ranges->count );
 }
 
 static void ranges_destroy( struct object *obj )
@@ -290,7 +291,7 @@ static void ranges_destroy( struct object *obj )
 static void shared_map_dump( struct object *obj, int verbose )
 {
     struct shared_map *shared = (struct shared_map *)obj;
-    fprintf( stderr, "Shared mapping fd=%p file=%p\n", shared->fd, shared->file );
+    TRACE( "Shared mapping fd=%p file=%p\n", shared->fd, shared->file );
 }
 
 static void shared_map_destroy( struct object *obj )
@@ -1243,7 +1244,7 @@ static void mapping_dump( struct object *obj, int verbose )
 {
     struct mapping *mapping = (struct mapping *)obj;
     assert( obj->ops == &mapping_ops );
-    fprintf( stderr, "Mapping size=%08x%08x flags=%08x fd=%p shared=%p\n",
+    TRACE( "Mapping size=%08x%08x flags=%08x fd=%p shared=%p\n",
              (unsigned int)(mapping->size >> 32), (unsigned int)mapping->size,
              mapping->flags, mapping->fd, mapping->shared );
 }

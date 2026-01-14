@@ -24,6 +24,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "winternl.h"
@@ -177,20 +178,20 @@ static void inproc_sync_dump( struct object *obj, int verbose )
 {
     struct inproc_sync *sync = (struct inproc_sync *)obj;
     assert( obj->ops == &inproc_sync_ops );
-    fprintf( stderr, "Inproc sync type=%d, fd=%d\n", sync->type, sync->fd );
+    TRACE( "Inproc sync type=%d, fd=%d\n", sync->type, sync->fd );
 }
 
 void signal_inproc_sync( struct inproc_sync *sync )
 {
     __u32 count;
-    if (debug_level) fprintf( stderr, "set_inproc_event %d\n", sync->fd );
+    if (debug_level) TRACE( "set_inproc_event %d\n", sync->fd );
     ioctl( sync->fd, NTSYNC_IOC_EVENT_SET, &count );
 }
 
 void reset_inproc_sync( struct inproc_sync *sync )
 {
     __u32 count;
-    if (debug_level) fprintf( stderr, "reset_inproc_event %d\n", sync->fd );
+    if (debug_level) TRACE( "reset_inproc_event %d\n", sync->fd );
     ioctl( sync->fd, NTSYNC_IOC_EVENT_RESET, &count );
 }
 

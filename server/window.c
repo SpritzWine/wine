@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <stdarg.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -158,7 +159,7 @@ static void window_dump( struct object *obj, int verbose )
 {
     struct window *win = (struct window *)obj;
     assert( obj->ops == &window_ops );
-    fprintf( stderr, "window %p handle %x\n", win, win->handle );
+    TRACE( "window %p handle %x\n", win, win->handle );
 }
 
 static void window_destroy( struct object *obj )

@@ -52,6 +52,7 @@
 # include <libprocstat.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "winternl.h"
@@ -457,7 +458,7 @@ static void job_dump( struct object *obj, int verbose )
 {
     struct job *job = (struct job *)obj;
     assert( obj->ops == &job_ops );
-    fprintf( stderr, "Job processes=%d child_jobs=%d parent=%p\n",
+    TRACE( "Job processes=%d child_jobs=%d parent=%p\n",
              list_count(&job->process_list), list_count(&job->child_job_list), job->parent );
 }
 
@@ -582,7 +583,7 @@ static void server_shutdown_timeout( void *arg )
     switch(++shutdown_stage)
     {
     case 1:  /* signal system processes to exit */
-        if (debug_level) fprintf( stderr, "wineserver: shutting down\n" );
+        if (debug_level) TRACE( "wineserver: shutting down\n" );
         if (shutdown_event) set_event( shutdown_event );
         shutdown_timeout = add_timeout_user( 2 * -TICKS_PER_SEC, server_shutdown_timeout, NULL );
         close_master_socket( 4 * -TICKS_PER_SEC );
@@ -609,7 +610,7 @@ void shutdown_master_socket(void)
 /* final cleanup once we are sure a process is really dead */
 static void process_died( struct process *process )
 {
-    if (debug_level) fprintf( stderr, "%04x: *process killed*\n", process->id );
+    if (debug_level) TRACE( "%04x: *process killed*\n", process->id );
     if (!process->is_system)
     {
         if (!--user_processes && !shutdown_stage && master_socket_timeout != TIMEOUT_INFINITE)
@@ -809,7 +810,7 @@ static void process_dump( struct object *obj, int verbose )
     struct process *process = (struct process *)obj;
     assert( obj->ops == &process_ops );
 
-    fprintf( stderr, "Process id=%04x handles=%p\n", process->id, process->handles );
+    TRACE( "Process id=%04x handles=%p\n", process->id, process->handles );
 }
 
 static struct object *process_get_sync( struct object *obj )
@@ -899,7 +900,7 @@ static void startup_info_dump( struct object *obj, int verbose )
 
     fputs( "Startup info", stderr );
     if (info->data)
-        fprintf( stderr, " in=%04x out=%04x err=%04x",
+        TRACE( " in=%04x out=%04x err=%04x",
                  info->data->hstdin, info->data->hstdout, info->data->hstderr );
     fputc( '\n', stderr );
 }

@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -126,7 +127,7 @@ static void mutex_sync_dump( struct object *obj, int verbose )
 {
     struct mutex_sync *mutex = (struct mutex_sync *)obj;
     assert( obj->ops == &mutex_sync_ops );
-    fprintf( stderr, "Mutex count=%u owner=%p\n", mutex->count, mutex->owner );
+    TRACE( "Mutex count=%u owner=%p\n", mutex->count, mutex->owner );
 }
 
 static void mutex_sync_destroy( struct object *obj )

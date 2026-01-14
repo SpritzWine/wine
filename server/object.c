@@ -32,6 +32,7 @@
 #include <valgrind/memcheck.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "winternl.h"
@@ -160,7 +161,7 @@ void dump_objects(void)
 
     LIST_FOR_EACH_ENTRY( ptr, &object_list, struct object, obj_list )
     {
-        fprintf( stderr, "%p:%d: ", ptr, ptr->refcount );
+        TRACE( "%p:%d: ", ptr, ptr->refcount );
         dump_object_name( ptr );
         ptr->ops->dump( ptr, 1 );
     }
@@ -829,7 +830,7 @@ static void dump_reserve( struct object *obj, int verbose )
     struct reserve *reserve = (struct reserve *) obj;
 
     assert( obj->ops == &apc_reserve_ops || obj->ops == &completion_reserve_ops );
-    fprintf( stderr, "reserve type=%d\n", reserve->type);
+    TRACE( "reserve type=%d\n", reserve->type);
 }
 
 static struct reserve *create_reserve( struct object *root, const struct unicode_str *name,

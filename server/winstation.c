@@ -24,6 +24,7 @@
 #include <stdarg.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -169,7 +170,7 @@ static void winstation_dump( struct object *obj, int verbose )
 {
     struct winstation *winstation = (struct winstation *)obj;
 
-    fprintf( stderr, "Winstation flags=%x clipboard=%p atoms=%p\n",
+    TRACE( "Winstation flags=%x clipboard=%p atoms=%p\n",
              winstation->flags, winstation->clipboard, winstation->atom_table );
 }
 
@@ -349,7 +350,7 @@ static void desktop_dump( struct object *obj, int verbose )
 {
     struct desktop *desktop = (struct desktop *)obj;
 
-    fprintf( stderr, "Desktop flags=%x winstation=%p top_win=%p hooks=%p\n",
+    TRACE( "Desktop flags=%x winstation=%p top_win=%p hooks=%p\n",
              desktop->shared->flags, desktop->winstation, desktop->top_window, desktop->global_hooks );
 }
 

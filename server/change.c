@@ -37,6 +37,7 @@
 #include <sys/inotify.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -288,7 +289,7 @@ static void dir_dump( struct object *obj, int verbose )
 {
     struct dir *dir = (struct dir *)obj;
     assert( obj->ops == &dir_ops );
-    fprintf( stderr, "Dirfile fd=%p filter=%08x\n", dir->fd, dir->filter );
+    TRACE( "Dirfile fd=%p filter=%08x\n", dir->fd, dir->filter );
 }
 
 /* enter here directly from SIGIO signal handler */
@@ -845,7 +846,7 @@ static void inotify_notify_all( struct inotify_event *ie )
     inode = inode_from_wd( ie->wd );
     if (!inode)
     {
-        fprintf( stderr, "no inode matches %d\n", ie->wd);
+        TRACE( "no inode matches %d\n", ie->wd);
         return;
     }
 
@@ -905,7 +906,7 @@ static void inotify_poll_event( struct fd *fd, int event )
     r = read( unix_fd, buffer, sizeof buffer );
     if (r < 0)
     {
-        fprintf(stderr,"inotify_poll_event(): inotify read failed!\n");
+        TRACE("inotify_poll_event(): inotify read failed!\n");
         return;
     }
 

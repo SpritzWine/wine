@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "object.h"
@@ -365,24 +366,24 @@ static void save_subkeys( const struct key *key, const struct key *base, FILE *f
 
 static void dump_operation( const struct key *key, const struct key_value *value, const char *op )
 {
-    fprintf( stderr, "%s key ", op );
+    TRACE( "%s key ", op );
     if (key) dump_path( key, NULL, stderr );
-    else fprintf( stderr, "ERROR" );
+    else TRACE( "ERROR" );
     if (value)
     {
-        fprintf( stderr, " value ");
+        TRACE( " value ");
         dump_value( value, stderr );
     }
-    else fprintf( stderr, "\n" );
+    else TRACE( "\n" );
 }
 
 static void key_dump( struct object *obj, int verbose )
 {
     struct key *key = (struct key *)obj;
     assert( obj->ops == &key_ops );
-    fprintf( stderr, "Key flags=%x ", key->flags );
+    TRACE( "Key flags=%x ", key->flags );
     dump_path( key, NULL, stderr );
-    fprintf( stderr, "\n" );
+    TRACE( "\n" );
 }
 
 /* notify waiter and maybe delete the notification */
@@ -1409,9 +1410,9 @@ static int get_file_tmp_space( struct file_load_info *info, size_t size )
 static void file_read_error( const char *err, struct file_load_info *info )
 {
     if (info->filename)
-        fprintf( stderr, "%s:%d: %s '%s'\n", info->filename, info->line, err, info->buffer );
+        TRACE( "%s:%d: %s '%s'\n", info->filename, info->line, err, info->buffer );
     else
-        fprintf( stderr, "<fd>:%d: %s '%s'\n", info->line, err, info->buffer );
+        TRACE( "<fd>:%d: %s '%s'\n", info->line, err, info->buffer );
 }
 
 /* convert a data type tag to a value type */
@@ -1817,7 +1818,7 @@ static int load_init_registry_from_file( const char *filename, struct key *key )
         fclose( f );
         if (get_error() == STATUS_NOT_REGISTRY_FILE)
         {
-            fprintf( stderr, "%s is not a valid registry file\n", filename );
+            TRACE( "%s is not a valid registry file\n", filename );
             return 1;
         }
     }
@@ -2103,7 +2104,7 @@ static int save_branch( struct key *key, const char *filename )
 
     if (debug_level > 1)
     {
-        fprintf( stderr, "%s: ", filename );
+        TRACE( "%s: ", filename );
         dump_operation( key, NULL, "saving" );
     }
 
@@ -2152,7 +2153,7 @@ void flush_registry(void)
     {
         if (!save_branch( save_branch_info[i].key, save_branch_info[i].filename ))
         {
-            fprintf( stderr, "wineserver: could not save registry branch to %s",
+            TRACE( "wineserver: could not save registry branch to %s",
                      save_branch_info[i].filename );
             perror( " " );
         }

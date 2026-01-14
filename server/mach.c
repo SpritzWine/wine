@@ -32,6 +32,7 @@
 #include <sys/sysctl.h>
 #endif
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "winternl.h"
@@ -133,7 +134,7 @@ void init_process_tracing( struct process *process )
         if (ret)
         {
             if (ret != MACH_RCV_TIMED_OUT && debug_level)
-                fprintf( stderr, "warning: mach port receive failed with %x\n", ret );
+                TRACE( "warning: mach port receive failed with %x\n", ret );
             return;
         }
 
@@ -387,7 +388,7 @@ int send_thread_signal( struct thread *thread, int sig )
         }
     }
     if (debug_level && ret != -1)
-        fprintf( stderr, "%04x: *sent signal* signal=%d\n", thread->id, sig );
+        TRACE( "%04x: *sent signal* signal=%d\n", thread->id, sig );
     return (ret != -1);
 }
 

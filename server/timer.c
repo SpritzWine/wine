@@ -27,6 +27,7 @@
 #include <sys/types.h>
 #include <stdarg.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -206,7 +207,7 @@ static void timer_dump( struct object *obj, int verbose )
     struct timer *timer = (struct timer *)obj;
     timeout_t timeout = abstime_to_timeout( timer->when );
     assert( obj->ops == &timer_ops );
-    fprintf( stderr, "Timer manual=%d when=%s period=%u\n",
+    TRACE( "Timer manual=%d when=%s period=%u\n",
              timer->manual, get_timeout_str(timeout), timer->period );
 }
 

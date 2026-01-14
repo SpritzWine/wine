@@ -26,6 +26,7 @@
 #include <stdarg.h>
 #include <sys/types.h>
 
+#include "debug.h"
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 #include "windef.h"
@@ -112,7 +113,7 @@ static void semaphore_sync_dump( struct object *obj, int verbose )
 {
     struct semaphore_sync *sem = (struct semaphore_sync *)obj;
     assert( obj->ops == &semaphore_sync_ops );
-    fprintf( stderr, "Semaphore count=%d max=%d\n", sem->count, sem->max );
+    TRACE( "Semaphore count=%d max=%d\n", sem->count, sem->max );
 }
 
 static int semaphore_sync_signaled( struct object *obj, struct wait_queue_entry *entry )
