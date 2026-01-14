@@ -840,9 +840,9 @@ static HRESULT copypixels_to_32bppBGRA(struct FormatConverter *This, const WICRe
             BYTE *srcdata;
             UINT srcstride, srcdatasize;
             const BYTE *srcrow;
-            const BYTE *srcpixel;
+            const WORD *srcpixel;
             BYTE *dstrow;
-            DWORD *dstpixel;
+            BYTE *dstpixel;
 
             srcstride = 8 * prc->Width;
             srcdatasize = srcstride * prc->Height;
@@ -857,15 +857,15 @@ static HRESULT copypixels_to_32bppBGRA(struct FormatConverter *This, const WICRe
                 srcrow = srcdata;
                 dstrow = pbBuffer;
                 for (y=0; y<prc->Height; y++) {
-                    srcpixel=srcrow;
-                    dstpixel=(DWORD*)dstrow;
+                    srcpixel=(const WORD *)srcrow;
+                    dstpixel=dstrow;
                     for (x=0; x<prc->Width; x++) {
-                        BYTE red, green, blue, alpha;
-                        srcpixel++; red = *srcpixel++;
-                        srcpixel++; green = *srcpixel++;
-                        srcpixel++; blue = *srcpixel++;
-                        srcpixel++; alpha = *srcpixel++;
-                        *dstpixel++=alpha<<24|red<<16|green<<8|blue;
+                        dstpixel[2] = (srcpixel[0] + 127) / 257;
+                        dstpixel[1] = (srcpixel[1] + 127) / 257;
+                        dstpixel[0] = (srcpixel[2] + 127) / 257;
+                        dstpixel[3] = (srcpixel[3] + 127) / 257;
+                        srcpixel += 4;
+                        dstpixel += 4;
                     }
                     srcrow += srcstride;
                     dstrow += cbStride;
@@ -2022,6 +2022,95 @@ static HRESULT copypixels_to_64bppRGBA(struct FormatConverter *This, const WICRe
         free(srcdata);
         return hr;
     }
+
+    case format_32bppRGBA:
+    {
+        UINT srcstride, srcdatasize;
+        const BYTE *srcpixel;
+        const BYTE *srcrow;
+        WORD *dstpixel;
+        BYTE *srcdata;
+        BYTE *dstrow;
+        INT x, y;
+
+        if (!prc)
+            return S_OK;
+
+        srcstride = 4 * prc->Width;
+        srcdatasize = srcstride * prc->Height;
+
+        srcdata = malloc(srcdatasize);
+        if (!srcdata) return E_OUTOFMEMORY;
+
+        hr = IWICBitmapSource_CopyPixels(This->source, prc, srcstride, srcdatasize, srcdata);
+        if (SUCCEEDED(hr))
+        {
+            srcrow = srcdata;
+            dstrow = pbBuffer;
+            for (y = 0; y < prc->Height; y++)
+            {
+                srcpixel = srcrow;
+                dstpixel = (WORD *)dstrow;
+                for (x = 0; x < prc->Width; x++)
+                {
+                    *dstpixel++ = srcpixel[0] * 257;
+                    *dstpixel++ = srcpixel[1] * 257;
+                    *dstpixel++ = srcpixel[2] * 257;
+                    *dstpixel++ = srcpixel[3] * 257;
+                    srcpixel += 4;
+                }
+                srcrow += srcstride;
+                dstrow += cbStride;
+            }
+        }
+        free(srcdata);
+        return hr;
+    }
+
+    case format_32bppBGRA:
+    {
+        UINT srcstride, srcdatasize;
+        const BYTE *srcpixel;
+        const BYTE *srcrow;
+        WORD *dstpixel;
+        BYTE *srcdata;
+        BYTE *dstrow;
+        INT x, y;
+
+        if (!prc)
+            return S_OK;
+
+        srcstride = 4 * prc->Width;
+        srcdatasize = srcstride * prc->Height;
+
+        srcdata = malloc(srcdatasize);
+        if (!srcdata) return E_OUTOFMEMORY;
+
+        hr = IWICBitmapSource_CopyPixels(This->source, prc, srcstride, srcdatasize, srcdata);
+        if (SUCCEEDED(hr))
+        {
+            srcrow = srcdata;
+            dstrow = pbBuffer;
+            for (y = 0; y < prc->Height; y++)
+            {
+                srcpixel = srcrow;
+                dstpixel = (WORD *)dstrow;
+                for (x = 0; x < prc->Width; x++)
+                {
+                    *dstpixel++ = srcpixel[2] * 257;
+                    *dstpixel++ = srcpixel[1] * 257;
+                    *dstpixel++ = srcpixel[0] * 257;
+                    *dstpixel++ = srcpixel[3] * 257;
+                    srcpixel += 4;
+                }
+                srcrow += srcstride;
+                dstrow += cbStride;
+            }
+        }
+        free(srcdata);
+        return hr;
+    }
+
     default:
         FIXME("Unimplemented conversion path %d.\n", source_format);
         return WINCODEC_ERR_UNSUPPORTEDOPERATION;
