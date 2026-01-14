@@ -7392,6 +7392,8 @@ do
   esac
 done
 
+enable_lto=yes
+
 if test "x$enable_lto" = xyes
 then
     as_fn_append EXTRACFLAGS " -D__WINE_LTO_BUILD"

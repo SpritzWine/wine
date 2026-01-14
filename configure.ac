@@ -401,6 +401,8 @@ do
   esac
 done
 
+enable_lto=yes
+
 if test "x$enable_lto" = xyes
 then
     AS_VAR_APPEND([EXTRACFLAGS],[" -D__WINE_LTO_BUILD"])
