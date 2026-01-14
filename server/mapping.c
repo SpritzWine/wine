@@ -1615,8 +1615,7 @@ DECL_HANDLER(map_view)
 
     if ((mapping->flags & SEC_IMAGE) ||
         req->start >= mapping->size ||
-        req->start + req->size < req->start ||
-        req->start + req->size > round_size( mapping->size, page_mask ))
+        req->start + req->size < req->start)
     {
         set_error( STATUS_INVALID_PARAMETER );
         goto done;
@@ -1763,7 +1762,30 @@ DECL_HANDLER(add_mapping_committed_range)
 {
     struct memory_view *view = find_mapped_view( current->process, req->base );
 
-    if (view) add_committed_range( view, req->offset, req->offset + req->size );
+    if (view)
+    {
+        if (view->flags & SEC_FILE)
+        {
+            struct stat st;
+            int unix_fd;
+
+            if ((unix_fd = get_unix_fd( view->fd )) == -1) return;
+            if (fstat( unix_fd, &st ) == -1)
+            {
+                file_set_error();
+                return;
+            }
+
+            if ((req->offset + req->size) <= st.st_size)
+                set_error( STATUS_ALREADY_COMMITTED );
+            else
+                grow_file( unix_fd, req->offset + req->size );
+        }
+        else
+        {
+            add_committed_range( view, req->offset, req->offset + req->size );
+        }
+    }
 }
 
 /* check if two memory maps are for the same file */

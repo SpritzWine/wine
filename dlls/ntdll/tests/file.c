@@ -88,6 +88,7 @@ static NTSTATUS (WINAPI *pNtQueryVolumeInformationFile)(HANDLE,PIO_STATUS_BLOCK,
 static NTSTATUS (WINAPI *pNtQueryFullAttributesFile)(const OBJECT_ATTRIBUTES*, FILE_NETWORK_OPEN_INFORMATION*);
 static NTSTATUS (WINAPI *pNtFlushBuffersFile)(HANDLE, IO_STATUS_BLOCK*);
 static NTSTATUS (WINAPI *pNtQueryEaFile)(HANDLE,PIO_STATUS_BLOCK,PVOID,ULONG,BOOLEAN,PVOID,ULONG,PULONG,BOOLEAN);
+static NTSTATUS (WINAPI *pNtExtendSection)(HANDLE,LARGE_INTEGER*);
 
 static WCHAR fooW[] = {'f','o','o',0};
 
@@ -7284,11 +7285,13 @@ static void test_file_map_large_size(void)
 {
     char temp_path[MAX_PATH], source[MAX_PATH];
     HANDLE hfile, hmapfile;
+    LARGE_INTEGER li;
     NTSTATUS status;
     SIZE_T size;
     void *addr;
     DWORD ret;
 
+    /* Resizing mapped filed on range commit */
     ret = GetTempPathA(MAX_PATH, temp_path);
     ok(!!ret, "GetTempPath() failed error %ld\n", GetLastError());
 
@@ -7312,7 +7315,6 @@ static void test_file_map_large_size(void)
 
     status = NtMapViewOfSection(hmapfile, GetCurrentProcess(), &addr, 0, 0, NULL, &size,
             ViewUnmap, MEM_RESERVE, PAGE_READONLY);
-    todo_wine
     ok(!status, "Failed to map the section %#lx.\n", status);
 
     ret = GetFileSize(hfile, NULL);
@@ -7322,18 +7324,65 @@ static void test_file_map_large_size(void)
     ok(!!addr, "Failed to resize, error %ld.\n", GetLastError());
 
     ret = GetFileSize(hfile, NULL);
-    todo_wine
     ok(ret == 0x1000, "Unexpected size %lu.\n", ret);
 
     addr = VirtualAlloc(addr, 0x1100, MEM_COMMIT, PAGE_READONLY);
-    todo_wine
     ok(!!addr, "Failed to resize, error %ld.\n", GetLastError());
 
     ret = GetFileSize(hfile, NULL);
-    todo_wine
     ok(ret == 0x2000, "Unexpected size %lu.\n", ret);
 
     CloseHandle(hmapfile);
+    CloseHandle(hfile);
+    DeleteFileA(source);
+
+    /* Explicit resize */
+    if (!pNtExtendSection)
+    {
+        skip("NtExtendSection() is not available.\n");
+        return;
+    }
+
+    ret = GetTempFileNameA(temp_path, "pfx", 0, source);
+    ok(!!ret, "GetTempFileName() failed %ld\n", GetLastError());
+
+    hfile = CreateFileA(source, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, 0 );
+    ok(hfile != INVALID_HANDLE_VALUE, "Failed to create a test file.\n");
+
+    SetFilePointer(hfile, 0x400, NULL, FILE_BEGIN);
+    SetEndOfFile(hfile);
+
+    status = NtCreateSection(&hmapfile, SECTION_MAP_READ, NULL, NULL, PAGE_READWRITE, SEC_RESERVE, hfile);
+    ok(!status, "Failed to create a section %#lx.\n", status);
+
+    li.QuadPart = 0x500;
+    status = pNtExtendSection(hmapfile, &li);
+    ok(status == STATUS_ACCESS_DENIED, "Unexpected return value %#lx.\n", status);
+
+    ret = GetFileSize(hfile, NULL);
+    ok(ret == 0x400, "Unexpected size %lu.\n", ret);
+
+    CloseHandle(hmapfile);
+
+    status = NtCreateSection(&hmapfile, SECTION_MAP_READ | SECTION_EXTEND_SIZE, NULL, NULL, PAGE_READWRITE, SEC_RESERVE, hfile);
+    ok(!status, "Failed to extend a section %#lx.\n", status);
+
+    li.QuadPart = 0x500;
+    status = pNtExtendSection(hmapfile, &li);
+    ok(!status, "Failed to create a section %#lx.\n", status);
+
+    ret = GetFileSize(hfile, NULL);
+    ok(ret == 0x500, "Unexpected size %lu.\n", ret);
+
+    li.QuadPart = 0x100;
+    status = pNtExtendSection(hmapfile, &li);
+    ok(!status, "Failed to extend a section %#lx.\n", status);
+
+    ret = GetFileSize(hfile, NULL);
+    ok(ret == 0x500, "Unexpected size %lu.\n", ret);
+
+    CloseHandle(hmapfile);
+
     CloseHandle(hfile);
     DeleteFileA(source);
 }
@@ -7381,6 +7430,7 @@ START_TEST(file)
     pNtQueryFullAttributesFile = (void *)GetProcAddress(hntdll, "NtQueryFullAttributesFile");
     pNtFlushBuffersFile = (void *)GetProcAddress(hntdll, "NtFlushBuffersFile");
     pNtQueryEaFile          = (void *)GetProcAddress(hntdll, "NtQueryEaFile");
+    pNtExtendSection = (void *)GetProcAddress(hntdll, "NtExtendSection");
 
     test_read_write();
     test_NtCreateFile();

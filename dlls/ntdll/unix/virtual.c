@@ -3536,7 +3536,7 @@ static unsigned int virtual_map_section( HANDLE handle, PVOID *addr_ptr, ULONG_P
     if (*size_ptr)
     {
         size = *size_ptr;
-        if (size > full_size - offset.QuadPart) return STATUS_INVALID_VIEW_SIZE;
+        if (!(alloc_type & MEM_RESERVE) && (size > full_size - offset.QuadPart)) return STATUS_INVALID_VIEW_SIZE;
     }
     else
     {
@@ -5133,9 +5133,8 @@ static NTSTATUS allocate_virtual_memory( void **ret, SIZE_T *size_ptr, ULONG typ
     else  /* commit the pages */
     {
         if (!(view = find_view( base, size ))) status = STATUS_NOT_MAPPED_VIEW;
-        else if (view->protect & SEC_FILE) status = STATUS_ALREADY_COMMITTED;
         else if (view->protect & VPROT_FREE_PLACEHOLDER) status = STATUS_CONFLICTING_ADDRESSES;
-        else if (!(status = set_protection( view, base, size, protect )) && (view->protect & SEC_RESERVE))
+        else if (!(status = set_protection( view, base, size, protect )) && (view->protect & (SEC_FILE|SEC_RESERVE)))
         {
             SERVER_START_REQ( add_mapping_committed_range )
             {
