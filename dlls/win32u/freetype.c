@@ -1612,6 +1612,13 @@ static int calc_ppem_for_height(FT_Face ft_face, int height)
         ppem = 1;
     }
 
+    /*
+     * It's possible for EM to be 0 for some fonts, and it should be handled
+     * gracefully, but it can cause problems, so warn when it happens.
+     */
+    if(ppem == 0)
+        WARN("Font family %s with style %s and height %i has EM == 0\n", ft_face->family_name, ft_face->style_name, height);
+
     return ppem;
 }
 
@@ -2263,11 +2270,17 @@ static FT_Matrix *get_transform_matrices( struct gdi_font *font, BOOL vertical, 
     matrices[matrix_unrotated] = identity_mat;
 
     /* Scaling factor */
-    if (font->aveWidth)
+    if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
     {
         if (!freetype_set_outline_text_metrics( font )) freetype_set_bitmap_text_metrics( font );
-        width_ratio = (double)font->aveWidth;
-        width_ratio /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
+        /* Metrics were recalculated, so test again */
+        if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
+        {
+            width_ratio = (double)font->aveWidth;
+            width_ratio /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
+        }
+        else
+            width_ratio = font->scale_y;
     }
     else
         width_ratio = font->scale_y;
@@ -3401,8 +3414,9 @@ static BOOL freetype_set_outline_text_metrics( struct gdi_font *font )
                                            (pHori->Ascender - pHori->Descender))));
 
     TM.tmAveCharWidth = SCALE_X(pOS2->xAvgCharWidth);
-    if (TM.tmAveCharWidth == 0) {
-        TM.tmAveCharWidth = 1; 
+    if(TM.tmAveCharWidth == 0 && TM.tmHeight != 0)
+    {
+        TM.tmAveCharWidth = 1;
     }
     TM.tmMaxCharWidth = SCALE_X(ft_face->bbox.xMax - ft_face->bbox.xMin);
     TM.tmWeight = font->fake_bold ? FW_BOLD : pOS2->usWeightClass;

@@ -3314,13 +3314,23 @@ static BOOL get_face_enum_data( struct gdi_font_face *face, ENUMLOGFONTEXW *elf,
 #define SCALE_NTM(value) (muldiv( ntm->ntmTm.tmHeight, (value), TM.tmHeight ))
         cell_height = TM.tmHeight / ( -lf.lfHeight / font->otm.otmEMSquare );
         ntm->ntmTm.tmHeight = muldiv( ntm_ppem, cell_height, font->otm.otmEMSquare );
-        ntm->ntmTm.tmAscent = SCALE_NTM( TM.tmAscent );
+        if (TM.tmHeight != 0)
+        {
+            ntm->ntmTm.tmAscent = SCALE_NTM( TM.tmAscent );
+            ntm->ntmTm.tmInternalLeading = SCALE_NTM( TM.tmInternalLeading );
+            ntm->ntmTm.tmExternalLeading = SCALE_NTM( TM.tmExternalLeading );
+            ntm->ntmTm.tmAveCharWidth = SCALE_NTM( TM.tmAveCharWidth );
+            ntm->ntmTm.tmMaxCharWidth = SCALE_NTM( TM.tmMaxCharWidth );
+        }
+        else
+        {
+            ntm->ntmTm.tmAscent = 0;
+            ntm->ntmTm.tmInternalLeading = 0;
+            ntm->ntmTm.tmExternalLeading = 0;
+            ntm->ntmTm.tmAveCharWidth = 0;
+            ntm->ntmTm.tmMaxCharWidth = 0;
+        }
         ntm->ntmTm.tmDescent = ntm->ntmTm.tmHeight - ntm->ntmTm.tmAscent;
-        ntm->ntmTm.tmInternalLeading = SCALE_NTM( TM.tmInternalLeading );
-        ntm->ntmTm.tmExternalLeading = SCALE_NTM( TM.tmExternalLeading );
-        ntm->ntmTm.tmAveCharWidth = SCALE_NTM( TM.tmAveCharWidth );
-        ntm->ntmTm.tmMaxCharWidth = SCALE_NTM( TM.tmMaxCharWidth );
-
         memcpy((char *)&ntm->ntmTm + offsetof( TEXTMETRICW, tmWeight ),
                (const char *)&TM + offsetof( TEXTMETRICW, tmWeight ),
                sizeof(TEXTMETRICW) - offsetof( TEXTMETRICW, tmWeight ));
@@ -4112,7 +4122,7 @@ static void scale_outline_font_metrics( const struct gdi_font *font, OUTLINETEXT
 {
     double scale_x, scale_y;
 
-    if (font->aveWidth)
+    if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
     {
         scale_x = (double)font->aveWidth;
         scale_x /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
@@ -4321,13 +4331,13 @@ static void scale_font_metrics( struct gdi_font *font, TEXTMETRICW *tm )
     double scale_x, scale_y;
 
     /* Make sure that the font has sane width/height ratio */
-    if (font->aveWidth && (font->aveWidth + tm->tmHeight - 1) / tm->tmHeight > 100)
+    if (font->aveWidth && tm->tmHeight && (font->aveWidth + tm->tmHeight - 1) / tm->tmHeight > 100)
     {
         WARN( "Ignoring too large font->aveWidth %d\n", font->aveWidth );
         font->aveWidth = 0;
     }
 
-    if (font->aveWidth)
+    if (font->aveWidth && font->otm.otmTextMetrics.tmAveCharWidth)
     {
         scale_x = (double)font->aveWidth;
         scale_x /= (double)font->otm.otmTextMetrics.tmAveCharWidth;
