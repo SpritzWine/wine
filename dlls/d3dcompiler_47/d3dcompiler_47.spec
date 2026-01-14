@@ -6,7 +6,7 @@
 @ stdcall D3DCreateBlob(long ptr)
 @ stdcall D3DCreateFunctionLinkingGraph(long ptr)
 @ stdcall D3DCreateLinker(ptr)
-@ stub D3DDecompressShaders
+@ stdcall D3DDecompressShaders(ptr long long long ptr long ptr ptr)
 @ stdcall D3DDisassemble(ptr long long ptr ptr)
 @ stub D3DDisassemble10Effect(ptr long ptr)
 @ stub D3DDisassemble11Trace

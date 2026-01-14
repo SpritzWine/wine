@@ -107,6 +107,8 @@ typedef enum D3DCOMPILER_STRIP_FLAGS
 } D3DCOMPILER_STRIP_FLAGS;
 
 HRESULT WINAPI D3DStripShader(const void *data, SIZE_T data_size, UINT flags, ID3DBlob **blob);
+HRESULT WINAPI D3DDecompressShaders(const void *data, SIZE_T data_size, UINT numshaders, UINT index,
+        UINT *indexes, UINT flags, ID3DBlob **blob, UINT *totalshaders);
 
 typedef enum D3D_BLOB_PART
 {

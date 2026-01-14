@@ -453,6 +453,14 @@ HRESULT WINAPI D3DStripShader(const void *data, SIZE_T data_size, UINT flags, ID
     return d3dcompiler_strip_shader(data, data_size, flags, blob);
 }
 
+HRESULT WINAPI D3DDecompressShaders(const void *data, SIZE_T data_size, UINT numshaders, UINT index,
+                  UINT *indexes, UINT flags, ID3D10Blob **blob, UINT *totalshaders)
+{
+    FIXME("data %p, data_size %Iu, numshaders %d, index %d, indexes %p, flags %#x, blob %p, totalshaders %p stub!\n",
+           data, data_size, numshaders, index, indexes, flags, blob, totalshaders);
+    return E_NOTIMPL;
+}
+
 HRESULT WINAPI D3DReadFileToBlob(const WCHAR *filename, ID3DBlob **contents)
 {
     struct d3dcompiler_blob *object;

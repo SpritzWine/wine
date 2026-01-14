@@ -3,7 +3,7 @@
 @ stdcall D3DCompile(ptr long str ptr ptr str str long long ptr ptr)
 @ stub D3DCompressShaders
 @ stdcall D3DCreateBlob(long ptr)
-@ stub D3DDecompressShaders
+@ stdcall D3DDecompressShaders(ptr long long long ptr long ptr ptr)
 @ stub D3DDisassemble10Effect(ptr long ptr)
 @ stdcall D3DDisassemble(ptr long long ptr ptr)
 @ stdcall D3DGetBlobPart(ptr long long long ptr)
