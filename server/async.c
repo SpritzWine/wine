@@ -119,6 +119,7 @@ struct async
     struct fd           *fd;              /* fd associated with an unqueued async */
     struct timeout_user *timeout;
     unsigned int         timeout_status;  /* status to report upon timeout */
+    unsigned int         terminate_status;/* pending termination status, or STATUS_PENDING */
     struct event        *event;
     struct async_data    data;            /* data for async I/O call */
     struct iosb         *iosb;            /* I/O status block */
@@ -244,6 +245,11 @@ void async_terminate( struct async *async, unsigned int status )
 {
     struct iosb *iosb = async->iosb;
 
+    if (status != STATUS_ALERTED && async->terminate_status == STATUS_PENDING)
+    {
+        async->terminate_status = status;
+    }
+
     if (async->terminated) return;
 
     async->terminated = 1;
@@ -347,6 +353,7 @@ struct async *create_async( struct fd *fd, struct thread *thread, const struct a
     async->queue         = NULL;
     async->fd            = (struct fd *)grab_object( fd );
     async->initial_status = STATUS_PENDING;
+    async->terminate_status = STATUS_PENDING;
     async->signaled      = 0;
     async->pending       = 1;
     async->wait_handle   = 0;
@@ -592,7 +599,15 @@ void async_set_result( struct object *obj, unsigned int status, apc_param_t tota
     {
         async->terminated = 0;
         async->alerted = 0;
-        async_reselect( async );
+
+        if (async->terminate_status != STATUS_PENDING)
+        {
+            async_terminate( async, async->terminate_status );
+        }
+        else
+        {
+            async_reselect( async );
+        }
     }
     else
     {
