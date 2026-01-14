@@ -1582,8 +1582,17 @@ BOOL WINAPI SetProcessDefaultCpuSets(HANDLE process, const ULONG *cpu_set_ids, U
  */
 BOOL WINAPI DECLSPEC_HOTPATCH GetNumaHighestNodeNumber( ULONG *node )
 {
-    FIXME( "semi-stub: %p\n", node );
-    *node = 0;
+    FILE_NUMA_NODE_INFORMATION ni;
+
+    if (!node) { SetLastError( ERROR_INVALID_PARAMETER ); return FALSE; }
+
+    if (
+        !set_ntstatus( NtQuerySystemInformationEx( SystemNumaProcessorMap,
+            NULL, 0, &ni, sizeof(ni), NULL ))
+        )
+        return FALSE;
+
+    *node = ni.HighestNodeNumber;
     return TRUE;
 }
 

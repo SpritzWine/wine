@@ -4929,7 +4929,7 @@ NTSTATUS WINAPI NtQueryInformationFile( HANDLE handle, IO_STATUS_BLOCK *io,
         0,                                             /* FileIdGlobalTxDirectoryInformation */
         0,                                             /* FileIsRemoteDeviceInformation */
         0,                                             /* FileAttributeCacheInformation */
-        0,                                             /* FileNumaNodeInformation */
+        sizeof(FILE_NUMA_NODE_INFORMATION),            /* FileNumaNodeInformation */
         0,                                             /* FileStandardLinkInformation */
         0,                                             /* FileRemoteProtocolInformation */
         0,                                             /* FileRenameInformationBypassAccessCheck */

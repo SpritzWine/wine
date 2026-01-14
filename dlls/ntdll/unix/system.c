@@ -1583,6 +1583,37 @@ static void init_logical_proc_info(void)
     init_tsc_frequency();
 }
 
+NTSTATUS init_numa_info(FILE_NUMA_NODE_INFORMATION *info)
+{
+    unsigned int i;
+
+    if (!info) { return STATUS_INVALID_PARAMETER; }
+    if (pthread_once(&logical_proc_init_once, init_logical_proc_info) != STATUS_SUCCESS) 
+        { return STATUS_UNSUCCESSFUL; }
+    
+    info->HighestNodeNumber = 0;
+    info->NodeNumber = 0;
+    info->Reserved = 0;
+
+    if (logical_proc_info_len > STATUS_SUCCESS && !logical_proc_info)
+        { return STATUS_UNSUCCESSFUL; }
+
+    for (i = 0; i < logical_proc_info_len; ++i)
+    {
+        if (logical_proc_info[i].Relationship == RelationNumaNode)
+        {
+            if (logical_proc_info[i].NumaNode.NodeNumber > info->HighestNodeNumber)
+                info->HighestNodeNumber = logical_proc_info[i].NumaNode.NodeNumber;
+        }
+    }
+
+    info->NodeNumber = 0;
+    if (info->HighestNodeNumber > info->NodeNumber)
+        { FIXME( "node affinity; using only node %u.\n", info->NodeNumber ); }
+    
+    return STATUS_SUCCESS;
+}
+
 /******************************************************************
  *		init_cpu_info
  *
@@ -4064,6 +4095,17 @@ NTSTATUS WINAPI NtQuerySystemInformationEx( SYSTEM_INFORMATION_CLASS class,
             machines[i].WoW64Container = 1;
         }
         ret = STATUS_SUCCESS;
+        break;
+    }
+
+    case SystemNumaProcessorMap:
+    {
+        FILE_NUMA_NODE_INFORMATION *numa_info = info;
+
+        len = sizeof(FILE_NUMA_NODE_INFORMATION);
+        if (size < len) { ret = STATUS_BUFFER_TOO_SMALL; break; }
+        if (!info) { ret = STATUS_ACCESS_VIOLATION; break; }
+        ret = init_numa_info(numa_info);
         break;
     }
 

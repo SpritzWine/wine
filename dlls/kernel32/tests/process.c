@@ -78,6 +78,7 @@ static BOOL   (WINAPI *pQueryInformationJobObject)(HANDLE job, JOBOBJECTINFOCLAS
 static BOOL   (WINAPI *pSetInformationJobObject)(HANDLE job, JOBOBJECTINFOCLASS class, LPVOID info, DWORD len);
 static HANDLE (WINAPI *pCreateIoCompletionPort)(HANDLE file, HANDLE existing_port, ULONG_PTR key, DWORD threads);
 static BOOL   (WINAPI *pGetNumaProcessorNode)(UCHAR, PUCHAR);
+static BOOL   (WINAPI *pGetNumaHighestNodeNumber)(PULONG);
 static NTSTATUS (WINAPI *pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 static NTSTATUS (WINAPI *pNtQueryInformationThread)(HANDLE, THREADINFOCLASS, PVOID, ULONG, PULONG);
 static NTSTATUS (WINAPI *pNtQuerySystemInformationEx)(SYSTEM_INFORMATION_CLASS, void*, ULONG, void*, ULONG, ULONG*);
@@ -263,6 +264,7 @@ static BOOL init(void)
     pSetInformationJobObject = (void *)GetProcAddress(hkernel32, "SetInformationJobObject");
     pCreateIoCompletionPort = (void *)GetProcAddress(hkernel32, "CreateIoCompletionPort");
     pGetNumaProcessorNode = (void *)GetProcAddress(hkernel32, "GetNumaProcessorNode");
+    pGetNumaHighestNodeNumber = (void *)GetProcAddress(hkernel32, "GetNumaHighestNodeNumber");
     pWTSGetActiveConsoleSessionId = (void *)GetProcAddress(hkernel32, "WTSGetActiveConsoleSessionId");
     pCreateToolhelp32Snapshot = (void *)GetProcAddress(hkernel32, "CreateToolhelp32Snapshot");
     pProcess32First = (void *)GetProcAddress(hkernel32, "Process32First");
@@ -4195,6 +4197,24 @@ static void test_GetNumaProcessorNode(void)
     }
 }
 
+static void test_GetNumaHighestNodeNumber(void)
+{
+    BOOL could_find_nodes;
+    ULONG node_count;
+
+    if (!pGetNumaHighestNodeNumber)
+    {
+        win_skip("GetNumaHighestNodeNumber is missing\n");
+        return;
+    }
+
+    node_count = 0xFF;
+    could_find_nodes = pGetNumaHighestNodeNumber(&node_count);
+    ok(could_find_nodes, "GetNumaHighestNodeNumber returned %d\n", could_find_nodes);
+    ok(node_count <= 64 && node_count != 0xFF,
+       "GetNumaHighestNodeNumber returned invalid node %lu\n", node_count);
+}
+
 static void test_session_info(void)
 {
     DWORD session_id, active_session;
@@ -5816,6 +5836,7 @@ START_TEST(process)
     test_services_exe();
     test_startupinfo();
     test_GetProcessInformation();
+    test_GetNumaHighestNodeNumber();
 
     /* things that can be tested:
      *  lookup:         check the way program to be executed is searched
