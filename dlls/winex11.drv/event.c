@@ -770,7 +770,16 @@ static void handle_wm_protocols( HWND hwnd, XClientMessageEvent *event )
         if (hwnd) hwnd = NtUserGetAncestor( hwnd, GA_ROOT );
         if (!hwnd) hwnd = get_active_window();
         if (!hwnd) hwnd = last_focus;
-        if (hwnd && can_activate_window(hwnd)) set_focus( event->display, hwnd, event_time );
+        if (hwnd && can_activate_window(hwnd))
+        {
+            Window win = X11DRV_get_whole_window(hwnd);
+            if (win)
+            {
+                TRACE("will raise window %p\n", hwnd);
+                XRaiseWindow(event->display, win);
+            }
+            set_focus( event->display, hwnd, event_time );
+        }
     }
     else if (protocol == x11drv_atom(_NET_WM_PING))
     {
