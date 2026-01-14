@@ -1,0 +1,7 @@
+EXTLIB    = liblzx.a
+EXTRAINCL = $(LZX_PE_CFLAGS)
+
+SOURCES = \
+	src/liblzx_compress_common.c \
+	src/liblzx_lzx_common.c \
+	src/liblzx_lzx_compress.c

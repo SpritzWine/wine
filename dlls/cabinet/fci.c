@@ -37,6 +37,7 @@ There is still some work to be done:
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <zlib.h>
+#include <liblzx.h>
 
 #include "windef.h"
 #include "winbase.h"
@@ -165,11 +166,13 @@ typedef struct FCI_Int
   char               szPrevDisk[CB_MAX_DISK_NAME];   /* disk name of previous cabinet */
   unsigned char      data_in[CAB_BLOCKMAX];          /* uncompressed data blocks */
   unsigned char      data_out[2 * CAB_BLOCKMAX];     /* compressed data blocks */
+  BOOL               have_data_out;
   cab_UWORD          cdata_in;
   ULONG              cCompressedBytesInFolder;
   cab_UWORD          cFolders;
   cab_UWORD          cFiles;
-  cab_ULONG          cDataBlocks;
+  cab_ULONG          cDataBlocksIn;
+  cab_ULONG          cDataBlocksOut;
   cab_ULONG          cbFileRemainder; /* uncompressed, yet to be written data */
                /* of spanned file of a spanning folder of a spanning cabinet */
   struct temp_file   data;
@@ -185,6 +188,9 @@ typedef struct FCI_Int
   cab_ULONG          folders_data_size;   /* total size of data contained in the current folders */
   TCOMP              compression;
   cab_UWORD        (*compress)(struct FCI_Int *);
+  cab_UWORD        (*flush)(struct FCI_Int *);
+  void             (*compress_shutdown)(struct FCI_Int *);
+  struct liblzx_compressor *lzx_compressor;
 } FCI_Int;
 
 #define FCI_INT_MAGIC 0xfcfcfc05
@@ -274,7 +280,7 @@ static struct file *add_file( FCI_Int *fci, const char *filename )
         return NULL;
     }
     file->size    = 0;
-    file->offset  = fci->cDataBlocks * CAB_BLOCKMAX + fci->cdata_in;
+    file->offset  = fci->cDataBlocksIn * CAB_BLOCKMAX + fci->cdata_in;
     file->folder  = fci->cFolders;
     file->date    = 0;
     file->time    = 0;
@@ -305,43 +311,82 @@ static void free_file( FCI_Int *fci, struct file *file )
     fci->free( file );
 }
 
-/* create a new data block for the data in fci->data_in */
-static BOOL add_data_block( FCI_Int *fci, PFNFCISTATUS status_callback )
+/* creates new data blocks for the data in fci->data_in */
+static BOOL add_data_blocks( FCI_Int *fci, BOOL is_last_block, PFNFCISTATUS status_callback )
 {
     int err;
     struct data_block *block;
+    cab_UWORD compressed_size = 0;
+    cab_UWORD uncompressed_size = fci->cdata_in;
 
-    if (!fci->cdata_in) return TRUE;
+    if (!uncompressed_size)
+    {
+        if (fci->cDataBlocksIn == 0 || !is_last_block) return TRUE;
+    }
 
     if (fci->data.handle == -1 && !create_temp_file( fci, &fci->data )) return FALSE;
 
-    if (!(block = fci->alloc( sizeof(*block) )))
+    if (uncompressed_size)
     {
-        set_error( fci, FCIERR_ALLOC_FAIL, ERROR_NOT_ENOUGH_MEMORY );
-        return FALSE;
-    }
-    block->uncompressed = fci->cdata_in;
-    block->compressed   = fci->compress( fci );
+        compressed_size = fci->compress( fci );
 
-    if (fci->write( fci->data.handle, fci->data_out,
-                    block->compressed, &err, fci->pv ) != block->compressed)
-    {
-        set_error( fci, FCIERR_TEMP_FILE, err );
-        fci->free( block );
-        return FALSE;
+        fci->cdata_in = 0;
+        fci->cDataBlocksIn++;
     }
 
-    fci->cdata_in = 0;
-    fci->pending_data_size += sizeof(CFDATA) + fci->ccab.cbReserveCFData + block->compressed;
-    fci->cCompressedBytesInFolder += block->compressed;
-    fci->cDataBlocks++;
-    list_add_tail( &fci->blocks_list, &block->entry );
-
-    if (status_callback( statusFile, block->compressed, block->uncompressed, fci->pv ) == -1)
+    if (compressed_size == 0 && is_last_block && fci->flush)
     {
-        set_error( fci, FCIERR_USER_ABORT, 0 );
-        return FALSE;
+        compressed_size = fci->flush( fci );
     }
+
+    while (compressed_size > 0)
+    {
+        if (!(block = fci->alloc( sizeof(*block) )))
+        {
+            set_error( fci, FCIERR_ALLOC_FAIL, ERROR_NOT_ENOUGH_MEMORY );
+            return FALSE;
+        }
+
+        if (is_last_block && fci->cDataBlocksIn - 1 == fci->cDataBlocksOut)
+        {
+            block->uncompressed = uncompressed_size;
+        }
+        else
+        {
+            block->uncompressed = CAB_BLOCKMAX;
+        }
+
+        block->compressed = compressed_size;
+
+        if (fci->write( fci->data.handle, fci->data_out,
+                        block->compressed, &err, fci->pv ) != block->compressed)
+        {
+            set_error( fci, FCIERR_TEMP_FILE, err );
+            fci->free( block );
+            return FALSE;
+        }
+
+        fci->pending_data_size += sizeof(CFDATA) + fci->ccab.cbReserveCFData + block->compressed;
+        fci->cCompressedBytesInFolder += block->compressed;
+        fci->cDataBlocksOut++;
+        list_add_tail( &fci->blocks_list, &block->entry );
+
+        if (status_callback( statusFile, block->compressed, block->uncompressed, fci->pv ) == -1)
+        {
+            set_error( fci, FCIERR_USER_ABORT, 0 );
+            return FALSE;
+        }
+
+        if (is_last_block && fci->flush)
+        {
+            compressed_size = fci->flush( fci );
+        }
+        else
+        {
+            compressed_size = 0;
+        }
+    }
+
     return TRUE;
 }
 
@@ -377,7 +422,7 @@ static BOOL add_file_data( FCI_Int *fci, char *sourcefile, char *filename, BOOL 
         }
         file->size += len;
         fci->cdata_in += len;
-        if (fci->cdata_in == CAB_BLOCKMAX && !add_data_block( fci, status_callback )) return FALSE;
+        if (fci->cdata_in == CAB_BLOCKMAX && !add_data_blocks( fci, FALSE, status_callback )) return FALSE;
     }
     fci->close( handle, &err, fci->pv );
     return TRUE;
@@ -824,7 +869,8 @@ static BOOL add_data_to_folder( FCI_Int *fci, struct folder *folder, cab_ULONG *
         }
         if (split_block) break;
         free_data_block( fci, block );
-        fci->cDataBlocks--;
+        fci->cDataBlocksIn--;
+        fci->cDataBlocksOut--;
     }
 
     if (list_empty( &fci->blocks_list )) return TRUE;
@@ -905,6 +951,10 @@ static cab_UWORD compress_NONE( FCI_Int *fci )
     return fci->cdata_in;
 }
 
+static void shutdown_NONE(FCI_Int *fci)
+{
+}
+
 static void *zalloc( void *opaque, unsigned int items, unsigned int size )
 {
     FCI_Int *fci = opaque;
@@ -938,9 +988,118 @@ static cab_UWORD compress_MSZIP( FCI_Int *fci )
     fci->data_out[1] = 'K';
     deflate( &stream, Z_FINISH );
     deflateEnd( &stream );
+    fci->have_data_out = TRUE;
     return stream.total_out + 2;
 }
 
+static void shutdown_MSZIP( FCI_Int *fci )
+{
+}
+
+static void shutdown_LZX(FCI_Int *fci)
+{
+    liblzx_compress_destroy(fci->lzx_compressor);
+    fci->lzx_compressor = NULL;
+}
+
+static void *compress_LZX_alloc_callback(void *userdata, size_t size)
+{
+    FCI_Int *fci = (FCI_Int *)userdata;
+
+    return fci->alloc((ULONG)size);
+}
+
+static void compress_LZX_free_callback(void *userdata, void *ptr)
+{
+    FCI_Int *fci = (FCI_Int *)userdata;
+
+    fci->free(ptr);
+}
+
+static cab_UWORD compress_LZX(FCI_Int *fci)
+{
+    size_t in_digested = 0;
+    size_t compressed_size = 0;
+    const liblzx_output_chunk_t *out_chunk = NULL;
+
+    if (fci->cDataBlocksIn == 0) {
+        /* First block, restart compression */
+        int window_size_bits = LZXCompressionWindowFromTCOMP(fci->compression);
+        liblzx_compress_properties_t props;
+
+        if (fci->lzx_compressor)
+        {
+            liblzx_compress_destroy(fci->lzx_compressor);
+            fci->lzx_compressor = NULL;
+        }
+
+        memset(&props, 0, sizeof(props));
+        props.lzx_variant = LIBLZX_VARIANT_CAB_DELTA;
+        props.window_size = 1 << window_size_bits;
+        props.chunk_granularity = CAB_BLOCKMAX;
+        props.compression_level = 70;
+        props.e8_file_size = LIBLZX_CONST_DEFAULT_E8_FILE_SIZE;
+        props.alloc_func = compress_LZX_alloc_callback;
+        props.free_func = compress_LZX_free_callback;
+        props.userdata = fci;
+
+        fci->lzx_compressor = liblzx_compress_create(&props);
+
+        if (!fci->lzx_compressor)
+        {
+            set_error(fci, FCIERR_ALLOC_FAIL, ERROR_OUTOFMEMORY);
+            return 0;
+        }
+    }
+
+    while (in_digested < fci->cdata_in)
+    {
+        in_digested += liblzx_compress_add_input(fci->lzx_compressor, fci->data_in + in_digested, fci->cdata_in - in_digested);
+
+        if (out_chunk)
+        {
+            /* After producing an output chunk, all data should be digestable. */
+            assert(in_digested == fci->cdata_in);
+            break;
+        }
+
+        out_chunk = liblzx_compress_get_next_chunk(fci->lzx_compressor);
+
+        if (out_chunk)
+        {
+            compressed_size = out_chunk->size;
+            memcpy(fci->data_out, out_chunk->data, compressed_size);
+            liblzx_compress_release_next_chunk(fci->lzx_compressor);
+
+            fci->have_data_out = TRUE;
+        }
+    }
+
+    return compressed_size;
+}
+
+cab_UWORD flush_LZX(FCI_Int *fci)
+{
+    const liblzx_output_chunk_t *out_chunk = NULL;
+    cab_UWORD compressed_size = 0;
+
+    liblzx_compress_end_input(fci->lzx_compressor);
+    out_chunk = liblzx_compress_get_next_chunk(fci->lzx_compressor);
+
+    if (out_chunk == NULL)
+    {
+        return 0;
+    }
+
+    compressed_size = out_chunk->size;
+    memcpy(fci->data_out, out_chunk->data, out_chunk->size);
+
+    liblzx_compress_release_next_chunk(fci->lzx_compressor);
+
+    fci->have_data_out = TRUE;
+
+    return compressed_size;
+}
 
 /***********************************************************************
  *		FCICreate (CABINET.10)
@@ -1046,6 +1205,7 @@ HFCI __cdecl FCICreate(
   p_fci_internal->pv = pv;
   p_fci_internal->data.handle = -1;
   p_fci_internal->compress = compress_NONE;
+  p_fci_internal->compress_shutdown = shutdown_NONE;
 
   list_init( &p_fci_internal->folders_list );
   list_init( &p_fci_internal->files_list );
@@ -1102,11 +1262,12 @@ static BOOL fci_flush_folder( FCI_Int *p_fci_internal,
   p_fci_internal->fSplitFolder=FALSE;
 
   /* START of COPY */
-  if (!add_data_block( p_fci_internal, pfnfcis )) return FALSE;
+  if (!add_data_blocks( p_fci_internal, TRUE, pfnfcis )) return FALSE;
 
   /* reset to get the number of data blocks of this folder which are */
   /* actually in this cabinet ( at least partially ) */
-  p_fci_internal->cDataBlocks=0;
+  p_fci_internal->cDataBlocksIn = 0;
+  p_fci_internal->cDataBlocksOut = 0;
 
   p_fci_internal->statusFolderTotal = get_header_size( p_fci_internal ) +
       sizeof(CFFOLDER) + p_fci_internal->ccab.cbReserveCFFolder +
@@ -1211,7 +1372,8 @@ static BOOL fci_flush_folder( FCI_Int *p_fci_internal,
   if (!add_files_to_folder( p_fci_internal, folder, payload )) return FALSE;
 
   /* reset CFFolder specific information */
-  p_fci_internal->cDataBlocks=0;
+  p_fci_internal->cDataBlocksIn=0;
+  p_fci_internal->cDataBlocksOut=0;
   p_fci_internal->cCompressedBytesInFolder=0;
 
   return TRUE;
@@ -1409,19 +1571,41 @@ BOOL __cdecl FCIAddFile(
 
   if (typeCompress != p_fci_internal->compression)
   {
+      if ((typeCompress & tcompMASK_TYPE) == tcompTYPE_LZX) {
+          TCOMP window_size_bits = (typeCompress & tcompMASK_LZX_WINDOW);
+
+          if (window_size_bits < tcompLZX_WINDOW_LO || window_size_bits > tcompLZX_WINDOW_HI) {
+              set_error(p_fci_internal, FCIERR_BAD_COMPR_TYPE, ERROR_BAD_ARGUMENTS);
+              return FALSE;
+          }
+      }
+
       if (!FCIFlushFolder( hfci, pfnfcignc, pfnfcis )) return FALSE;
-      switch (typeCompress)
+
+      p_fci_internal->compress_shutdown(p_fci_internal);
+
+      switch (typeCompress & tcompMASK_TYPE)
       {
       case tcompTYPE_MSZIP:
-          p_fci_internal->compression = tcompTYPE_MSZIP;
-          p_fci_internal->compress    = compress_MSZIP;
+          p_fci_internal->compression       = tcompTYPE_MSZIP;
+          p_fci_internal->compress          = compress_MSZIP;
+          p_fci_internal->flush             = NULL;
+          p_fci_internal->compress_shutdown = shutdown_MSZIP;
+          break;
+      case tcompTYPE_LZX:
+          p_fci_internal->compression       = typeCompress;
+          p_fci_internal->compress          = compress_LZX;
+          p_fci_internal->flush             = flush_LZX;
+          p_fci_internal->compress_shutdown = shutdown_LZX;
           break;
       default:
           FIXME( "compression %x not supported, defaulting to none\n", typeCompress );
           /* fall through */
       case tcompTYPE_NONE:
-          p_fci_internal->compression = tcompTYPE_NONE;
-          p_fci_internal->compress    = compress_NONE;
+          p_fci_internal->compression       = tcompTYPE_NONE;
+          p_fci_internal->compress          = compress_NONE;
+          p_fci_internal->flush             = NULL;
+          p_fci_internal->compress_shutdown = shutdown_NONE;
           break;
       }
   }
