@@ -2486,12 +2486,64 @@ UINT WINAPI MsiProvideAssemblyA( const char *szAssemblyName, const char *szAppCo
     return ERROR_CALL_NOT_IMPLEMENTED;
 }
 
+// TODO: make awstring version of MsiProvideComponent() and use that.
 UINT WINAPI MsiProvideAssemblyW( const WCHAR *szAssemblyName, const WCHAR *szAppContext, DWORD dwInstallMode,
                                  DWORD dwAssemblyInfo, WCHAR *lpPathBuf, DWORD *pcchPathBuf )
 {
-    FIXME( "%s, %s, %#lx, %#lx, %p, %p\n", debugstr_w(szAssemblyName), debugstr_w(szAppContext), dwInstallMode,
+    UINT rc;
+    BOOL win32;
+    WCHAR product[MAX_FEATURE_CHARS+1];
+    WCHAR feature[MAX_FEATURE_CHARS+1];
+    WCHAR feature_parent[MAX_FEATURE_CHARS+1];
+    WCHAR component[MAX_FEATURE_CHARS+1];
+
+    TRACE( "%s, %s, %#lx, %#lx, %p, %p\n", debugstr_w(szAssemblyName), debugstr_w(szAppContext), dwInstallMode,
            dwAssemblyInfo, lpPathBuf, pcchPathBuf );
-    return ERROR_CALL_NOT_IMPLEMENTED;
+
+    win32 = (dwAssemblyInfo == MSIASSEMBLYINFO_WIN32ASSEMBLY);
+
+    rc = msi_lookup_published_assembly(MSIINSTALLCONTEXT_USERMANAGED, szAssemblyName, szAppContext,
+                                        win32, product, feature, component);
+
+    if (rc != ERROR_SUCCESS) {
+        rc = msi_lookup_published_assembly(MSIINSTALLCONTEXT_MACHINE, szAssemblyName, szAppContext,
+                                            win32, product, feature, component);
+    }
+
+    if (rc != ERROR_SUCCESS) {
+        rc = msi_lookup_published_assembly(MSIINSTALLCONTEXT_USERUNMANAGED, szAssemblyName, szAppContext,
+                                            win32, product, feature, component);
+    }
+
+    if (rc != ERROR_SUCCESS)
+        return rc;
+
+    /* If the product contain only 1 feature, it won't be recorded in assembly publication.
+     * Look it up to use as a parameter in MSIProvideComponentW().
+     */
+    if (feature[0] == '\0') {
+        /* First, verify that this product indeed has single feature. */
+        rc = MsiEnumFeaturesW(product, 1, feature, feature_parent);
+        if (rc == ERROR_SUCCESS) {
+            ERR("Product for assembly '%ls' has > 1 feature, but the published assembly record "
+                "doesn't have feature. This can happen if package is installed in older version "
+                "of Wine. Try re-installing this package.\n", szAssemblyName);
+            return ERROR_BAD_CONFIGURATION;
+        }
+
+        /* Now obtain the feature name to use with MsiProvideComponentW(). */
+        rc = MsiEnumFeaturesW(product, 0, feature, feature_parent);
+        if (rc != ERROR_SUCCESS)
+            return ERROR_BAD_CONFIGURATION;
+    }
+
+    if (dwInstallMode == INSTALLMODE_NODETECTION_ANY) {
+        FIXME("INSTALLMODE_NODETECTION_ANY currently behave the same way "
+              "as INSTALLMODE_NODETECTION\n");
+        dwInstallMode = INSTALLMODE_NODETECTION;
+    }
+
+    return MsiProvideComponentW(product, feature, component, dwInstallMode, lpPathBuf, pcchPathBuf);
 }
 
 UINT WINAPI MsiProvideComponentFromDescriptorA( LPCSTR szDescriptor,

@@ -710,3 +710,119 @@ UINT ACTION_MsiUnpublishAssemblies( MSIPACKAGE *package )
     }
     return ERROR_SUCCESS;
 }
+
+UINT msi_lookup_published_assembly(UINT install_context,
+                                   const WCHAR * displayname,
+                                   const WCHAR * app_context,
+                                   BOOL win32,
+                                   WCHAR * out_product_id,
+                                   WCHAR * out_feature,
+                                   WCHAR * out_component_id)
+{
+    UINT rc = ERROR_FUNCTION_FAILED;
+    LONG res;
+    HRESULT hr;
+    HKEY hkey;
+    IAssemblyName * name;
+
+    DWORD num_values;
+    DWORD max_value_name_len;
+    DWORD max_value_data_len;
+    WCHAR * value_name;
+    WCHAR * value_data;
+    DWORD index;
+    BOOL found;
+
+    if (!init_assembly_caches() || !pCreateAssemblyNameObject)
+        return ERROR_FUNCTION_FAILED;
+
+    hr = pCreateAssemblyNameObject( &name, displayname, CANOF_PARSE_DISPLAY_NAME, NULL );
+    if (FAILED( hr )) return ERROR_INVALID_PARAMETER;
+
+    if (app_context)
+    {
+        if ((res = open_local_assembly_key( install_context, win32, app_context, &hkey )))
+        {
+            WARN( "failed to open local assembly key %ld\n", res );
+            rc = ERROR_FUNCTION_FAILED;
+            goto out_name;
+        }
+    }
+    else
+    {
+        if ((res = open_global_assembly_key( install_context, win32, &hkey )))
+        {
+            WARN( "failed to open global assembly key %ld\n", res );
+            rc = ERROR_FUNCTION_FAILED;
+            goto out_name;
+        }
+    }
+
+    rc = RegQueryInfoKeyW(hkey, NULL, NULL, NULL, NULL, NULL, NULL,
+                         &num_values, &max_value_name_len, &max_value_data_len,
+                         NULL, NULL);
+    if (rc != ERROR_SUCCESS)
+        goto out_reg;
+    if (num_values == 0) {
+        rc = ERROR_UNKNOWN_COMPONENT;
+        goto out_reg;
+    }
+
+    value_name = malloc((max_value_name_len + 1) * sizeof(WCHAR));
+    value_data = malloc((max_value_data_len + 1) * sizeof(WCHAR));
+    found = FALSE;
+
+    for (index = 0; index < num_values && !found; index++)
+    {
+        DWORD value_type;
+        DWORD len_value_name = max_value_name_len + 1;
+        DWORD len_value_data = max_value_data_len + 1;
+        IAssemblyName * value_asmname;
+
+        rc = RegEnumValueW(hkey, index, value_name, &len_value_name, NULL,
+                          &value_type, (BYTE *) value_data, &len_value_data);
+        if (rc != ERROR_SUCCESS) {
+            rc = ERROR_BAD_CONFIGURATION;
+            break;
+        }
+
+        if (value_type != REG_MULTI_SZ) {
+            rc = ERROR_BAD_CONFIGURATION;;
+            break;
+        }
+
+        hr = pCreateAssemblyNameObject( &value_asmname, value_name, CANOF_PARSE_DISPLAY_NAME, NULL );
+        if (FAILED( hr )) {
+            rc = ERROR_BAD_CONFIGURATION;
+            break;
+        }
+
+        /* IsEqual will do the right thing if `name` does not specify all
+           components of a display name by just skipping them. */
+        hr = IAssemblyName_IsEqual(name, value_asmname, ASM_CMPF_IL_ALL);
+
+        if (hr == S_OK) {
+            found = TRUE;
+
+            rc = MsiDecomposeDescriptorW(
+                value_data, out_product_id, out_feature, out_component_id, NULL);
+            if (rc == ERROR_INVALID_PARAMETER)
+                rc = ERROR_BAD_CONFIGURATION;
+        } else {
+            index++;
+        }
+
+        IAssemblyName_Release(value_asmname);
+    }
+
+    if (!found && rc == ERROR_SUCCESS)
+        rc = ERROR_UNKNOWN_COMPONENT;
+
+    free(value_name);
+    free(value_data);
+out_reg:
+    RegCloseKey(hkey);
+out_name:
+    IAssemblyName_Release(name);
+    return rc;
+}

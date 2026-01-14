@@ -1080,6 +1080,8 @@ extern void msi_destroy_assembly_caches(void);
 extern BOOL msi_is_global_assembly(MSICOMPONENT *);
 extern IAssemblyEnum *msi_create_assembly_enum(const WCHAR *);
 extern WCHAR *msi_get_assembly_path(const WCHAR *) __WINE_DEALLOC(free) __WINE_MALLOC;
+extern UINT msi_lookup_published_assembly(UINT, const WCHAR *, const WCHAR *,
+                                          BOOL, WCHAR *, WCHAR *, WCHAR *);
 extern WCHAR **msi_split_string(const WCHAR *, WCHAR);
 extern UINT msi_set_original_database_property(MSIDATABASE *, const WCHAR *);
 extern WCHAR *msi_get_error_message(MSIDATABASE *, int) __WINE_DEALLOC(free) __WINE_MALLOC;
