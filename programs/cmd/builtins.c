@@ -1779,14 +1779,14 @@ RETURN_CODE WCMD_pushd(const WCHAR *args)
     struct env_stack *curdir;
     WCHAR *thisdir;
     RETURN_CODE return_code;
+    WCHAR *backslask;
 
     if (!*args)
         return errorlevel = NO_ERROR;
 
-    if (wcschr(args, '/') != NULL) {
-      SetLastError(ERROR_INVALID_PARAMETER);
-      WCMD_print_error();
-      return errorlevel = ERROR_INVALID_FUNCTION;
+    while ((backslask = wcschr(args, '/')))
+    {
+        *backslask = '\\';
     }
 
     curdir  = xalloc(sizeof(struct env_stack));
