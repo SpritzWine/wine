@@ -1223,7 +1223,7 @@
 # @ stub PssCaptureSnapshot
 # @ stub PssDuplicateSnapshot
 # @ stub PssFreeSnapshot
-# @ stub PssQuerySnapshot
+@ stdcall PssQuerySnapshot(ptr long ptr long)
 # @ stub PssWalkMarkerCreate
 # @ stub PssWalkMarkerFree
 # @ stub PssWalkMarkerGetPosition
