@@ -2036,7 +2036,7 @@ HRESULT hid_joystick_create_device( struct dinput *dinput, const GUID *guid, IDi
     *out = NULL;
 
     if (!(impl = calloc( 1, sizeof(*impl) ))) return E_OUTOFMEMORY;
-    dinput_device_init( &impl->base, &hid_joystick_vtbl, guid, dinput );
+    InitializeCriticalSectionEx( &impl->base.crit, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO );
     impl->base.crit.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": hid_joystick.base.crit");
     impl->base.dwCoopLevel = DISCL_NONEXCLUSIVE | DISCL_BACKGROUND;
     impl->base.read_event = CreateEventW( NULL, TRUE, FALSE, NULL );
@@ -2050,6 +2050,7 @@ HRESULT hid_joystick_create_device( struct dinput *dinput, const GUID *guid, IDi
         hr = hid_joystick_device_try_open( impl->device_path, &impl->device, &impl->preparsed, &attrs,
                                            &impl->caps, &impl->base.instance, dinput->dwVersion );
     }
+    dinput_device_init( &impl->base, &hid_joystick_vtbl, guid, dinput );
     if (hr != DI_OK) goto failed;
 
     impl->base.caps.dwDevType = impl->base.instance.dwDevType;

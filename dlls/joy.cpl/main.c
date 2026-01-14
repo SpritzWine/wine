@@ -112,14 +112,24 @@ static void clear_devices(void)
  * get_app_key [internal]
  * Get the default DirectInput key and the selected app config key.
  */
-static BOOL get_app_key(HKEY *defkey, HKEY *appkey)
+BOOL get_app_key(const WCHAR *subkey_name, HKEY *defkey, HKEY *appkey)
 {
+    HKEY tempkey;
     *appkey = 0;
 
     /* Registry key can be found in HKCU\Software\Wine\DirectInput */
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Wine\\DirectInput\\Joysticks", 0, NULL, 0,
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Wine\\DirectInput", 0, NULL, 0,
                 KEY_SET_VALUE | KEY_READ, NULL, defkey, NULL))
         *defkey = 0;
+
+    if ( *defkey && subkey_name )
+    {
+        if ( RegCreateKeyExW( *defkey, subkey_name, 0, NULL, 0,
+                              KEY_SET_VALUE | KEY_READ, NULL, &tempkey, NULL) )
+            tempkey = 0;
+        RegCloseKey( *defkey );
+        *defkey = tempkey;
+    }
 
     return *defkey || *appkey;
 }
@@ -135,7 +145,7 @@ static BOOL get_advanced_key(HKEY *key)
  * set_config_key [internal]
  * Writes a string value to a registry key, deletes the key if value == NULL
  */
-static DWORD set_config_key(HKEY defkey, HKEY appkey, const WCHAR *name, const WCHAR *value)
+DWORD set_config_key(HKEY defkey, HKEY appkey, const WCHAR *name, const WCHAR *value)
 {
     if (value == NULL)
     {
@@ -168,7 +178,7 @@ static void enable_joystick(WCHAR *joy_name, BOOL enable)
 {
     HKEY hkey, appkey;
 
-    get_app_key(&hkey, &appkey);
+    get_app_key(L"Joysticks", &hkey, &appkey);
 
     if (!enable)
         set_config_key(hkey, appkey, joy_name, L"disabled");
@@ -238,7 +248,7 @@ static void refresh_joystick_list( HWND hwnd )
     }
 
     /* Search for disabled joysticks */
-    get_app_key(&hkey, &appkey);
+    get_app_key(L"Joysticks", &hkey, &appkey);
     RegQueryInfoKeyW(hkey, NULL, NULL, NULL, NULL, NULL, NULL, &values, NULL, NULL, NULL, NULL);
 
     for (i=0; i < values; i++)
@@ -260,7 +270,7 @@ static void override_joystick(WCHAR *joy_name, BOOL override)
 {
     HKEY hkey, appkey;
 
-    get_app_key(&hkey, &appkey);
+    get_app_key(L"Joysticks", &hkey, &appkey);
 
     if (override)
         set_config_key(hkey, appkey, joy_name, L"override");

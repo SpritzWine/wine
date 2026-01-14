@@ -31,6 +31,9 @@
 
 #include "resource.h"
 
+extern BOOL get_app_key(const WCHAR *subkey_name, HKEY *defkey, HKEY *appkey);
+extern DWORD set_config_key(HKEY defkey, HKEY appkey, const WCHAR *name, const WCHAR *value);
+
 extern void paint_axes_view( HWND hwnd, UINT32 count, double *axes, const WCHAR **names );
 extern void paint_povs_view( HWND hwnd, UINT32 count, UINT32 *povs );
 extern void paint_buttons_view( HWND hwnd, UINT32 count, BYTE *buttons );

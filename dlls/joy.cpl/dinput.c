@@ -197,6 +197,15 @@ static void clear_effects(void)
 static void set_selected_device( IDirectInputDevice8W *device )
 {
     IDirectInputDevice8W *previous;
+    DIPROPDWORD ac_prop = {
+        .diph = {
+            .dwSize = sizeof(DIPROPDWORD),
+            .dwHeaderSize = sizeof(DIPROPHEADER),
+            .dwHow = DIPH_DEVICE,
+        },
+    };
+    HANDLE ac_button = GetDlgItem( dialog_hwnd, IDC_DI_AUTOCENTER );
+    HRESULT hr;
 
     EnterCriticalSection( &state_cs );
 
@@ -212,6 +221,16 @@ static void set_selected_device( IDirectInputDevice8W *device )
     {
         IDirectInputDevice8_AddRef( device );
         IDirectInputDevice8_SetEventNotification( device, state_event );
+        hr = IDirectInputDevice8_GetProperty( device, DIPROP_AUTOCENTER, &ac_prop.diph);
+        if ( SUCCEEDED(hr) )
+        {
+            EnableWindow( ac_button, TRUE);
+            SendMessageW( ac_button, BM_SETCHECK, ac_prop.dwData == DIPROPAUTOCENTER_ON, 0 );
+        }
+        else
+        {
+            EnableWindow( ac_button, FALSE);
+        }
         IDirectInputDevice8_Acquire( device );
     }
 
@@ -275,6 +294,52 @@ static void clear_devices(void)
         list_remove( &entry->entry );
         IDirectInputDevice8_Release( entry->device );
         free( entry );
+    }
+}
+
+static void set_autocenter_initial( BOOL enabled )
+{
+    IDirectInputDevice8W *device;
+
+    if ( (device = get_selected_device()) )
+    {
+        DIDEVICEINSTANCEW instance = { .dwSize = sizeof(DIDEVICEINSTANCEW) };
+        HRESULT hr;
+
+        if ( FAILED(hr = IDirectInputDevice8_GetDeviceInfo( device, &instance )) )
+        {
+            WARN( "Unable to set autocenter default as get device info failed, hr %#lx\n", hr );
+        }
+        else
+        {
+            DIPROPDWORD autocenter = {
+                .diph = {
+                    .dwSize = sizeof(DIPROPDWORD),
+                    .dwHeaderSize = sizeof(DIPROPHEADER),
+                    .dwHow = DIPH_DEVICE,
+                },
+            };
+            HKEY defkey, appkey;
+
+            get_app_key(L"Autocenter", &defkey, &appkey);
+
+            if (!enabled)
+                set_config_key(defkey, appkey, instance.tszInstanceName, L"off");
+            else
+                set_config_key(defkey, appkey, instance.tszInstanceName, L"on");
+
+            if (defkey) RegCloseKey(defkey);
+            if (appkey) RegCloseKey(appkey);
+
+            IDirectInputDevice8_Unacquire( device );
+            autocenter.dwData = enabled ? DIPROPAUTOCENTER_ON : DIPROPAUTOCENTER_OFF;
+            if ( FAILED(hr = IDirectInputDevice8_SetProperty(device, DIPROP_AUTOCENTER, &autocenter.diph)) )
+            {
+                WARN( "Unable to set autocenter on device as set property failed, hr %#lx\n", hr );
+            }
+            IDirectInputDevice8_Acquire( device );
+            IDirectInputDevice8_Release( device );
+        }
     }
 }
 
@@ -806,6 +871,7 @@ INT_PTR CALLBACK test_di_dialog_proc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM
         .dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
         .dbcc_classguid = GUID_DEVINTERFACE_HID,
     };
+    DWORD sel;
 
     TRACE( "hwnd %p, msg %#x, wparam %#Ix, lparam %#Ix\n", hwnd, msg, wparam, lparam );
 
@@ -829,6 +895,11 @@ INT_PTR CALLBACK test_di_dialog_proc( HWND hwnd, UINT msg, WPARAM wparam, LPARAM
 
         case MAKEWPARAM( IDC_DI_EFFECTS, LBN_SELCHANGE ):
             handle_di_effects_change( hwnd );
+            break;
+
+        case MAKEWPARAM( IDC_DI_AUTOCENTER, BN_CLICKED ):
+            sel = SendMessageW( GetDlgItem( hwnd, IDC_DI_AUTOCENTER ), BM_GETCHECK, 0, 0 );
+            set_autocenter_initial( sel );
             break;
         }
         return TRUE;

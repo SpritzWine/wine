@@ -116,6 +116,7 @@ struct dinput_device
     BYTE device_state_report_id;
     BYTE device_state[DEVICE_STATE_MAX_SIZE];
 
+    BOOL autocenter_warning;
     BOOL autocenter;
     LONG device_gain;
     DWORD force_feedback_state;

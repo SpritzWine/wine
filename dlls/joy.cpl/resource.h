@@ -56,6 +56,7 @@
 #define IDC_DI_POVS         2102
 #define IDC_DI_BUTTONS      2103
 #define IDC_DI_EFFECTS      2104
+#define IDC_DI_AUTOCENTER   2105
 
 #define IDC_XI_USER_0       2200
 #define IDC_XI_USER_1       2201

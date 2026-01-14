@@ -145,6 +145,72 @@ DWORD get_config_key( HKEY defkey, HKEY appkey, const WCHAR *name, WCHAR *buffer
     return ERROR_FILE_NOT_FOUND;
 }
 
+static BOOL device_instance_autocenter_initial( DIDEVICEINSTANCEW *instance )
+{
+    static const WCHAR on_str[] = {'o', 'n', 0};
+    static const WCHAR off_str[] = {'o', 'f', 'f', 0};
+    static const WCHAR joystick_key[] = {'A', 'u', 't', 'o', 'c', 'e', 'n', 't', 'e', 'r', 0};
+    WCHAR buffer[MAX_PATH];
+    HKEY hkey, appkey, temp;
+    BOOL autocenter = DIPROPAUTOCENTER_OFF;
+
+    /* Autocenter default based on type (joystick is on, anything fancier is off) */
+    switch ( GET_DIDEVICE_TYPE(instance->dwDevType) )
+    {
+    case DI8DEVTYPE_JOYSTICK:
+        autocenter = DIPROPAUTOCENTER_ON;
+        break;
+    default:
+        autocenter = DIPROPAUTOCENTER_OFF;
+        break;
+    }
+    TRACE( "Joystick '%s' autocenter default is %s due to device type 0x%02x.\n",
+           debugstr_w(instance->tszInstanceName),
+           autocenter == DIPROPAUTOCENTER_ON ? "on" : "off" ,
+           GET_DIDEVICE_TYPE(instance->dwDevType) );
+
+    /* Autocenter settings are in the 'Autocenter' subkey */
+    get_app_key( &hkey, &appkey );
+
+    if (appkey)
+    {
+        if (RegOpenKeyW( appkey, joystick_key, &temp )) temp = 0;
+        RegCloseKey( appkey );
+        appkey = temp;
+    }
+
+    if (hkey)
+    {
+        if (RegOpenKeyW( hkey, joystick_key, &temp )) temp = 0;
+        RegCloseKey( hkey );
+        hkey = temp;
+    }
+
+    /* Look for the "controllername"="on"/"off" key */
+    if (!get_config_key( hkey, appkey, instance->tszInstanceName, buffer, sizeof(buffer) ))
+    {
+        if (!wcscmp( on_str, buffer ))
+        {
+            TRACE( "Joystick '%s' autocenter default overridden to on based on registry key.\n", debugstr_w(instance->tszInstanceName) );
+            autocenter = DIPROPAUTOCENTER_ON;
+        }
+        else if (!wcscmp( off_str, buffer ))
+        {
+            TRACE( "Joystick '%s' autocenter default overridden to off based on registry key.\n", debugstr_w(instance->tszInstanceName) );
+            autocenter = DIPROPAUTOCENTER_OFF;
+        }
+        else
+        {
+            WARN( "Joystick '%s' autocenter registry key invalid (can only be 'on' or 'off').\n", debugstr_w(instance->tszInstanceName) );
+        }
+    }
+
+    if (appkey) RegCloseKey( appkey );
+    if (hkey) RegCloseKey( hkey );
+
+    return autocenter;
+}
+
 BOOL device_instance_is_disabled( DIDEVICEINSTANCEW *instance, BOOL *override )
 {
     static const WCHAR disabled_str[] = {'d', 'i', 's', 'a', 'b', 'l', 'e', 'd', 0};
@@ -495,6 +561,10 @@ static HRESULT WINAPI dinput_device_Acquire( IDirectInputDevice8W *iface )
         impl->status = STATUS_ACQUIRED;
         if (FAILED(hr = impl->vtbl->acquire( iface ))) impl->status = STATUS_UNACQUIRED;
     }
+    if (impl->autocenter_warning)
+        WARN( "Joystick %s was acquired without checking or setting autocenter, defaulting %s (override with 'Autocenter' registry key)\n",
+              debugstr_w(impl->instance.tszInstanceName),
+              impl->autocenter == DIPROPAUTOCENTER_ON ? "on" : "off" );
     LeaveCriticalSection( &impl->crit );
     if (hr != DI_OK) return hr;
 
@@ -1125,6 +1195,7 @@ static HRESULT dinput_device_get_property( IDirectInputDevice8W *iface, const GU
         DIPROPDWORD *value = (DIPROPDWORD *)header;
         if (!(impl->caps.dwFlags & DIDC_FORCEFEEDBACK)) return DIERR_UNSUPPORTED;
         value->dwData = impl->autocenter;
+        impl->autocenter_warning = FALSE;
         return DI_OK;
     }
     case (DWORD_PTR)DIPROP_BUFFERSIZE:
@@ -1309,6 +1380,7 @@ static HRESULT dinput_device_set_property( IDirectInputDevice8W *iface, const GU
         const DIPROPDWORD *value = (const DIPROPDWORD *)header;
         if (!(impl->caps.dwFlags & DIDC_FORCEFEEDBACK)) return DIERR_UNSUPPORTED;
         impl->autocenter = value->dwData;
+        impl->autocenter_warning = FALSE;
         return DI_OK;
     }
     case (DWORD_PTR)DIPROP_FFGAIN:
@@ -2153,9 +2225,9 @@ void dinput_device_init( struct dinput_device *device, const struct dinput_devic
     device->caps.dwSize = sizeof(DIDEVCAPS);
     device->caps.dwFlags = DIDC_ATTACHED | DIDC_EMULATED;
     device->device_gain = 10000;
-    device->autocenter = DIPROPAUTOCENTER_ON;
+    device->autocenter_warning = TRUE;
+    device->autocenter = device_instance_autocenter_initial( &device->instance );
     device->force_feedback_state = DIGFFS_STOPPED | DIGFFS_EMPTY;
-    InitializeCriticalSectionEx( &device->crit, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO );
     dinput_internal_addref( (device->dinput = dinput) );
     device->vtbl = vtbl;
 
