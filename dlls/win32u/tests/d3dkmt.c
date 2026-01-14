@@ -6218,9 +6218,9 @@ static void test_d3d12_fence_from_vulkan_timeline( ID3D12Device *device, struct 
     HRESULT hr;
     DWORD ret;
 
-    p_vkGetSemaphoreCounterValue = (void *)p_vkGetDeviceProcAddr( dev->device, "vkGetSemaphoreCounterValue" );
-    p_vkSignalSemaphore = (void *)p_vkGetDeviceProcAddr( dev->device, "vkSignalSemaphore" );
-    p_vkWaitSemaphores = (void *)p_vkGetDeviceProcAddr( dev->device, "vkWaitSemaphores" );
+    p_vkGetSemaphoreCounterValue = (void *)p_vkGetDeviceProcAddr( dev->device, "vkGetSemaphoreCounterValueKHR" );
+    p_vkSignalSemaphore = (void *)p_vkGetDeviceProcAddr( dev->device, "vkSignalSemaphoreKHR" );
+    p_vkWaitSemaphores = (void *)p_vkGetDeviceProcAddr( dev->device, "vkWaitSemaphoresKHR" );
 
     hr = ID3D12Device_OpenSharedHandle( device, handle, &IID_ID3D12Fence, (void **)&fence );
     if (FAILED(hr))

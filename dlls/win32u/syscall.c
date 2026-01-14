@@ -34,6 +34,8 @@
 #include "wine/unixlib.h"
 #include "win32syscalls.h"
 
+#include "unixlib.h"
+
 ULONG_PTR zero_bits = 0;
 
 static void stub_syscall( const char *name )
@@ -89,8 +91,14 @@ static const char *usercall_names[NtUserCallCount] =
 #undef USER32_CALLBACK_ENTRY
 };
 
-static NTSTATUS init( void *args )
+static PRTL_THREAD_START_ROUTINE get_thread_start_routine( UINT64 value )
 {
+    return (PRTL_THREAD_START_ROUTINE)(UINT_PTR)value;
+}
+
+static NTSTATUS process_attach( void *args )
+{
+    struct process_attach_params *params = args;
 #ifdef _WIN64
     if (NtCurrentTeb()->WowTebOffset)
     {
@@ -102,10 +110,11 @@ static NTSTATUS init( void *args )
 #endif
     KeAddSystemServiceTable( syscalls, NULL, ARRAY_SIZE(syscalls), arguments, 1 );
     ntdll_add_syscall_debug_info( 1, syscall_names, usercall_names );
+    timeline_thread_proc = get_thread_start_routine( params->timeline_thread_proc );
     return STATUS_SUCCESS;
 }
 
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
-    init,
+    [unix_process_attach] = process_attach,
 };

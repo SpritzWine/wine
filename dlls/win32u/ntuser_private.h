@@ -225,6 +225,9 @@ extern BOOL set_dc_pixel_format_internal( HDC hdc, int format, struct list *draw
 extern void release_opengl_drawables( struct list *drawables );
 
 /* vulkan.c */
+extern PRTL_THREAD_START_ROUTINE timeline_thread_proc;
+extern NTSTATUS timeline_thread(void);
+
 extern struct vulkan_instance *vulkan_instance_create( const struct vulkan_instance_extensions *extensions );
 
 /* window.c */

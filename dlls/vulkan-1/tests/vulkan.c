@@ -1573,10 +1573,6 @@ static void test_timeline_semaphore(VkInstance vk_instance, VkPhysicalDevice vk_
     ok(value == 1, "got %#I64x\n", value);
 
 
-    /* following tests are confusing the vulkan driver on Linux */
-    if (winetest_platform_is_wine) goto done;
-
-
     /* large value jumps are allowed */
 
     signal_info.semaphore = vk_semaphore;
@@ -1686,7 +1682,6 @@ static void test_timeline_semaphore(VkInstance vk_instance, VkPhysicalDevice vk_
     ok(value == 3, "got %#I64x\n", value);
 
 
-done:
     vkDestroySemaphore(vk_device, vk_semaphore, NULL);
     vkDestroySemaphore(vk_device, vk_semaphore2, NULL);
     vkDestroyDevice(vk_device, NULL);

@@ -212,6 +212,13 @@ struct vulkan_device
     ALL_VK_DEVICE_FUNCS
 #undef USE_VK_FUNC
 
+    HANDLE      timeline_thread;
+    VkSemaphore timeline_semaphore;
+    uint64_t    timeline_value;
+    struct list timeline_waits;
+    struct list timeline_signals;
+    struct list timeline_events;
+
     uint64_t queue_count;
     struct vulkan_queue queues[];
 };
@@ -340,17 +347,24 @@ struct vulkan_funcs
     PFN_vkGetPhysicalDeviceSurfaceFormats2KHR p_vkGetPhysicalDeviceSurfaceFormats2KHR;
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR p_vkGetPhysicalDeviceSurfaceFormatsKHR;
     PFN_vkGetPhysicalDeviceWin32PresentationSupportKHR p_vkGetPhysicalDeviceWin32PresentationSupportKHR;
+    PFN_vkGetSemaphoreCounterValue p_vkGetSemaphoreCounterValue;
+    PFN_vkGetSemaphoreCounterValueKHR p_vkGetSemaphoreCounterValueKHR;
     PFN_vkGetSemaphoreWin32HandleKHR p_vkGetSemaphoreWin32HandleKHR;
     PFN_vkImportFenceWin32HandleKHR p_vkImportFenceWin32HandleKHR;
     PFN_vkImportSemaphoreWin32HandleKHR p_vkImportSemaphoreWin32HandleKHR;
     PFN_vkMapMemory p_vkMapMemory;
     PFN_vkMapMemory2KHR p_vkMapMemory2KHR;
+    PFN_vkQueueBindSparse p_vkQueueBindSparse;
     PFN_vkQueuePresentKHR p_vkQueuePresentKHR;
     PFN_vkQueueSubmit p_vkQueueSubmit;
     PFN_vkQueueSubmit2 p_vkQueueSubmit2;
     PFN_vkQueueSubmit2KHR p_vkQueueSubmit2KHR;
+    PFN_vkSignalSemaphore p_vkSignalSemaphore;
+    PFN_vkSignalSemaphoreKHR p_vkSignalSemaphoreKHR;
     PFN_vkUnmapMemory p_vkUnmapMemory;
     PFN_vkUnmapMemory2KHR p_vkUnmapMemory2KHR;
+    PFN_vkWaitSemaphores p_vkWaitSemaphores;
+    PFN_vkWaitSemaphoresKHR p_vkWaitSemaphoresKHR;
 };
 
 /* interface between win32u and the user drivers */
