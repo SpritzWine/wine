@@ -22,12 +22,71 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <process.h>
 #include "windef.h"
 #include "winbase.h"
 
+/* Reference: mingw-w64-crt: crt/gccmain.c */
+typedef void (*fnptr)(void);
+extern fnptr __CTOR_LIST__[];
+extern fnptr __DTOR_LIST__[];
+
+extern _PIFV __xi_a[];
+extern _PIFV __xi_z[];
+extern _PVFV __xc_a[];
+extern _PVFV __xc_z[];
+extern _PVFV __xt_a[];
+extern _PVFV __xt_z[];
+
+static inline void initterm( _PVFV *start,_PVFV *end )
+{
+  _PVFV* current = start;
+
+  while (current<end)
+  {
+    if (*current)
+      (**current)();
+    current++;
+  }
+}
+
+static inline int initterm_e( _PIFV *table, _PIFV *end )
+{
+    int res = 0;
+
+    while (!res && table < end) {
+        if (*table)
+            res = (**table)();
+        table++;
+    }
+    return res;
+}
+
+static void do_global_ctors(void)
+{
+    ULONG_PTR nfns = (ULONG_PTR)__CTOR_LIST__[0], i;
+    if (nfns == (ULONG_PTR)-1)
+        for (nfns = 0; __CTOR_LIST__[nfns + 1]; nfns++);
+    for (i = nfns; i >= 1; i--) __CTOR_LIST__[i]();
+    if (initterm_e( __xi_a, __xi_z ) != 0) return;
+    initterm( __xc_a, __xc_z );
+}
+
+
+static void do_global_dtors(void)
+{
+    SIZE_T i;
+    for (i = 1; __DTOR_LIST__[i]; i++) __DTOR_LIST__[i]();
+    initterm( __xt_a, __xt_z );
+}
+
 BOOL WINAPI DllMainCRTStartup( HINSTANCE inst, DWORD reason, void *reserved )
 {
-    return DllMain( inst, reason, reserved );
+    BOOL ret;
+    if (reason == DLL_PROCESS_ATTACH) do_global_ctors();
+    ret = DllMain( inst, reason, reserved );
+    if (reason == DLL_PROCESS_DETACH) do_global_dtors();
+    return ret;
 }
 
 #endif

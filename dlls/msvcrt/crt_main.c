@@ -31,6 +31,7 @@
 #include "winternl.h"
 
 int __cdecl main(int argc, char **argv, char **env);
+void do_global_ctors( void );
 
 static const IMAGE_NT_HEADERS *get_nt_header( void )
 {
@@ -54,6 +55,7 @@ int __cdecl mainCRTStartup(void)
     __getmainargs(&argc, &argv, &env, 0, &new_mode);
 #endif
     _set_app_type(get_nt_header()->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI ? _crt_gui_app : _crt_console_app);
+    do_global_ctors();
 
     ret = main(argc, argv, env);
 
