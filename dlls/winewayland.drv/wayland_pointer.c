@@ -172,8 +172,14 @@ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
 {
     struct wayland_pointer *pointer = &process_wayland.pointer;
 
-    /* Ignore absolute motion events if in relative mode. */
-    if (pointer->zwp_relative_pointer_v1) return;
+    /* Ignore absolute motion events if the pointer is locked and the pointer is
+     * focused on the lock surface. Relative mode is or will be enabled. The
+     * latter case may happen if a motion event is being handled immediately
+     * after an enter event, and the foreground thread has yet to re-enable
+     * relative motion. */
+    if (pointer->zwp_locked_pointer_v1 &&
+            pointer->focused_hwnd == pointer->constraint_hwnd)
+        return;
 
     pointer_handle_motion_internal(sx, sy);
 }
@@ -186,6 +192,8 @@ static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
 {
     struct wayland_pointer *pointer = &process_wayland.pointer;
     HWND hwnd;
+    BOOL locked = FALSE;
+    BOOL focus_on_constraint_hwnd = FALSE;
 
     InterlockedExchange(&process_wayland.input_serial, serial);
 
@@ -199,6 +207,10 @@ static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
     pthread_mutex_lock(&pointer->mutex);
     pointer->focused_hwnd = hwnd;
     pointer->enter_serial = serial;
+    if (pointer->zwp_locked_pointer_v1)
+        locked = TRUE;
+    if (hwnd == pointer->constraint_hwnd)
+        focus_on_constraint_hwnd = TRUE;
     pthread_mutex_unlock(&pointer->mutex);
 
     /* The cursor is undefined at every enter, so we set it again with
@@ -208,7 +220,8 @@ static void pointer_handle_enter(void *data, struct wl_pointer *wl_pointer,
     /* Handle the enter as a motion, to account for cases where the
      * window first appears beneath the pointer and won't get a separate
      * motion event. */
-    pointer_handle_motion_internal(sx, sy);
+    if (!locked || !focus_on_constraint_hwnd)
+        pointer_handle_motion_internal(sx, sy);
 }
 
 static void pointer_handle_leave(void *data, struct wl_pointer *wl_pointer,
