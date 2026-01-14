@@ -792,6 +792,26 @@ static HRESULT WINAPI ISF_Desktop_fnGetDetailsOf (IShellFolder2 * iface,
     if (!pidl)
         return SHELL32_GetColumnDetails(desktop_header, iColumn, psd);
 
+    if (desktop_header[iColumn].pid == PID_STG_SIZE && _ILIsValue(pidl) && !_ILIsFolder(pidl))
+    {
+        WCHAR file_path[MAX_PATH];
+        size_t file_path_len;
+        WIN32_FILE_ATTRIBUTE_DATA file_attributes;
+
+        wcscpy(file_path, This->sPathTarget);
+        wcscat(file_path, L"\\");
+        file_path_len = wcslen(file_path);
+
+        if (_ILSimpleGetTextW(pidl, file_path + file_path_len, MAX_PATH - file_path_len) &&
+            GetFileAttributesExW(file_path, GetFileExInfoStandard, &file_attributes))
+        {
+            psd->str.uType = STRRET_CSTR;
+            StrFormatByteSize64A((LONGLONG)file_attributes.nFileSizeHigh << 32 | file_attributes.nFileSizeLow,
+                                 psd->str.cStr, MAX_PATH);
+            return S_OK;
+        }
+    }
+
     return shellfolder_get_file_details( iface, pidl, desktop_header, iColumn, psd );
 }
 

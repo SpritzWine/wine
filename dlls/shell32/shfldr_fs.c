@@ -1035,6 +1035,22 @@ IShellFolder_fnGetDetailsOf (IShellFolder2 * iface, LPCITEMIDLIST pidl,
 
     if (!pidl) return SHELL32_GetColumnDetails(GenericSFHeader, iColumn, psd);
 
+    if (GenericSFHeader[iColumn].pid == PID_STG_SIZE && _ILIsValue(pidl) && !_ILIsFolder(pidl))
+    {
+        WCHAR file_path[MAX_PATH];
+        WIN32_FILE_ATTRIBUTE_DATA file_attributes;
+
+        get_display_name(file_path, This->sPathTarget, pidl, FALSE);
+
+        if (GetFileAttributesExW(file_path, GetFileExInfoStandard, &file_attributes))
+        {
+            psd->str.uType = STRRET_CSTR;
+            StrFormatByteSize64A((LONGLONG)file_attributes.nFileSizeHigh << 32 | file_attributes.nFileSizeLow,
+                                 psd->str.cStr, MAX_PATH);
+            return S_OK;
+        }
+    }
+
     return shellfolder_get_file_details( iface, pidl, GenericSFHeader, iColumn, psd );
 }
 
