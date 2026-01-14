@@ -623,7 +623,7 @@ NTSTATUS WINAPI RtlCreateProcessParametersEx( RTL_USER_PROCESS_PARAMETERS **resu
             curdir = cur_params->CurrentDirectory.DosPath;
     }
     else curdir = *CurrentDirectoryName;
-    curdir.MaximumLength = MAX_PATH * sizeof(WCHAR);
+    curdir.MaximumLength = max(curdir.Length, MAX_PATH * sizeof(WCHAR));
 
     if (!CommandLine) CommandLine = ImagePathName;
     if (!Environment && cur_params) Environment = cur_params->Environment;
