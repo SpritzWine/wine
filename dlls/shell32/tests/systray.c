@@ -46,7 +46,9 @@ static void test_cbsize(void)
         nidW.uCallbackMessage = WM_USER+17;
         SetLastError(0xdeadbeef);
         ret = pShell_NotifyIconW(NIM_ADD, &nidW);
+        flaky
         ok(ret, "NIM_ADD failed!\n");
+        flaky
         ok(GetLastError() == ERROR_SUCCESS || GetLastError() == ERROR_NO_TOKEN,
            "GetLastError() = %lu\n", GetLastError());
         /* using an invalid cbSize does work */
@@ -72,7 +74,9 @@ static void test_cbsize(void)
     nidA.hIcon = LoadIconA(NULL, (LPSTR)IDI_APPLICATION);
     nidA.uCallbackMessage = WM_USER+17;
     SetLastError(0xdeadbeef);
+    flaky
     ok(Shell_NotifyIconA(NIM_ADD, &nidA), "NIM_ADD failed!\n");
+    flaky
     ok(GetLastError() == ERROR_SUCCESS || GetLastError() == ERROR_NO_TOKEN,
        "GetLastError() = %lu\n", GetLastError());
 

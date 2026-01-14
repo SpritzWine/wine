@@ -198,10 +198,16 @@ static UINT_PTR handle_appbarmessage(DWORD msg, struct appbar_data_msg *abd)
         }
         return TRUE;
     case ABM_GETSTATE:
-        FIXME( "SHAppBarMessage(ABM_GETSTATE): stub\n" );
+        {
+            static int once;
+            if (!once++) FIXME( "SHAppBarMessage(ABM_GETSTATE): stub\n" );
+        }
         return ABS_ALWAYSONTOP | ABS_AUTOHIDE;
     case ABM_GETTASKBARPOS:
-        FIXME( "SHAppBarMessage(ABM_GETTASKBARPOS, hwnd=%p): stub\n", hwnd );
+        {
+            static int once;
+            if (!once++) FIXME( "SHAppBarMessage(ABM_GETTASKBARPOS, hwnd=%p): stub\n", hwnd );
+        }
         /* Report the taskbar is at the bottom of the screen. */
         abd->rc.left = 0;
         abd->rc.right = GetSystemMetrics(SM_CXSCREEN);

@@ -412,6 +412,13 @@ static void test_appbarget(void)
         ok(abd.rc.left != 0xcccccccc, "rc not updated\n");
     }
 
+    memset(&abd, 0xcc, sizeof(abd));
+    abd.cbSize = sizeof(abd);
+    ret = SHAppBarMessage(ABM_GETSTATE, &abd);
+    ok(!(ret & ~(ABS_ALWAYSONTOP|ABS_AUTOHIDE)), "ret 0x%Ix which is not a recognized taskbar state\n", ret);
+    /* unclear what to expect. Windows does not touch it at all. Wine clips it to 32bits */
+    ok(abd.hWnd == (HWND)0xcccccccc || abd.hWnd == (HWND)0xcccccccccccccccc, "hWnd overwritten hWnd=%p\n", abd.hWnd);
+
     return;
 }
 
