@@ -569,6 +569,7 @@ static WCHAR *ft_face_get_style_name( FT_Face ft_face, LANGID langid )
 
 static WCHAR *ft_face_get_full_name( FT_Face ft_face, LANGID langid )
 {
+    static const WCHAR regular_w[] = {'R', 'e', 'g', 'u', 'l', 'a', 'r',0};
     static const WCHAR space_w[] = {' ',0};
     WCHAR *full_name, *style_name;
     SIZE_T length;
@@ -579,11 +580,14 @@ static WCHAR *ft_face_get_full_name( FT_Face ft_face, LANGID langid )
     full_name = ft_face_get_family_name( ft_face, langid );
     style_name = ft_face_get_style_name( ft_face, langid );
 
-    length = lstrlenW( full_name ) + lstrlenW( space_w ) + lstrlenW( style_name ) + 1;
-    full_name = realloc( full_name, length * sizeof(WCHAR) );
+    if (wcsicmp(style_name, regular_w)) {
+        length = lstrlenW( full_name ) + lstrlenW( space_w ) + lstrlenW( style_name ) + 1;
+        full_name = realloc( full_name, length * sizeof(WCHAR) );
 
-    lstrcatW( full_name, space_w );
-    lstrcatW( full_name, style_name );
+        lstrcatW( full_name, space_w );
+        lstrcatW( full_name, style_name );
+    }
+
     free( style_name );
 
     WARN( "full name not found, using %s instead\n", debugstr_w(full_name) );
@@ -3328,11 +3332,9 @@ static BOOL freetype_set_outline_text_metrics( struct gdi_font *font )
 
     /* note: we store actual pointers in the names instead of offsets,
        they are fixed up when returned to the app */
-    if (!(font->otm.otmpFullName = (char *)get_face_name( ft_face, TT_NAME_ID_UNIQUE_ID, system_lcid )))
-    {
-        static const WCHAR fake_nameW[] = {'f','a','k','e',' ','n','a','m','e', 0};
-        FIXME("failed to read full_nameW for font %s!\n", wine_dbgstr_w((WCHAR *)font->otm.otmpFamilyName));
-        font->otm.otmpFullName = (char *)wcsdup( fake_nameW );
+    font->otm.otmpFullName = (char *)get_face_name( ft_face, TT_NAME_ID_UNIQUE_ID, system_lcid );
+    if (!font->otm.otmpFullName) {
+        font->otm.otmpFullName = (char *)ft_face_get_full_name(ft_face, system_lcid);
     }
     needed = sizeof(font->otm) + (lstrlenW( (WCHAR *)font->otm.otmpFamilyName ) + 1 +
                                   lstrlenW( (WCHAR *)font->otm.otmpStyleName ) + 1 +
