@@ -2210,22 +2210,6 @@ struct object *default_fd_get_sync( struct object *obj )
     return sync;
 }
 
-/* default get_full_name() routine for objects with an fd */
-WCHAR *default_fd_get_full_name( struct object *obj, data_size_t max, data_size_t *ret_len )
-{
-    struct fd *fd = get_obj_fd( obj );
-    WCHAR *ret = NULL;
-
-    if (fd->nt_name)
-    {
-        *ret_len = fd->nt_namelen;
-        ret = memdup( fd->nt_name, fd->nt_namelen );
-    }
-    release_object( fd );
-    if (*ret_len > max) set_error( STATUS_BUFFER_OVERFLOW );
-    return ret;
-}
-
 int default_fd_get_poll_events( struct fd *fd )
 {
     int events = 0;

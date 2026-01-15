@@ -5741,6 +5741,49 @@ static void test_GetFinalPathNameByHandleW(void)
     CloseHandle(file);
 }
 
+static void test_GetFinalPathNameByHandleW_with_symlink(void)
+{
+    WCHAR junction_path[MAX_PATH];
+    WCHAR *userprofile_end;
+    DWORD attrs;
+    BOOL is_link;
+    HANDLE file;
+    WCHAR result_path[MAX_PATH];
+    UNICODE_STRING nt_path;
+
+    if (!pGetFinalPathNameByHandleW)
+    {
+        win_skip("GetFinalPathNameByHandleW is missing\n");
+        return;
+    }
+
+    GetEnvironmentVariableW(L"USERPROFILE", junction_path, sizeof(junction_path));
+    userprofile_end = junction_path + wcslen(junction_path);
+
+    wcscpy(userprofile_end, L"\\My Documents");
+    attrs = GetFileAttributesW(junction_path);
+    is_link = (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_REPARSE_POINT));
+    todo_wine ok(is_link, "%s should be a junction\n", wine_dbgstr_w(junction_path));
+    if (!is_link)
+    {
+        /* use another directory on Wine */
+        wcscpy(userprofile_end, L"\\Desktop");
+        attrs = GetFileAttributesW(junction_path);
+        is_link = (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_REPARSE_POINT));
+        ok(is_link, "%s should be a symlink on Wine\n", wine_dbgstr_w(junction_path));
+    }
+
+    file = CreateFileW(junction_path, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS, 0);
+    pGetFinalPathNameByHandleW(file, result_path, sizeof(result_path), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    CloseHandle(file);
+
+    pRtlDosPathNameToNtPathName_U(junction_path, &nt_path, NULL, NULL);
+    /* extra +4 to skip \\?\ prefix, since it's \??\ instead in nt_path */
+    ok(wcscmp(result_path+4, nt_path.Buffer+4) != 0,
+       "expected %s and %s to be different\n", wine_dbgstr_w(result_path), wine_dbgstr_w(nt_path.Buffer));
+    RtlFreeUnicodeString(&nt_path);
+}
+
 static void test_SetFileInformationByHandle(void)
 {
     FILE_ATTRIBUTE_TAG_INFO fileattrinfo = { 0 };
@@ -6961,6 +7004,7 @@ START_TEST(file)
     test_file_access();
     test_GetFinalPathNameByHandleA();
     test_GetFinalPathNameByHandleW();
+    test_GetFinalPathNameByHandleW_with_symlink();
     test_SetFileInformationByHandle();
     test_SetFileRenameInfo();
     test_GetFileAttributesExW();
