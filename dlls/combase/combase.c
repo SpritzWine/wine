@@ -2095,11 +2095,64 @@ HRESULT WINAPI CoRevokeInitializeSpy(ULARGE_INTEGER cookie)
 
 static BOOL com_peek_message(struct apartment *apt, MSG *msg)
 {
-    /* First try to retrieve messages for incoming COM calls to the apartment window */
-    return (apt->win && PeekMessageW(msg, apt->win, 0, 0, PM_REMOVE | PM_NOYIELD)) ||
-            /* Next retrieve other messages necessary for the app to remain responsive */
-            PeekMessageW(msg, NULL, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE | PM_NOYIELD) ||
-            PeekMessageW(msg, NULL, 0, 0, PM_QS_PAINT | PM_QS_SENDMESSAGE | PM_REMOVE | PM_NOYIELD);
+    BOOL PeekMessage_RPC;
+    /* This first peek (and no other) must be "without filtering messages" in order to reset QS_ALLPOSTMESSAGE */
+    if (apt->win)
+    {
+        /* Try to retrieve messages for incoming COM calls to the apartment window.
+         * peeking at a specific hWnd doesn't count as filtering, so this clears QS_ALLPOSTMESSAGE. */
+        PeekMessage_RPC = PeekMessageW(msg, apt->win, 0, 0, PM_REMOVE | PM_NOYIELD);
+    }
+    else
+    {
+        /* Reset QS_ALLPOSTMESSAGE without removing anything from the queue. */
+        PeekMessageW(NULL, NULL, 0, 0, PM_QS_POSTMESSAGE | PM_NOREMOVE | PM_NOYIELD);
+        PeekMessage_RPC = FALSE;
+    }
+
+    return PeekMessage_RPC ||
+            /* Next retrieve other messages necessary for the app to remain responsive.
+             * These subsequent peeks must all be filtered; clearing the queue status again could
+             * prevent newly-posted messages that match earlier PeekMessage calls from waking MsgWait. */
+            PeekMessageW(msg, NULL, WM_DDE_FIRST, WM_DDE_LAST, PM_REMOVE | PM_NOYIELD) || /* filters by WM_DDE_* */
+            PeekMessageW(msg, NULL, 0, 0, PM_QS_PAINT | PM_QS_SENDMESSAGE | PM_REMOVE | PM_NOYIELD); /* filters by PM_QS_*, excluding POSTMESSAGE */
+
+    /* When com_peek_message returns FALSE, it cleared QS_ALLPOSTMESSAGE and subsequently found nothing interesting
+     * Caller may use MsgWaitForMultipleObjects(PM_QS_ALLPOSTMESSAGE) to wait for new activity.
+     *
+     * When it returns TRUE, *msg contains the next message that should be dispatched,
+     * The queue contains un-examined messages, so com_peek_message should be called again
+     * (to finish draining it) before using MsgWaitForMultipleObjects */
+}
+
+static HRESULT com_filter_messagepending(struct tlsdata *tlsdata, DWORD dwTickCount)
+{
+    struct apartment *apt = tlsdata->apt;
+
+    if (apt->filter)
+    {
+        PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
+        DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, dwTickCount, pendingtype);
+
+        TRACE("IMessageFilter_MessagePending returned %ld\n", be_handled);
+
+        switch (be_handled)
+        {
+        case PENDINGMSG_CANCELCALL:
+            WARN("call canceled\n");
+            return RPC_E_CALL_CANCELED;
+            break;
+        case PENDINGMSG_WAITNOPROCESS:
+        case PENDINGMSG_WAITDEFPROCESS:
+        default:
+            /* FIXME: MSDN is very vague about the difference
+             * between WAITNOPROCESS and WAITDEFPROCESS - there
+             * appears to be none, so it is possibly a left-over
+             * from the 16-bit world. */
+            break;
+        }
+    }
+    return S_OK;
 }
 
 /***********************************************************************
@@ -2131,7 +2184,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
     if (FAILED(hr = com_get_tlsdata(&tlsdata)))
         return hr;
 
-    apt = com_get_current_apt();
+    apt = tlsdata->apt;
     message_loop = apt && !apt->multi_threaded;
 
     if (flags & COWAIT_WAITALL)
@@ -2173,38 +2226,8 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
                 int msg_count = 0;
                 MSG msg;
 
-                /* call message filter */
-
-                if (apt->filter)
-                {
-                    PENDINGTYPE pendingtype = tlsdata->pending_call_count_server ? PENDINGTYPE_NESTED : PENDINGTYPE_TOPLEVEL;
-                    DWORD be_handled = IMessageFilter_MessagePending(apt->filter, 0 /* FIXME */, now - start_time, pendingtype);
-
-                    TRACE("IMessageFilter_MessagePending returned %ld\n", be_handled);
-
-                    switch (be_handled)
-                    {
-                    case PENDINGMSG_CANCELCALL:
-                        WARN("call canceled\n");
-                        hr = RPC_E_CALL_CANCELED;
-                        break;
-                    case PENDINGMSG_WAITNOPROCESS:
-                    case PENDINGMSG_WAITDEFPROCESS:
-                    default:
-                        /* FIXME: MSDN is very vague about the difference
-                         * between WAITNOPROCESS and WAITDEFPROCESS - there
-                         * appears to be none, so it is possibly a left-over
-                         * from the 16-bit world. */
-                        break;
-                    }
-                }
-
-                if (!apt->win)
-                {
-                    /* If window is NULL on apartment, peek at messages so that it will not trigger
-                     * MsgWaitForMultipleObjects next time. */
-                    PeekMessageW(NULL, NULL, 0, 0, PM_QS_POSTMESSAGE | PM_NOREMOVE | PM_NOYIELD);
-                }
+                hr = com_filter_messagepending(tlsdata, now - start_time);
+                if(FAILED(hr)) break;
 
                 /* Some apps (e.g. Visio 2010) don't handle WM_PAINT properly and loop forever,
                  * so after processing 100 messages we go back to checking the wait handles */
@@ -2243,6 +2266,7 @@ HRESULT WINAPI CoWaitForMultipleHandles(DWORD flags, DWORD timeout, ULONG handle
             hr = HRESULT_FROM_WIN32(GetLastError());
             break;
         default:
+            hr = S_OK;
             *index = res;
             break;
         }
