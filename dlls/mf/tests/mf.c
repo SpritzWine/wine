@@ -1620,6 +1620,8 @@ static ULONG WINAPI test_media_stream_Release(IMFMediaStream *iface)
         if (stream->delayed_sample)
             IMFSample_Release(stream->delayed_sample);
         IMFMediaEventQueue_Release(stream->event_queue);
+        if (stream->source)
+            IMFMediaSource_Release(stream->source);
         free(stream);
     }
 
@@ -2083,11 +2085,26 @@ static HRESULT WINAPI test_source_Shutdown(IMFMediaSource *iface)
 {
     struct test_source *source = impl_test_source_from_IMFMediaSource(iface);
     HRESULT hr;
+    UINT i;
 
     add_object_state(&actual_object_state_record, SOURCE_SHUTDOWN);
 
     hr = IMFMediaEventQueue_Shutdown(source->event_queue);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    for (i = 0; i < source->stream_count; ++i)
+    {
+        struct test_media_stream *stream = source->streams[i];
+
+        if (stream)
+        {
+            /* The session typically captures stream events, so the stream event queue
+             * holds a stream reference that can only be released by queue shutdown. */
+            hr = IMFMediaEventQueue_Shutdown(stream->event_queue);
+            ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+            IMFMediaStream_Release(&stream->IMFMediaStream_iface);
+            source->streams[i] = NULL;
+        }
+    }
 
     return S_OK;
 }
@@ -6993,6 +7010,7 @@ static void test_media_session_Start(void)
     UINT64 duration;
     DWORD caps;
     HRESULT hr;
+    DWORD ref;
 
     hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
     ok(hr == S_OK, "Failed to start up, hr %#lx.\n", hr);
@@ -7125,11 +7143,14 @@ static void test_media_session_Start(void)
     hr = IMFMediaSession_Start(session, &GUID_NULL, &propvar);
     ok(hr == MF_E_SHUTDOWN, "Unexpected hr %#lx.\n", hr);
 
+    /* sometimes briefly leaking */
+    Sleep(20);
+    ref = IMFMediaSession_Release(session);
+    ok(!ref, "Unexpected refcount %ld.\n", ref);
+
     IMFPresentationClock_Release(presentation_clock);
     IMFMediaSource_Release(source);
     IMFAsyncCallback_Release(callback);
-    /* sometimes briefly leaking */
-    IMFMediaSession_Release(session);
     IMFActivate_ShutdownObject(sink_activate);
     IMFActivate_Release(sink_activate);
     IMFSampleGrabberSinkCallback_Release(&grabber_callback->IMFSampleGrabberSinkCallback_iface);
@@ -7193,9 +7214,13 @@ static void test_media_session_Start(void)
     hr = IMFMediaSource_Shutdown(source);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
+    /* sometimes briefly leaking */
+    Sleep(20);
+    ref = IMFMediaSession_Release(session);
+    ok(!ref || broken(!!ref), "Unexpected refcount %ld.\n", ref);
+
     IMFPresentationClock_Release(presentation_clock);
     IMFAsyncCallback_Release(callback);
-    IMFMediaSession_Release(session);
     IMFMediaSource_Release(source);
     IMFActivate_ShutdownObject(sink_activate);
     IMFActivate_Release(sink_activate);
@@ -7300,6 +7325,7 @@ static void test_media_session_source_shutdown(void)
     PROPVARIANT propvar;
     UINT64 duration;
     HRESULT hr;
+    DWORD ref;
     enum
     {
         TEST_START,
@@ -7440,13 +7466,20 @@ static void test_media_session_source_shutdown(void)
         hr = wait_media_event_until_blocking(session, callback, MESessionClosed, 1000, &propvar);
         ok(hr == MF_E_SHUTDOWN || hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
+        hr = IMFMediaSource_Shutdown(source);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
 done:
         hr = IMFMediaSession_Shutdown(session);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
+        /* sometimes briefly leaking */
+        Sleep(20);
+        ref = IMFMediaSession_Release(session);
+        ok(!ref, "Unexpected refcount %ld.\n", ref);
+
         IMFMediaSource_Release(source);
         IMFAsyncCallback_Release(callback);
-        IMFMediaSession_Release(session);
         IMFActivate_ShutdownObject(sink_activate);
         IMFActivate_Release(sink_activate);
         IMFSampleGrabberSinkCallback_Release(&grabber_callback->IMFSampleGrabberSinkCallback_iface);
@@ -7584,6 +7617,7 @@ static void test_media_session_Close(void)
     IMFClock *clock;
     UINT64 duration;
     HRESULT hr;
+    DWORD ref;
 
     hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
     ok(hr == S_OK, "Failed to start up, hr %#lx.\n", hr);
@@ -7635,9 +7669,13 @@ static void test_media_session_Close(void)
     hr = IMFMediaSession_Shutdown(session);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
+    /* sometimes briefly leaking */
+    Sleep(20);
+    ref = IMFMediaSession_Release(session);
+    ok(!ref, "Unexpected refcount %ld.\n", ref);
+
     IMFPresentationClock_Release(presentation_clock);
     IMFAsyncCallback_Release(callback);
-    IMFMediaSession_Release(session);
     IMFActivate_ShutdownObject(sink_activate);
     IMFActivate_Release(sink_activate);
     IMFSampleGrabberSinkCallback_Release(&grabber_callback->IMFSampleGrabberSinkCallback_iface);
