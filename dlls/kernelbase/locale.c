@@ -7312,6 +7312,18 @@ BOOL WINAPI DECLSPEC_HOTPATCH SystemTimeToTzSpecificLocalTime( const TIME_ZONE_I
 
 
 /***********************************************************************
+ *	SystemTimeToTzSpecificLocalTimeEx   (kernelbase.@)
+ */
+BOOL WINAPI DECLSPEC_HOTPATCH SystemTimeToTzSpecificLocalTimeEx( const DYNAMIC_TIME_ZONE_INFORMATION *info,
+                                                                 const SYSTEMTIME *system,
+                                                                 SYSTEMTIME *local )
+{
+    FIXME( "just runs SystemTimeToTzSpecificLocalTime\n" );
+    return SystemTimeToTzSpecificLocalTime( (const TIME_ZONE_INFORMATION *)info, system, local );
+}
+
+
+/***********************************************************************
  *	TzSpecificLocalTimeToSystemTime   (kernelbase.@)
  */
 BOOL WINAPI DECLSPEC_HOTPATCH TzSpecificLocalTimeToSystemTime( const TIME_ZONE_INFORMATION *info,
