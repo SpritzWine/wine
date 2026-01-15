@@ -123,7 +123,6 @@ static void test_UserName(void)
     ok(hr == S_OK, "got %#lx\n", hr);
 
     hr = IADsADSystemInfo_get_UserName(sysinfo, &bstr);
-    todo_wine
     ok(hr == S_OK || hr == HRESULT_FROM_WIN32(ERROR_NONE_MAPPED), "got %#lx\n", hr);
     if (hr == S_OK)
     {
@@ -164,7 +163,6 @@ static void test_sysinfo(void)
     SysFreeString(bstr);
 
     hr = IADsADSystemInfo_get_UserName(sysinfo, &bstr);
-    todo_wine
     ok(hr == S_OK || hr == HRESULT_FROM_WIN32(ERROR_NONE_MAPPED), "got %#lx\n", hr);
     if (hr != S_OK) goto done;
     SysFreeString(bstr);

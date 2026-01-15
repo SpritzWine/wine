@@ -237,8 +237,27 @@ static HRESULT WINAPI sysinfo_Invoke(IADsADSystemInfo *iface, DISPID dispid, REF
 
 static HRESULT WINAPI sysinfo_get_UserName(IADsADSystemInfo *iface, BSTR *retval)
 {
-    FIXME("%p,%p: stub\n", iface, retval);
-    return E_NOTIMPL;
+    ULONG size;
+    WCHAR *name;
+
+    TRACE("%p,%p\n", iface, retval);
+
+    size = 0;
+    GetUserNameExW(NameFullyQualifiedDN, NULL, &size);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        return HRESULT_FROM_WIN32(GetLastError());
+
+    name = SysAllocStringLen(NULL, size);
+    if (!name) return E_OUTOFMEMORY;
+
+    if (!GetUserNameExW(NameFullyQualifiedDN, name, &size))
+    {
+        SysFreeString(name);
+        return HRESULT_FROM_WIN32(GetLastError());
+    }
+
+    *retval = name;
+    return S_OK;
 }
 
 static HRESULT WINAPI sysinfo_get_ComputerName(IADsADSystemInfo *iface, BSTR *retval)
