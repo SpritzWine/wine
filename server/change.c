@@ -645,9 +645,14 @@ static const struct fd_ops inotify_fd_ops =
 {
     inotify_get_poll_events,     /* get_poll_events */
     inotify_poll_event,          /* poll_event */
-    NULL,                        /* flush */
     NULL,                        /* get_fd_type */
+    NULL,                        /* read */
+    NULL,                        /* write */
+    NULL,                        /* flush */
+    NULL,                        /* get_file_info */
+    NULL,                        /* get_volume_info */
     NULL,                        /* ioctl */
+    NULL,                        /* cancel_async */
     NULL,                        /* queue_async */
     NULL                         /* reselect_async */
 };
