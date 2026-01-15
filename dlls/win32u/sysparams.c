@@ -5358,6 +5358,7 @@ LONG get_char_dimensions( HDC hdc, TEXTMETRICW *metric, int *height )
          'r','s','t','u','v','w','x','y','z','A','B','C','D','E','F','G','H',
          'I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'};
 
+    if (height) *height = 0;
     if (metric && !NtGdiGetTextMetricsW( hdc, metric, 0 )) return 0;
 
     if (!NtGdiGetTextExtentExW( hdc, abcdW, ARRAYSIZE(abcdW), 0, NULL, NULL, &sz, 0 ))
