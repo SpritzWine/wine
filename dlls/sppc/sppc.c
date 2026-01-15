@@ -39,6 +39,16 @@ HRESULT WINAPI SLGetLicensingStatusInformation(HSLC handle, const SLID *app, con
     return SL_E_RIGHT_NOT_CONSUMED;
 }
 
+HRESULT WINAPI SLInstallLicense(HSLC handle, UINT size, const BYTE *license, SLID *fileid)
+{
+    FIXME("(%p %u %p %p) stub\n", handle, size, license, fileid );
+
+    if (!handle)
+        return E_INVALIDARG;
+
+    return S_OK;
+}
+
 HRESULT WINAPI SLOpen(HSLC *handle)
 {
     FIXME("(%p) stub\n", handle );
