@@ -166,13 +166,13 @@ struct media_engine
     IMFSourceResolver *resolver;
     IMFMediaEngineExtension *extension;
     BSTR current_source;
-    struct
+    struct media_engine_presentation
     {
         IMFMediaSource *source;
         IMFPresentationDescriptor *pd;
         PROPVARIANT start_position;
         struct video_frame_sink *frame_sink;
-    } presentation;
+    } presentation, old_presentation;
     struct effects video_effects;
     struct effects audio_effects;
     struct
@@ -922,6 +922,7 @@ static HRESULT WINAPI media_engine_callback_GetParameters(IMFAsyncCallback *ifac
 }
 
 static HRESULT media_engine_set_current_time(struct media_engine *engine, double seektime);
+static void media_engine_clear_presentation(struct media_engine_presentation *presentation, CRITICAL_SECTION *engine_cs);
 
 static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface, IMFAsyncResult *result)
 {
@@ -974,6 +975,7 @@ static HRESULT WINAPI media_engine_session_events_Invoke(IMFAsyncCallback *iface
 
             EnterCriticalSection(&engine->cs);
 
+            media_engine_clear_presentation(&engine->old_presentation, &engine->cs);
             media_engine_apply_volume(engine);
 
             engine->ready_state = MF_MEDIA_ENGINE_READY_HAVE_METADATA;
@@ -1235,26 +1237,26 @@ static HRESULT media_engine_create_video_renderer(struct media_engine *engine, I
 }
 
 /* must be called with engine->cs held */
-static void media_engine_clear_presentation(struct media_engine *engine)
+static void media_engine_clear_presentation(struct media_engine_presentation *presentation, CRITICAL_SECTION *engine_cs)
 {
-    if (engine->presentation.source)
+    if (presentation->source)
     {
         /* critical section can not be held during shutdown, as shut down requires all pending
          * callbacks to complete, and some callbacks require this cs */
-        LeaveCriticalSection(&engine->cs);
-        IMFMediaSource_Shutdown(engine->presentation.source);
-        EnterCriticalSection(&engine->cs);
-        IMFMediaSource_Release(engine->presentation.source);
+        LeaveCriticalSection(engine_cs);
+        IMFMediaSource_Shutdown(presentation->source);
+        EnterCriticalSection(engine_cs);
+        IMFMediaSource_Release(presentation->source);
     }
-    if (engine->presentation.pd)
-        IMFPresentationDescriptor_Release(engine->presentation.pd);
-    if (engine->presentation.frame_sink)
+    if (presentation->pd)
+        IMFPresentationDescriptor_Release(presentation->pd);
+    if (presentation->frame_sink)
     {
-        video_frame_sink_release(engine->presentation.frame_sink);
-        engine->presentation.frame_sink = NULL;
+        video_frame_sink_release(presentation->frame_sink);
+        presentation->frame_sink = NULL;
     }
 
-    memset(&engine->presentation, 0, sizeof(engine->presentation));
+    memset(presentation, 0, sizeof(*presentation));
 }
 
 static void media_engine_clear_effects(struct effects *effects)
@@ -1280,8 +1282,10 @@ static HRESULT media_engine_create_topology(struct media_engine *engine, IMFMedi
     UINT64 duration;
     HRESULT hr;
 
+    memcpy(&engine->old_presentation, &engine->presentation, sizeof(struct media_engine_presentation));
+    memset(&engine->presentation, 0, sizeof(engine->presentation));
+
     media_engine_release_video_frame_resources(engine);
-    media_engine_clear_presentation(engine);
 
     if (FAILED(hr = IMFMediaSource_CreatePresentationDescriptor(source, &pd)))
         return hr;
@@ -1562,7 +1566,8 @@ static void free_media_engine(struct media_engine *engine)
     media_engine_clear_effects(&engine->audio_effects);
     media_engine_clear_effects(&engine->video_effects);
     media_engine_release_video_frame_resources(engine);
-    media_engine_clear_presentation(engine);
+    media_engine_clear_presentation(&engine->presentation, &engine->cs);
+    media_engine_clear_presentation(&engine->old_presentation, &engine->cs);
     if (engine->device_manager)
     {
         IMFDXGIDeviceManager_CloseDeviceHandle(engine->device_manager, engine->device_handle);
@@ -2387,7 +2392,8 @@ static HRESULT WINAPI media_engine_Shutdown(IMFMediaEngineEx *iface)
     else
     {
         media_engine_set_flag(engine, FLAGS_ENGINE_SHUT_DOWN, TRUE);
-        media_engine_clear_presentation(engine);
+        media_engine_clear_presentation(&engine->presentation, &engine->cs);
+        media_engine_clear_presentation(&engine->old_presentation, &engine->cs);
         /* critical section can not be held during shutdown, as shut down requires all pending
          * callbacks to complete, and some callbacks require this cs */
         LeaveCriticalSection(&engine->cs);
