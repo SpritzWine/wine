@@ -754,13 +754,27 @@ static void test_handler_clear_current_type(struct test_handler *handler)
     }
 }
 
+struct test_stream_sink
+{
+    IMFStreamSink IMFStreamSink_iface;
+    IMFGetService IMFGetService_iface;
+    LONG refcount;
+    IMFMediaTypeHandler *handler;
+    IMFMediaSink *media_sink;
+
+    IMFAttributes *attributes;
+    IUnknown *device_manager;
+
+    IMFMediaEventQueue *event_queue;
+};
+
 struct test_media_sink
 {
     IMFMediaSink IMFMediaSink_iface;
     LONG refcount;
     IMFMediaTypeHandler *handler;
     IMFPresentationClock *clock;
-    IMFStreamSink *stream;
+    struct test_stream_sink *stream;
     BOOL shutdown;
 };
 
@@ -849,7 +863,7 @@ static HRESULT WINAPI test_media_sink_GetStreamSinkByIndex(IMFMediaSink *iface, 
     struct test_media_sink *sink_impl = impl_from_IMFMediaSink(iface);
     if (!index && sink_impl->stream)
     {
-        IMFStreamSink_AddRef(*sink = sink_impl->stream);
+        IMFStreamSink_AddRef(*sink = &sink_impl->stream->IMFStreamSink_iface);
         return S_OK;
     }
     ok(0, "Unexpected call.\n");
@@ -909,7 +923,7 @@ static HRESULT WINAPI test_media_sink_Shutdown(IMFMediaSink *iface)
     }
     if (sink->stream)
     {
-        IMFStreamSink_Release(sink->stream);
+        IMFStreamSink_Release(&sink->stream->IMFStreamSink_iface);
         sink->stream = NULL;
     }
 
@@ -980,20 +994,6 @@ static const IMFMediaSinkVtbl test_media_sink_vtbl =
     test_media_sink_SetPresentationClock,
     test_media_sink_GetPresentationClock,
     test_media_sink_Shutdown,
-};
-
-struct test_stream_sink
-{
-    IMFStreamSink IMFStreamSink_iface;
-    IMFGetService IMFGetService_iface;
-    LONG refcount;
-    IMFMediaTypeHandler *handler;
-    IMFMediaSink *media_sink;
-
-    IMFAttributes *attributes;
-    IUnknown *device_manager;
-
-    IMFMediaEventQueue *event_queue;
 };
 
 static struct test_stream_sink *impl_from_IMFStreamSink(IMFStreamSink *iface)
@@ -1255,7 +1255,7 @@ static void reset_test_media_sink(struct test_media_sink *sink)
 {
     if (sink->shutdown)
     {
-        sink->stream = &create_test_stream_sink(&sink->IMFMediaSink_iface, sink->handler, TRUE)->IMFStreamSink_iface;
+        sink->stream = create_test_stream_sink(&sink->IMFMediaSink_iface, sink->handler, TRUE);
         sink->shutdown = FALSE;
     }
 }
@@ -1269,7 +1269,7 @@ static struct test_media_sink *create_test_media_sink(IMFMediaTypeHandler *handl
     sink->refcount = 1;
     if (handler)
         IMFMediaTypeHandler_AddRef(sink->handler = handler);
-    sink->stream = &create_test_stream_sink(&sink->IMFMediaSink_iface, handler, TRUE)->IMFStreamSink_iface;
+    sink->stream = create_test_stream_sink(&sink->IMFMediaSink_iface, handler, TRUE);
 
     return sink;
 }
@@ -2561,7 +2561,7 @@ static void test_media_session_events(void)
 
     hr = MFCreateTopologyNode(MF_TOPOLOGY_OUTPUT_NODE, &sink_node);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    init_sink_node(media_sink->stream, -1, sink_node);
+    init_sink_node(&media_sink->stream->IMFStreamSink_iface, -1, sink_node);
 
     hr = MFCreateMediaType(&output_type);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -8292,7 +8292,7 @@ static void test_media_session_seek(void)
     ok(status == MF_TOPOSTATUS_STARTED_SOURCE, "Unexpected status %d.\n", status);
     PropVariantClear(&propvar);
 
-    hr = IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
+    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
@@ -8315,7 +8315,7 @@ static void test_media_session_seek(void)
     SET_EXPECT(test_transform_ProcessOutput);
     SET_EXPECT(test_transform_ProcessInput);
     SET_EXPECT(test_stream_sink_ProcessSample);
-    IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkRequestSample, &GUID_NULL, S_OK, &propvar);
+    IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkRequestSample, &GUID_NULL, S_OK, &propvar);
 
     Sleep(20);
 
@@ -8347,7 +8347,7 @@ static void test_media_session_seek(void)
 
     Sleep(20);
 
-    hr = IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkPaused, &GUID_NULL, S_OK, &propvar);
+    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkPaused, &GUID_NULL, S_OK, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionPaused, 1000, &propvar);
@@ -8368,7 +8368,7 @@ static void test_media_session_seek(void)
 
     Sleep(20);
 
-    hr = IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
+    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
@@ -8391,7 +8391,7 @@ static void test_media_session_seek(void)
     memset(&actual_object_state_record, 0, sizeof(actual_object_state_record));
     SET_EXPECT(test_media_stream_RequestSample);
     SET_EXPECT(test_transform_ProcessOutput);
-    IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkRequestSample, &GUID_NULL, S_OK, &propvar);
+    IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkRequestSample, &GUID_NULL, S_OK, &propvar);
 
     Sleep(20);
 
@@ -8406,7 +8406,7 @@ static void test_media_session_seek(void)
 
     Sleep(20);
 
-    hr = IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkPaused, &GUID_NULL, S_OK, &propvar);
+    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkPaused, &GUID_NULL, S_OK, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionPaused, 1000, &propvar);
@@ -8429,7 +8429,7 @@ static void test_media_session_seek(void)
 
     Sleep(20);
 
-    hr = IMFStreamSink_QueueEvent(media_sink->stream, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
+    hr = IMFStreamSink_QueueEvent(&media_sink->stream->IMFStreamSink_iface, MEStreamSinkStarted, &GUID_NULL, S_OK, &propvar);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
