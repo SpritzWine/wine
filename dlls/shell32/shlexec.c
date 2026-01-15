@@ -1934,16 +1934,26 @@ static BOOL SHELL_execute( LPSHELLEXECUTEINFOW sei, SHELL_ExecuteW32 execfunc )
         lstrcatW(lpstrTmpFile, lpFile);
         retval = (UINT_PTR)ShellExecuteW(sei_tmp.hwnd, sei_tmp.lpVerb, lpstrTmpFile, NULL, NULL, 0);
     }
-    else if (retval == SE_ERR_NOASSOC && SHGetFileInfoW(wcmd, 0, NULL, 0, SHGFI_EXETYPE) == 0)
+    else if ((retval == SE_ERR_NOASSOC && SHGetFileInfoW(wcmd, 0, NULL, 0, SHGFI_EXETYPE) == 0) ||
+             (retval == SE_ERR_FNF && wszApplicationName[0] == '/'))
     {
-        /* File found, but no association. And no other cases fit, this could be a
+        /* Two cases:
+
+           1. File found, but no association. And no other cases fit, this could be a
            unix programs, try running it. We have to do this in a "catch-all" fashion because
            unix program can have any extensions. However, things get more complicated because
            the file we find could be a Windows executable without the proper extensions, it could
-           be seen as unexpected if we start it, so we special case it here. */
+           be seen as unexpected if we start it, so we special case it here.
+
+           2. File not found. Still, this could be a unix path. In this case we don't worry if
+           we accidentally start a Windows executable, so we just try to run it anyway, hoping it's
+           a valid unix path to a executable. Also `wcmd` will be empty in this case, so we use
+           `wszApplicationName`.
+         */
         UINT exec_retval;
-        TRACE("No association found, trying as Unix binary %s\n", debugstr_w(wcmd));
-        exec_retval = SHELL_quote_and_execute( wcmd, wszParameters, wszKeyname,
+        WCHAR *unix_cmd = retval == SE_ERR_NOASSOC ? wcmd : wszApplicationName;
+        TRACE("SHELL_FindExecutable failed, trying as Unix binary %s\n", debugstr_w(unix_cmd));
+        exec_retval = SHELL_quote_and_execute( unix_cmd, wszParameters, wszKeyname,
                                                wszApplicationName, env, &sei_tmp,
                                                sei, execfunc );
         TRACE("Unix binary returned %u\n", exec_retval);
