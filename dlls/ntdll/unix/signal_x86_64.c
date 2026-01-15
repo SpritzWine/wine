@@ -747,27 +747,33 @@ static NTSTATUS libunwind_virtual_unwind( ULONG64 ip, ULONG64 *frame, CONTEXT *c
         unw_set_reg( &cursor, UNW_X86_64_R15, context->R15 );
     }
 #else
-    RAX_sig(&unw_context) = context->Rax;
-    RCX_sig(&unw_context) = context->Rcx;
-    RDX_sig(&unw_context) = context->Rdx;
-    RBX_sig(&unw_context) = context->Rbx;
-    RSP_sig(&unw_context) = context->Rsp;
-    RBP_sig(&unw_context) = context->Rbp;
-    RSI_sig(&unw_context) = context->Rsi;
-    RDI_sig(&unw_context) = context->Rdi;
-    R8_sig(&unw_context)  = context->R8;
-    R9_sig(&unw_context)  = context->R9;
-    R10_sig(&unw_context) = context->R10;
-    R11_sig(&unw_context) = context->R11;
-    R12_sig(&unw_context) = context->R12;
-    R13_sig(&unw_context) = context->R13;
-    R14_sig(&unw_context) = context->R14;
-    R15_sig(&unw_context) = context->R15;
-    RIP_sig(&unw_context) = context->Rip;
-    CS_sig(&unw_context)  = context->SegCs;
-    FS_sig(&unw_context)  = context->SegFs;
-    GS_sig(&unw_context)  = context->SegGs;
-    EFL_sig(&unw_context) = context->EFlags;
+#ifdef __ANDROID__
+    typedef struct ucontext unwind_context;
+#else
+    typedef unw_context_t unwind_context;
+#endif
+    unwind_context* unw_context_addr = (unwind_context*)&unw_context;
+    RAX_sig(unw_context_addr) = context->Rax;
+    RCX_sig(unw_context_addr) = context->Rcx;
+    RDX_sig(unw_context_addr) = context->Rdx;
+    RBX_sig(unw_context_addr) = context->Rbx;
+    RSP_sig(unw_context_addr) = context->Rsp;
+    RBP_sig(unw_context_addr) = context->Rbp;
+    RSI_sig(unw_context_addr) = context->Rsi;
+    RDI_sig(unw_context_addr) = context->Rdi;
+    R8_sig(unw_context_addr)  = context->R8;
+    R9_sig(unw_context_addr)  = context->R9;
+    R10_sig(unw_context_addr) = context->R10;
+    R11_sig(unw_context_addr) = context->R11;
+    R12_sig(unw_context_addr) = context->R12;
+    R13_sig(unw_context_addr) = context->R13;
+    R14_sig(unw_context_addr) = context->R14;
+    R15_sig(unw_context_addr) = context->R15;
+    RIP_sig(unw_context_addr) = context->Rip;
+    CS_sig(unw_context_addr)  = context->SegCs;
+    FS_sig(unw_context_addr)  = context->SegFs;
+    GS_sig(unw_context_addr)  = context->SegGs;
+    EFL_sig(unw_context_addr) = context->EFlags;
     rc = unw_init_local( &cursor, &unw_context );
 #endif
     if (rc != UNW_ESUCCESS)
