@@ -211,6 +211,17 @@ static inline OLE_YSIZE_HIMETRIC ypixels_to_himetric(INT pixels, HDC hdc)
     return MulDiv(pixels, 2540, GetDeviceCaps(hdc, LOGPIXELSY));
 }
 
+/* HIMETRIC to pixels  units conversion */
+LONG himetric_to_xpixels(LONG xHimetric, HDC hdc) 
+{
+    return MulDiv(xHimetric, GetDeviceCaps(hdc, LOGPIXELSX), 2540);
+}
+
+LONG himetric_to_ypixels(LONG yHimetric, HDC hdc) 
+{
+    return MulDiv(yHimetric, GetDeviceCaps(hdc, LOGPIXELSY), 2540);
+}
+
 /***********************************************************************
  * Implementation of the OLEPictureImpl class.
  */
@@ -609,18 +620,14 @@ static void render_masked_bitmap(OLEPictureImpl *This, HDC hdc,
     LONG x, LONG y, LONG cx, LONG cy, OLE_XPOS_HIMETRIC xSrc, OLE_YPOS_HIMETRIC ySrc,
     OLE_XSIZE_HIMETRIC cxSrc, OLE_YSIZE_HIMETRIC cySrc, HBITMAP hbmMask, HBITMAP hbmXor)
 {
-    HDC hdcBmp;
-
-    /* Set a mapping mode that maps bitmap pixels into HIMETRIC units.
-     * NB y-axis gets flipped
-     */
-
-    hdcBmp = CreateCompatibleDC(0);
-    SetMapMode(hdcBmp, MM_ANISOTROPIC);
-    SetWindowOrgEx(hdcBmp, 0, 0, NULL);
-    SetWindowExtEx(hdcBmp, This->himetricWidth, This->himetricHeight, NULL);
-    SetViewportOrgEx(hdcBmp, 0, This->origHeight, NULL);
-    SetViewportExtEx(hdcBmp, This->origWidth, -This->origHeight, NULL);
+    HDC hdcBmp = CreateCompatibleDC(0);
+    
+    int xSrcDraw = himetric_to_xpixels(xSrc, hdcBmp);
+    int ySrcDraw = himetric_to_ypixels(ySrc, hdcBmp);
+    int cxSrcDraw = himetric_to_xpixels(cxSrc, hdcBmp);
+    int cySrcDraw = himetric_to_ypixels(cySrc, hdcBmp);
+    xSrcDraw += cxSrcDraw;  
+    cxSrcDraw = -cxSrcDraw; 
 
     if (hbmMask)
     {
@@ -628,20 +635,19 @@ static void render_masked_bitmap(OLEPictureImpl *This, HDC hdc,
         SetTextColor(hdc, RGB(0, 0, 0));
 
         SelectObject(hdcBmp, hbmMask);
-        StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrc, ySrc, cxSrc, cySrc, SRCAND);
+        StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrcDraw, ySrcDraw, cxSrcDraw, cySrcDraw, SRCAND);
 
         if (hbmXor)
         {
             SelectObject(hdcBmp, hbmXor);
-            StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrc, ySrc, cxSrc, cySrc, SRCPAINT);
+            StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrcDraw, ySrcDraw, cxSrcDraw, cySrcDraw, SRCPAINT);
         }
-        else StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrc, ySrc - This->himetricHeight,
-                        cxSrc, cySrc, SRCPAINT);
+        else StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrcDraw, ySrcDraw - cySrcDraw, cxSrcDraw, cySrcDraw, SRCPAINT);
     }
     else
     {
         SelectObject(hdcBmp, hbmXor);
-        StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrc, ySrc, cxSrc, cySrc, SRCCOPY);
+        StretchBlt(hdc, x, y, cx, cy, hdcBmp, xSrcDraw, ySrcDraw, cxSrcDraw, cySrcDraw, SRCCOPY);
     }
 
     DeleteDC(hdcBmp);
