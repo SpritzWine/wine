@@ -1659,6 +1659,8 @@ static void test_sync_reader_types(void)
 
         for (j = 0; j < count; ++j)
         {
+            bool format_is_broken;
+
             winetest_push_context("Format %lu", j);
 
             hr = IWMSyncReader_GetOutputFormat(reader, output_number, j, &output_props);
@@ -1688,6 +1690,10 @@ static void test_sync_reader_types(void)
             ok(size == sizeof(WM_MEDIA_TYPE) + mt->cbFormat, "got %lu.\n", size);
 
             ok(IsEqualGUID(&mt->majortype, &majortype), "Got major type %s.\n", debugstr_guid(&mt->majortype));
+            /* Our DMO decoders return formats they don't actually support, so when the reader
+             * tries to set decoders to these output formats, it fails. */
+            format_is_broken =
+                IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_NV11) || IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_RGB8);
 
             if (IsEqualGUID(&mt->majortype, &MEDIATYPE_Audio))
             {
@@ -1707,6 +1713,7 @@ static void test_sync_reader_types(void)
                     debugstr_guid(&majortype), debugstr_guid(&majortype2));
 
             hr = IWMSyncReader_SetOutputProps(reader, output_number, output_props);
+            todo_if(format_is_broken && winetest_platform_is_wine)
             ok(hr == S_OK, "Got hr %#lx.\n", hr);
             hr = IWMSyncReader_SetOutputProps(reader, 1 - output_number, output_props);
             if (!i)
@@ -1724,6 +1731,7 @@ static void test_sync_reader_types(void)
             ret_size = sizeof(mt2_buffer);
             hr = IWMOutputMediaProps_GetMediaType(output_props2, mt2, &ret_size);
             ok(hr == S_OK, "Got hr %#lx.\n", hr);
+            todo_if(format_is_broken && winetest_platform_is_wine)
             ok(compare_media_types(mt, mt2), "Media types didn't match.\n");
 
             ref = IWMOutputMediaProps_Release(output_props2);
@@ -3795,6 +3803,8 @@ static void test_async_reader_types(void)
 
         for (j = 0; j < count; ++j)
         {
+            bool format_is_broken;
+
             winetest_push_context("Format %lu", j);
 
             hr = IWMReader_GetOutputFormat(reader, output_number, j, &output_props);
@@ -3824,6 +3834,10 @@ static void test_async_reader_types(void)
             ok(size == sizeof(WM_MEDIA_TYPE) + mt->cbFormat, "got %lu.\n", size);
 
             ok(IsEqualGUID(&mt->majortype, &majortype), "Got major type %s.\n", debugstr_guid(&mt->majortype));
+            /* Our DMO decoders return formats they don't actually support, so when the reader
+             * tries to set decoders to these output formats, it fails. */
+            format_is_broken =
+                IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_NV11) || IsEqualGUID(&mt->subtype, &MEDIASUBTYPE_RGB8);
 
             if (IsEqualGUID(&mt->majortype, &MEDIATYPE_Audio))
             {
@@ -3843,6 +3857,7 @@ static void test_async_reader_types(void)
                     debugstr_guid(&majortype), debugstr_guid(&majortype2));
 
             hr = IWMReader_SetOutputProps(reader, output_number, output_props);
+            todo_if(format_is_broken && winetest_platform_is_wine)
             ok(hr == S_OK, "Got hr %#lx.\n", hr);
             hr = IWMReader_SetOutputProps(reader, 1 - output_number, output_props);
             if (!i)
@@ -3860,6 +3875,7 @@ static void test_async_reader_types(void)
             ret_size = sizeof(mt2_buffer);
             hr = IWMOutputMediaProps_GetMediaType(output_props2, mt2, &ret_size);
             ok(hr == S_OK, "Got hr %#lx.\n", hr);
+            todo_if(format_is_broken && winetest_platform_is_wine)
             ok(compare_media_types(mt, mt2), "Media types didn't match.\n");
 
             ref = IWMOutputMediaProps_Release(output_props2);
