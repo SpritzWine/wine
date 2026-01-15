@@ -1769,6 +1769,15 @@ RETURN_CODE WCMD_goto(void)
 }
 
 /*****************************************************************************
+ * WCMD_cd_set_env
+ *
+ *	Change current directory and set special environment variable =C:.
+ *	Restore to cwd after cd if supplied.
+ */
+
+static RETURN_CODE WCMD_cd_set_env(const WCHAR *args, const WCHAR *cwd);
+
+/*****************************************************************************
  * WCMD_pushd
  *
  *	Push a directory onto the stack
@@ -1824,6 +1833,7 @@ RETURN_CODE WCMD_pushd(const WCHAR *args)
 
 RETURN_CODE WCMD_popd(void)
 {
+    RETURN_CODE return_code;
     struct env_stack *temp = pushd_directories;
 
     if (!pushd_directories)
@@ -1831,10 +1841,11 @@ RETURN_CODE WCMD_popd(void)
 
     /* pop the old environment from the stack, and make it the current dir */
     pushd_directories = temp->next;
-    SetCurrentDirectoryW(temp->strings);
+    return_code = WCMD_cd_set_env(temp->strings, NULL);
     free(temp->strings);
     free(temp);
-    return NO_ERROR;
+    return return_code == NO_ERROR ?
+        return_code : (errorlevel = return_code);
 }
 
 /****************************************************************************
@@ -2315,12 +2326,7 @@ RETURN_CODE WCMD_endlocal(void)
 RETURN_CODE WCMD_setshow_default(const WCHAR *args)
 {
   RETURN_CODE return_code;
-  BOOL status;
-  WCHAR string[1024];
   WCHAR cwd[1024];
-  WCHAR *pos;
-  WIN32_FIND_DATAW fd;
-  HANDLE hff;
 
   WINE_TRACE("Request change to directory '%s'\n", wine_dbgstr_w(args));
 
@@ -2342,61 +2348,96 @@ RETURN_CODE WCMD_setshow_default(const WCHAR *args)
     WCMD_output_asis (cwd);
   }
   else {
-    /* Remove any double quotes, which may be in the
-       middle, eg. cd "C:\Program Files"\Microsoft is ok */
-    pos = string;
-    while (*args) {
-      if (*args != '"') *pos++ = *args;
-      args++;
+    /* Restore old directory if drive letter would change, and
+         CD x:\directory /D (or pushd c:\directory) not supplied */
+    if ((wcsstr(quals, L"/D") == NULL) &&
+        (param1[1] == ':') && (towupper(param1[0]) != towupper(cwd[0]))) {
+      return_code = WCMD_cd_set_env(args, cwd);
     }
-    while (pos > string && (*(pos-1) == ' ' || *(pos-1) == '\t'))
-      pos--;
-    *pos = 0x00;
+    else {
+      return_code = WCMD_cd_set_env(args, NULL);
+    }
+  }
 
-    /* Search for appropriate directory */
-    WINE_TRACE("Looking for directory '%s'\n", wine_dbgstr_w(string));
-    hff = FindFirstFileW(string, &fd);
-    if (hff != INVALID_HANDLE_VALUE) {
-      do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-          WCHAR fpath[MAX_PATH];
-          WCHAR drive[10];
-          WCHAR dir[MAX_PATH];
-          WCHAR fname[MAX_PATH];
-          WCHAR ext[MAX_PATH];
+  if (return_code == ERROR_PATH_NOT_FOUND) {
+    WCMD_print_error();
+  }
 
-          /* Convert path into actual directory spec */
-          if (!WCMD_get_fullpath(string, ARRAY_SIZE(fpath), fpath, NULL))
-              return errorlevel = ERROR_INVALID_FUNCTION;
+  return return_code == NO_ERROR ?
+      (errorlevel = NO_ERROR) : (errorlevel = ERROR_INVALID_FUNCTION);
+}
 
-          _wsplitpath(fpath, drive, dir, fname, ext);
+/*****************************************************************************
+ * WCMD_cd_set_env
+ *
+ *	Change current directory and set special environment variable =C:.
+ *	Restore to cwd after cd if supplied.
+ */
 
-          /* Rebuild path */
-          wsprintfW(string, L"%s%s%s", drive, dir, fd.cFileName);
-          break;
+static RETURN_CODE WCMD_cd_set_env(const WCHAR *args, const WCHAR *cwd)
+{
+  RETURN_CODE return_code;
+  BOOL status;
+  WCHAR string[1024];
+  WCHAR *pos;
+  WIN32_FIND_DATAW fd;
+  HANDLE hff;
+
+  return_code = NO_ERROR;
+
+  /* Remove any double quotes, which may be in the
+     middle, eg. cd "C:\Program Files"\Microsoft is ok */
+  pos = string;
+  while (*args) {
+    if (*args != '"') *pos++ = *args;
+    args++;
+  }
+  while (pos > string && (*(pos-1) == ' ' || *(pos-1) == '\t'))
+    pos--;
+  *pos = 0x00;
+
+  /* Search for appropriate directory */
+  WINE_TRACE("Looking for directory '%s'\n", wine_dbgstr_w(string));
+  hff = FindFirstFileW(string, &fd);
+  if (hff != INVALID_HANDLE_VALUE) {
+    do {
+      if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+        WCHAR fpath[MAX_PATH];
+        WCHAR drive[10];
+        WCHAR dir[MAX_PATH];
+        WCHAR fname[MAX_PATH];
+        WCHAR ext[MAX_PATH];
+
+        /* Convert path into actual directory spec */
+        if (!WCMD_get_fullpath(string, ARRAY_SIZE(fpath), fpath, NULL)) {
+          FindClose(hff);
+          return ERROR_INVALID_FUNCTION;
         }
-      } while (FindNextFileW(hff, &fd) != 0);
-      FindClose(hff);
-    }
+        _wsplitpath(fpath, drive, dir, fname, ext);
 
-    /* Change to that directory */
-    WINE_TRACE("Really changing to directory '%s'\n", wine_dbgstr_w(string));
-
-    status = SetCurrentDirectoryW(string);
-    if (!status) {
-      WCMD_print_error ();
-      return_code = ERROR_INVALID_FUNCTION;
-    } else {
-
-      /* Save away the actual new directory, to store as current location */
-      GetCurrentDirectoryW(ARRAY_SIZE(string), string);
-
-      /* Restore old directory if drive letter would change, and
-           CD x:\directory /D (or pushd c:\directory) not supplied */
-      if ((wcsstr(quals, L"/D") == NULL) &&
-          (param1[1] == ':') && (towupper(param1[0]) != towupper(cwd[0]))) {
-        SetCurrentDirectoryW(cwd);
+        /* Rebuild path */
+        wsprintfW(string, L"%s%s%s", drive, dir, fd.cFileName);
+        break;
       }
+    } while (FindNextFileW(hff, &fd) != 0);
+    FindClose(hff);
+  }
+
+  /* Change to that directory */
+  WINE_TRACE("Really changing to directory '%s'\n", wine_dbgstr_w(string));
+
+  status = SetCurrentDirectoryW(string);
+  if (!status) {
+    return_code = ERROR_PATH_NOT_FOUND;
+  } else {
+
+    /* Save away the actual new directory, to store as current location */
+    GetCurrentDirectoryW(ARRAY_SIZE(string), string);
+
+    /* Restore old directory if drive letter would change, and
+         CD x:\directory /D (or pushd c:\directory) not supplied */
+    if (cwd != NULL) {
+      SetCurrentDirectoryW(cwd);
     }
 
     /* Set special =C: type environment variable, for drive letter of
@@ -2411,9 +2452,8 @@ RETURN_CODE WCMD_setshow_default(const WCHAR *args)
       WINE_TRACE("Setting '%s' to '%s'\n", wine_dbgstr_w(env), wine_dbgstr_w(string));
       SetEnvironmentVariableW(env, string);
     }
-
   }
-  return errorlevel = return_code;
+  return return_code;
 }
 
 /****************************************************************************
