@@ -20,6 +20,7 @@
 #include "wined3d_private.h"
 #include "wined3d_gl.h"
 #include "wined3d_vk.h"
+#include "wined3d_mtl.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 
@@ -321,6 +322,26 @@ void wined3d_sampler_vk_init(struct wined3d_sampler_vk *sampler_vk, struct wined
 
     wined3d_sampler_init(&sampler_vk->s, device, desc, parent, parent_ops);
     wined3d_cs_init_object(device->cs, wined3d_sampler_vk_cs_init, sampler_vk);
+}
+
+static void wined3d_sampler_mtl_cs_init(void *object)
+{
+    struct wined3d_sampler_mtl *sampler_mtl = object;
+    const struct wined3d_sampler_desc *desc;
+    const struct wined3d_d3d_info *d3d_info;
+    struct MTLSamplerDescriptor sampler_desc;
+
+    TRACE("sampler_mtl %p.\n", sampler_mtl);
+}
+
+void wined3d_sampler_mtl_init(struct wined3d_sampler_mtl *sampler_mtl, struct wined3d_device *device,
+        const struct wined3d_sampler_desc *desc, void *parent, const struct wined3d_parent_ops *parent_ops)
+{
+    TRACE("sampler_mtl %p, device %p, desc %p, parent %p, parent_ops %p.\n",
+          sampler_mtl, device, desc, parent, parent_ops);
+
+    wined3d_sampler_init(&sampler_mtl->s, device, desc, parent, parent_ops);
+    wined3d_cs_init_object(device->cs, wined3d_sampler_mtl_cs_init, sampler_mtl);
 }
 
 HRESULT CDECL wined3d_sampler_create(struct wined3d_device *device, const struct wined3d_sampler_desc *desc,

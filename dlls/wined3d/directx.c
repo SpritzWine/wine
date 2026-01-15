@@ -3487,6 +3487,9 @@ static struct wined3d_adapter *wined3d_adapter_create(unsigned int ordinal, DWOR
     if (wined3d_settings.renderer == WINED3D_RENDERER_VULKAN)
         return wined3d_adapter_vk_create(ordinal, wined3d_creation_flags);
 
+    if (wined3d_settings.renderer == WINED3D_RENDERER_METAL)
+        return wined3d_adapter_mtl_create(ordinal, wined3d_creation_flags);
+
     return wined3d_adapter_gl_create(ordinal, wined3d_creation_flags);
 }
 

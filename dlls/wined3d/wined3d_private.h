@@ -2630,6 +2630,9 @@ BOOL wined3d_get_primary_adapter_luid(LUID *luid);
 struct wined3d_adapter *wined3d_adapter_vk_create(unsigned int ordinal,
         unsigned int wined3d_creation_flags);
 
+struct wined3d_adapter *wined3d_adapter_mtl_create(unsigned int ordinal,
+        unsigned int wined3d_creation_flags);
+
 struct wined3d_adapter *wined3d_adapter_gl_create(unsigned int ordinal,
         unsigned int wined3d_creation_flags);
 

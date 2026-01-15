@@ -5,10 +5,12 @@ EXTRAINCL = $(VKD3D_PE_CFLAGS)
 
 SOURCES = \
 	adapter_gl.c \
+	adapter_mtl.c \
 	adapter_vk.c \
 	buffer.c \
 	context.c \
 	context_gl.c \
+	context_mtl.c \
 	context_vk.c \
 	cs.c \
 	decoder.c \
