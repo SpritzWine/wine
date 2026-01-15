@@ -1,5 +1,5 @@
 TESTDLL   = hnetcfg.dll
-IMPORTS   = ole32 uuid oleaut32 advapi32 mpr
+IMPORTS   = ole32 uuid oleaut32 advapi32 mpr iphlpapi
 
 SOURCES = \
 	policy.c
