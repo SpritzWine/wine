@@ -1098,7 +1098,7 @@ static void unlink_closed_fd( struct inode *inode, struct closed_fd *fd )
 {
     /* make sure it is still the same file */
     struct stat st;
-    if (!stat( fd->unix_name, &st ) && st.st_dev == inode->device->dev && st.st_ino == inode->ino)
+    if (!lstat( fd->unix_name, &st ) && st.st_dev == inode->device->dev && st.st_ino == inode->ino)
     {
         if (S_ISDIR(st.st_mode)) rmdir( fd->unix_name );
         else unlink( fd->unix_name );
@@ -1914,6 +1914,67 @@ void get_nt_name( struct fd *fd, struct unicode_str *name )
     name->len = fd->nt_namelen;
 }
 
+static int open_unix_fd( struct fd *fd, const char *name, int flags, const mode_t *mode,
+                         unsigned int access, unsigned int options )
+{
+    int rw_mode;
+
+    if ((access & FILE_UNIX_WRITE_ACCESS) && !(options & FILE_DIRECTORY_FILE))
+    {
+        if (access & FILE_UNIX_READ_ACCESS) rw_mode = O_RDWR;
+        else rw_mode = O_WRONLY;
+    }
+    else rw_mode = O_RDONLY;
+
+    if ((fd->unix_fd = open( name, rw_mode | (flags & ~O_TRUNC), *mode )) != -1)
+        return 1;
+
+    /* if we tried to open a directory for write access, retry read-only */
+    if (errno == EISDIR && ((access & FILE_UNIX_WRITE_ACCESS) || (flags & O_CREAT)))
+    {
+        if ((fd->unix_fd = open( name, O_RDONLY | (flags & ~(O_TRUNC | O_CREAT | O_EXCL)), *mode )))
+            return 1;
+    }
+
+    if (errno == ELOOP && (options & FILE_OPEN_REPARSE_POINT))
+    {
+        fd->no_fd_status = STATUS_REPARSE_POINT_NOT_RESOLVED;
+        return 1;
+    }
+
+    /* check for trailing slash on file path */
+    if ((errno == ENOENT || (errno == ENOTDIR && !(options & FILE_DIRECTORY_FILE))) && name[strlen(name) - 1] == '/')
+        set_error( STATUS_OBJECT_NAME_INVALID );
+    else
+        file_set_error();
+    return 0;
+}
+
+/* resolve the path except for its last element */
+static char *symlink_realpath( const char *path )
+{
+    size_t len = strlen( path );
+    char *dir, *ret;
+
+    /* remove trailing slashes if any */
+    while (len > 0 && path[len - 1] == '/')
+        --len;
+
+    while (len > 0 && path[len - 1] != '/')
+        --len;
+
+    dir = malloc( len + 1 );
+    memcpy( dir, path, len );
+    dir[len] = 0;
+    ret = realpath( dir, NULL );
+    free( dir );
+
+    ret = realloc( ret, strlen( ret ) + 1 + strlen( path + len ));
+    strcat( ret, "/" );
+    strcat( ret, path + len );
+    return ret;
+}
+
 /* open() wrapper that returns a struct fd with no fd user set */
 struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_name,
                     int flags, mode_t *mode, unsigned int access,
@@ -1923,7 +1984,6 @@ struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_nam
     struct closed_fd *closed_fd;
     struct fd *fd;
     int root_fd = -1;
-    int rw_mode;
     char *path;
 
     if (((options & FILE_DELETE_ON_CLOSE) && !(access & DELETE)) ||
@@ -1967,40 +2027,28 @@ struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_nam
         flags &= ~(O_CREAT | O_EXCL | O_TRUNC);
     }
 
-    if ((access & FILE_UNIX_WRITE_ACCESS) && !(options & FILE_DIRECTORY_FILE))
-    {
-        if (access & FILE_UNIX_READ_ACCESS) rw_mode = O_RDWR;
-        else rw_mode = O_WRONLY;
-    }
-    else rw_mode = O_RDONLY;
+    if (options & FILE_OPEN_REPARSE_POINT)
+        flags |= O_NOFOLLOW;
 
-    if ((fd->unix_fd = open( name, rw_mode | (flags & ~O_TRUNC), *mode )) == -1)
-    {
-        /* if we tried to open a directory for write access, retry read-only */
-        if (errno == EISDIR)
-        {
-            if ((access & FILE_UNIX_WRITE_ACCESS) || (flags & O_CREAT))
-                fd->unix_fd = open( name, O_RDONLY | (flags & ~(O_TRUNC | O_CREAT | O_EXCL)), *mode );
-        }
-
-        if (fd->unix_fd == -1)
-        {
-            /* check for trailing slash on file path */
-            if ((errno == ENOENT || (errno == ENOTDIR && !(options & FILE_DIRECTORY_FILE))) && name[strlen(name) - 1] == '/')
-                set_error( STATUS_OBJECT_NAME_INVALID );
-            else
-                file_set_error();
-            goto error;
-        }
-    }
+    if (!open_unix_fd( fd, name, flags, mode, access, options ))
+        goto error;
 
     fd->nt_name = dup_nt_name( root, nt_name, &fd->nt_namelen );
     fd->unix_name = NULL;
-    fstat( fd->unix_fd, &st );
+    if (fd->unix_fd != -1)
+        fstat( fd->unix_fd, &st );
+    else
+    {
+        if (lstat( name, &st ) == -1)
+        {
+            file_set_error();
+            goto error;
+        }
+    }
     *mode = st.st_mode;
 
     /* only bother with an inode for normal files and directories */
-    if (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode))
+    if (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode) || S_ISLNK(st.st_mode))
     {
         unsigned int err;
         struct inode *inode = get_inode( st.st_dev, st.st_ino, fd->unix_fd );
@@ -2015,7 +2063,10 @@ struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_nam
 
         if ((path = dup_fd_name( root, name )))
         {
-            fd->unix_name = realpath( path, NULL );
+            if (S_ISLNK(st.st_mode))
+                fd->unix_name = symlink_realpath( path );
+            else
+                fd->unix_name = realpath( path, NULL );
             free( path );
         }
 
@@ -2029,7 +2080,7 @@ struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_nam
         closed_fd = NULL;
 
         /* check directory options */
-        if ((options & FILE_DIRECTORY_FILE) && !S_ISDIR(st.st_mode))
+        if ((options & FILE_DIRECTORY_FILE) && S_ISREG(st.st_mode))
         {
             set_error( STATUS_NOT_A_DIRECTORY );
             goto error;
@@ -2774,15 +2825,10 @@ static void set_fd_disposition( struct fd *fd, unsigned int flags )
         return;
     }
 
-    if (fd->unix_fd == -1)
-    {
-        set_error( fd->no_fd_status );
-        return;
-    }
-
     if (flags & FILE_DISPOSITION_DELETE)
     {
         struct fd *fd_ptr;
+        int ret;
 
         LIST_FOR_EACH_ENTRY( fd_ptr, &fd->inode->open, struct fd, inode_entry )
         {
@@ -2793,12 +2839,16 @@ static void set_fd_disposition( struct fd *fd, unsigned int flags )
             }
         }
 
-        if (fstat( fd->unix_fd, &st ) == -1)
+        if (fd->unix_fd != -1)
+            ret = fstat( fd->unix_fd, &st );
+        else
+            ret = lstat( fd->unix_name, &st );
+        if (ret == -1)
         {
             file_set_error();
             return;
         }
-        if (S_ISREG( st.st_mode ))  /* can't unlink files we don't have permission to write */
+        if (S_ISREG( st.st_mode ) || S_ISLNK( st.st_mode ))  /* can't unlink files we don't have permission to write */
         {
             if (!(flags & FILE_DISPOSITION_IGNORE_READONLY_ATTRIBUTE) &&
                 !(st.st_mode & (S_IWUSR | S_IWGRP | S_IWOTH)))
@@ -2809,6 +2859,11 @@ static void set_fd_disposition( struct fd *fd, unsigned int flags )
         }
         else if (S_ISDIR( st.st_mode ))  /* can't remove non-empty directories */
         {
+            if (fd->unix_fd == -1)
+            {
+                set_error( fd->no_fd_status );
+                return;
+            }
             switch (is_dir_empty( fd->unix_fd ))
             {
             case -1:
@@ -2842,15 +2897,11 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
     struct stat st, st2;
     char *name;
     const unsigned int replace = flags & FILE_RENAME_REPLACE_IF_EXISTS;
+    int ret;
 
     if (!fd->inode || !fd->unix_name)
     {
         set_error( STATUS_OBJECT_TYPE_MISMATCH );
-        return;
-    }
-    if (fd->unix_fd == -1)
-    {
-        set_error( fd->no_fd_status );
         return;
     }
 
@@ -2878,15 +2929,26 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
     }
 
     /* when creating a hard link, source cannot be a dir */
-    if (create_link && !fstat( fd->unix_fd, &st ) && S_ISDIR( st.st_mode ))
+    if (create_link)
     {
-        set_error( STATUS_FILE_IS_A_DIRECTORY );
-        goto failed;
+        if (fd->unix_fd != -1)
+            ret = fstat( fd->unix_fd, &st );
+        else
+            ret = lstat( fd->unix_name, &st );
+        if (!ret && S_ISDIR( st.st_mode ))
+        {
+            set_error( STATUS_FILE_IS_A_DIRECTORY );
+            goto failed;
+        }
     }
 
     if (!stat( name, &st ))
     {
-        if (!fstat( fd->unix_fd, &st2 ) && st.st_ino == st2.st_ino && st.st_dev == st2.st_dev)
+        if (fd->unix_fd != -1)
+            ret = fstat( fd->unix_fd, &st2 );
+        else
+            ret = lstat( fd->unix_name, &st2 );
+        if (!ret && st.st_ino == st2.st_ino && st.st_dev == st2.st_dev)
         {
             if (create_link && !replace) set_error( STATUS_OBJECT_NAME_COLLISION );
             free( name );
@@ -2952,7 +3014,8 @@ static void set_fd_name( struct fd *fd, struct fd *root, const char *nameptr, da
         goto failed;
     }
 
-    if (is_file_executable( fd->unix_name ) != is_file_executable( name ) && !fstat( fd->unix_fd, &st ))
+    if (is_file_executable( fd->unix_name ) != is_file_executable( name ) &&
+        fd->unix_fd != -1 && !fstat( fd->unix_fd, &st ))
     {
         if (is_file_executable( name ))
             /* set executable bit where read bit is set */
