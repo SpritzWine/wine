@@ -1221,11 +1221,19 @@ void manage_desktop( WCHAR *arg )
     }
 
     /* parse the desktop option */
-    /* the option is of the form /desktop=name[,widthxheight[,driver]] */
+    /* the option is of the form /desktop[=name[,widthxheight[,driver]]] */
     if ((arg[0] == '=' || arg[0] == ',') && arg[1] && arg[1] != ',')
     {
-        arg++;
-        name = arg;
+        if (arg[0] == ',')
+        {
+            name = get_default_desktop_name();
+        }
+        else
+        {
+            arg++;
+            name = arg;
+        }
+
         if ((p = wcschr( arg, ',' )))
         {
             *p++ = 0;
