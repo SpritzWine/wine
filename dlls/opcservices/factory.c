@@ -369,15 +369,27 @@ static HRESULT WINAPI opc_factory_CreatePackage(IOpcFactory *iface, IOpcPackage 
 {
     TRACE("iface %p, package %p.\n", iface, package);
 
-    return opc_package_create(iface, package);
+    return opc_package_create(iface, NULL, package);
 }
 
 static HRESULT WINAPI opc_factory_ReadPackageFromStream(IOpcFactory *iface, IStream *stream,
         OPC_READ_FLAGS flags, IOpcPackage **package)
 {
-    FIXME("iface %p, stream %p, flags %#x, package %p stub!\n", iface, stream, flags, package);
+    struct opc_part_set *part_set;
+    HRESULT hr;
 
-    return E_NOTIMPL;
+    TRACE("iface %p, stream %p, flags %#x, package %p\n", iface, stream, flags, package);
+
+    if (FAILED(hr = opc_part_set_create(&part_set)))
+        return hr;
+    if (FAILED(hr = compress_open_archive(iface, stream, flags, part_set)))
+    {
+        opc_part_set_release(part_set);
+        return hr;
+    }
+    hr = opc_package_create(iface, part_set, package);
+    opc_part_set_release(part_set);
+    return hr;
 }
 
 static HRESULT WINAPI opc_factory_WritePackageToStream(IOpcFactory *iface, IOpcPackage *package, OPC_WRITE_FLAGS flags,

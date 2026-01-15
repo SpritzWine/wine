@@ -18,6 +18,7 @@
 
 #define COBJMACROS
 
+#include <stdint.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <zlib.h>
@@ -25,9 +26,11 @@
 #include "windef.h"
 #include "winternl.h"
 #include "msopc.h"
+#include "xmllite.h"
 
 #include "opc_private.h"
 
+#include "wine/rbtree.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(msopc);
@@ -144,12 +147,21 @@ enum zip_versions
     ZIP64_VERSION = 45,
 };
 
+static const OPC_COMPRESSION_OPTIONS deflate_opts[] =
+{
+    OPC_COMPRESSION_NORMAL,
+    OPC_COMPRESSION_MAXIMUM,
+    OPC_COMPRESSION_FAST,
+    OPC_COMPRESSION_SUPERFAST
+};
+
 enum entry_flags
 {
     DEFLATE_NORMAL = 0x0,
     DEFLATE_MAX = 0x2,
     DEFLATE_FAST = 0x4,
     DEFLATE_SUPERFAST = 0x6,
+    DEFLATE_LEVEL_MASK = 0x6,
     USE_DATA_DESCRIPTOR = 0x8,
 };
 
@@ -252,7 +264,7 @@ HRESULT compress_finalize_archive(struct zip_archive *archive)
             cdh.signature = ZIP32_CDFH;
             cdh.version = ZIP64_VERSION;
             cdh.min_version = ZIP64_VERSION;
-            cdh.flags = USE_DATA_DESCRIPTOR;
+            cdh.flags = file->flags;
             cdh.method = file->method;
             cdh.mtime = archive->mtime;
             cdh.crc32 = file->crc32;
@@ -317,7 +329,7 @@ HRESULT compress_finalize_archive(struct zip_archive *archive)
             cdh.signature = ZIP32_CDFH;
             cdh.version = ZIP32_VERSION;
             cdh.min_version = ZIP32_VERSION;
-            cdh.flags = USE_DATA_DESCRIPTOR;
+            cdh.flags = file->flags;
             cdh.method = file->method;
             cdh.mtime = archive->mtime;
             cdh.crc32 = file->crc32;
@@ -559,4 +571,565 @@ HRESULT compress_add_file(struct zip_archive *archive, const WCHAR *path,
     archive->files[archive->file_count++] = file;
 
     return S_OK;
+}
+
+static const char *debugstr_OPC_COMPRESSION_OPTIONS(OPC_COMPRESSION_OPTIONS opt)
+{
+    static const char *str[] = {"OPC_COMPRESSION_NONE", "OPC_COMPRESSION_NORMAL", "OPC_COMPRESSION_MAXIMUM",
+                                "OPC_COMPRESSION_FAST", "OPC_COMPRESSION_SUPERFAST"};
+
+    if (opt + 1 < ARRAY_SIZE(str))
+        return str[opt + 1];
+    return wine_dbg_sprintf("%#x", opt);
+}
+
+static const char *debugstr_zip_entry(const struct zip_entry *entry)
+{
+    return wine_dbg_sprintf("{%I64u %I64u %#lx %#I64x}", entry->compressed_size, entry->uncompressed_size, entry->crc32,
+                            entry->local_file_offset.QuadPart);
+}
+struct zip_part
+{
+    struct zip_entry entry;
+    OPC_COMPRESSION_OPTIONS opt;
+    IOpcPartUri *name;
+};
+
+static BOOL compress_validate_part_size(const struct zip_entry *entry, const struct local_file_header *file,
+                                        const struct zip64_extra_field *ext)
+{
+    if (file->flags & USE_DATA_DESCRIPTOR)
+        return !(file->compressed_size || file->uncompressed_size || file->crc32 || ext->compressed_size ||
+                 ext->uncompressed_size);
+    else
+    {
+        ULONG64 compressed_size = file->compressed_size == UINT32_MAX ? ext->compressed_size : file->compressed_size;
+        ULONG64 uncompressed_size = file->uncompressed_size == UINT32_MAX ? ext->uncompressed_size : file->uncompressed_size;
+
+        return compressed_size == entry->compressed_size && uncompressed_size == entry->uncompressed_size &&
+               file->crc32 == entry->crc32;
+    }
+}
+
+/* Decompress the ZIP file described by entry in IStream archive into out. */
+HRESULT decompress_to_stream(IStream *archive, const struct zip_entry *entry, IStream *out, BOOL set_size)
+{
+    ULONG64 compressed_data_read = 0, data_uncompressed = 0;
+    ULONG ext_size = 0, read, crc32 = 0, exp_crc32 = 0;
+    static const ULONG buffer_size = 0x8000;
+    struct zip64_extra_field ext = {0};
+    struct local_file_header file = {0};
+    BYTE *input_buf, *output_buf;
+    z_stream z_str = {0};
+    LARGE_INTEGER off;
+    HRESULT hr;
+    int ret;
+
+    off.QuadPart = entry->local_file_offset.QuadPart;
+    if (FAILED(hr = IStream_Seek(archive, off, STREAM_SEEK_SET, NULL)))
+        return hr;
+    hr = IStream_Read(archive, &file, sizeof(file), &read);
+    if (hr != S_OK)
+        return hr == S_FALSE ? OPC_E_ZIP_DECOMPRESSION_FAILED : hr;
+    if (file.method && file.method != Z_DEFLATED)
+        return OPC_E_ZIP_UNSUPPORTEDARCHIVE;
+    if (file.uncompressed_size == UINT32_MAX)
+        ext_size = 8;
+    if (file.compressed_size == UINT32_MAX)
+        ext_size = 16;
+    if (ext_size)
+        ext_size += 4; /* For the signature and size fields. */
+    if (file.extra_length < ext_size)
+        return OPC_E_ZIP_CORRUPTED_ARCHIVE;
+
+    off.QuadPart = file.name_length;
+    if (FAILED(hr = IStream_Seek(archive, off, STREAM_SEEK_CUR, NULL)))
+        return hr;
+    if (ext_size && ((hr = IStream_Read(archive, &ext, ext_size, &read) != S_OK)))
+        return hr == S_FALSE ? OPC_E_ZIP_DECOMPRESSION_FAILED : hr;
+    if (!compress_validate_part_size(entry, &file, &ext))
+        return OPC_E_ZIP_CORRUPTED_ARCHIVE;
+    if (set_size && FAILED(hr = IStream_SetSize(out, *(ULARGE_INTEGER *)&entry->uncompressed_size)))
+        return hr;
+    if (!(file.flags & USE_DATA_DESCRIPTOR))
+        exp_crc32 = file.crc32;
+    if (!(input_buf = malloc(buffer_size))) return E_OUTOFMEMORY;
+    if (!(output_buf = malloc(buffer_size)))
+    {
+        free(input_buf);
+        return E_OUTOFMEMORY;
+    }
+
+    z_str.zalloc = zalloc;
+    z_str.zfree = zfree;
+    z_str.next_in = input_buf;
+    z_str.next_out = output_buf;
+    z_str.avail_out = buffer_size;
+    ret = inflateInit2(&z_str, -MAX_WBITS);
+    if (ret)
+    {
+        free(input_buf);
+        free(output_buf);
+        return OPC_E_ZIP_DECOMPRESSION_FAILED;
+    }
+    hr = OPC_E_ZIP_DECOMPRESSION_FAILED;
+    crc32 = RtlComputeCrc32(0, NULL, 0);
+    while (compressed_data_read < entry->compressed_size && data_uncompressed < entry->uncompressed_size)
+    {
+        ULONG to_read = min(entry->compressed_size - compressed_data_read, buffer_size);
+
+        z_str.total_out = 0;
+        hr = IStream_Read(archive, input_buf, to_read, &read);
+        if (hr != S_OK)
+        {
+            if (hr == S_FALSE) hr = OPC_E_ZIP_DECOMPRESSION_FAILED;
+            break;
+        }
+        z_str.avail_in = read;
+        ret = inflate(&z_str, Z_SYNC_FLUSH);
+        if (ret && ret != Z_STREAM_END)
+        {
+            hr = OPC_E_ZIP_DECOMPRESSION_FAILED;
+            break;
+        }
+        if (FAILED(hr = IStream_Write(out, output_buf, z_str.total_out, NULL)))
+            break;
+        crc32 = RtlComputeCrc32(crc32, output_buf, z_str.total_out);
+        compressed_data_read += read;
+        data_uncompressed += z_str.total_out;
+    }
+    inflateEnd(&z_str);
+    free(input_buf);
+    free(output_buf);
+    if (FAILED(hr))
+        return hr;
+    if (compressed_data_read != entry->compressed_size || data_uncompressed != entry->uncompressed_size)
+        return OPC_E_ZIP_DECOMPRESSION_FAILED;
+
+    if (file.flags & USE_DATA_DESCRIPTOR)
+    {
+        ULONG64 exp_compressed, exp_uncompressed;
+        union {
+            struct zip32_data_descriptor desc32;
+            struct zip64_data_descriptor desc64;
+        } desc = {0};
+
+        hr = IStream_Read(archive, &desc, ext_size ? sizeof(desc.desc64) : sizeof(desc.desc32), &read);
+        if (hr != S_OK) return hr == S_FALSE ? OPC_E_ZIP_DECOMPRESSION_FAILED : hr;
+        if (ext_size)
+        {
+            exp_compressed = desc.desc64.compressed_size;
+            exp_uncompressed = desc.desc64.uncompressed_size;
+        }
+        else
+        {
+            exp_compressed = desc.desc32.compressed_size;
+            exp_uncompressed = desc.desc32.uncompressed_size;
+        }
+        if (exp_compressed != compressed_data_read || exp_uncompressed != data_uncompressed)
+            return OPC_E_ZIP_CORRUPTED_ARCHIVE;
+        exp_crc32 = desc.desc64.crc32;
+    }
+    return exp_crc32 != crc32 ? OPC_E_ZIP_CORRUPTED_ARCHIVE : S_OK;
+}
+
+struct content_type_entry
+{
+    struct rb_entry entry;
+    WCHAR *extension_or_part_name;
+    WCHAR *type;
+};
+
+static int content_type_entry_compare(const void *key, const struct rb_entry *entry)
+{
+    const WCHAR *key2 = RB_ENTRY_VALUE(entry, struct content_type_entry, entry)->extension_or_part_name;
+    return wcsicmp(key, key2);
+}
+
+static void content_type_entry_destroy(struct rb_entry *entry, void *data)
+{
+    struct content_type_entry *ct = RB_ENTRY_VALUE(entry, struct content_type_entry, entry);
+
+    free(ct->extension_or_part_name);
+    free(ct->type);
+    free(ct);
+}
+
+static HRESULT xml_get_attribute(IXmlReader *reader, const WCHAR *name, WCHAR **val_ret)
+{
+    const WCHAR *val;
+    HRESULT hr;
+
+    hr = IXmlReader_MoveToAttributeByName(reader, name, NULL);
+    if (hr != S_OK)
+        return FAILED(hr) ? hr : OPC_E_INVALID_CONTENT_TYPE_XML;
+    if (SUCCEEDED(hr = IXmlReader_GetValue(reader, &val, NULL)))
+        hr = (*val_ret = wcsdup(val)) ? S_OK : E_OUTOFMEMORY;
+    return hr;
+}
+
+static HRESULT xml_get_next_node(IXmlReader *reader, XmlNodeType exp_type, const WCHAR *exp_name)
+{
+    XmlNodeType type;
+    HRESULT hr;
+
+    do {
+        hr = IXmlReader_Read(reader, &type);
+        if (hr != S_OK)
+            return hr;
+    } while (type == XmlNodeType_Whitespace);
+    if (exp_type != XmlNodeType_None && type != exp_type)
+        return OPC_E_INVALID_CONTENT_TYPE_XML;
+    if (exp_name)
+    {
+        const WCHAR *name;
+
+        if (SUCCEEDED(hr = IXmlReader_GetLocalName(reader, &name, NULL)) && wcscmp(name, exp_name))
+            hr = OPC_E_INVALID_CONTENT_TYPE_XML;
+    }
+    return hr;
+}
+
+static HRESULT content_types_add_type(IXmlReader *reader, const WCHAR *attr_name, struct rb_tree *types)
+{
+    WCHAR *ext_or_part = NULL, *content_type = NULL;
+    struct content_type_entry *type = NULL;
+    HRESULT hr;
+
+    if (FAILED(hr = xml_get_attribute(reader, attr_name, &ext_or_part))) return hr;
+    if (FAILED(hr = xml_get_attribute(reader, L"ContentType", &content_type)))
+        goto done;
+    if (!(type = calloc(1, sizeof(*type))))
+    {
+        hr = E_OUTOFMEMORY;
+        goto done;
+    }
+    type->extension_or_part_name = ext_or_part;
+    type->type = content_type;
+    if (rb_put(types, ext_or_part, &type->entry))
+        hr = OPC_E_DUPLICATE_DEFAULT_EXTENSION;
+done:
+    if (FAILED(hr))
+    {
+        free(content_type);
+        free(ext_or_part);
+        free(type);
+    }
+    return hr;
+}
+
+static HRESULT content_types_add_default(IXmlReader *reader, struct rb_tree *defaults)
+{
+    return content_types_add_type(reader, L"Extension", defaults);
+}
+
+static HRESULT content_types_add_override(IXmlReader *reader, struct rb_tree *overrides)
+{
+    return content_types_add_type(reader, L"PartName", overrides);
+}
+
+static HRESULT compress_read_content_types(IStream *archive, const struct zip_entry *content_types,
+                                           struct rb_tree *defaults, struct rb_tree *overrides)
+{
+    static const LARGE_INTEGER start = {0};
+    IXmlReader *reader;
+    IStream *xml;
+    HRESULT hr;
+
+    if (FAILED(hr = CreateStreamOnHGlobal(NULL, TRUE, &xml))) return hr;
+    if (FAILED(hr = decompress_to_stream(archive, content_types, xml, TRUE)))
+    {
+        IStream_Release(xml);
+        return hr;
+    }
+    if (FAILED(hr = IStream_Seek(xml, start, STREAM_SEEK_SET, NULL)))
+    {
+        IStream_Release(xml);
+        return hr;
+    }
+    if (FAILED(hr = CreateXmlReader(&IID_IXmlReader, (void *)&reader, NULL)))
+    {
+        IStream_Release(xml);
+        return hr;
+    }
+
+    hr = IXmlReader_SetInput(reader, (IUnknown *)xml);
+    IStream_Release(xml);
+    if (FAILED(hr)) goto done;
+
+    if (FAILED(hr = xml_get_next_node(reader, XmlNodeType_XmlDeclaration, L"xml")))
+        goto done;
+    if (FAILED(hr = xml_get_next_node(reader, XmlNodeType_Element, L"Types")))
+        goto done;
+    while(SUCCEEDED(hr = xml_get_next_node(reader, XmlNodeType_None, NULL)))
+    {
+        const WCHAR *name;
+        XmlNodeType type;
+
+        if (FAILED(hr = IXmlReader_GetNodeType(reader, &type))) break;
+        if (type != XmlNodeType_Element && type != XmlNodeType_EndElement) continue;
+        if (FAILED(hr = IXmlReader_GetLocalName(reader, &name, NULL))) break;
+        if (type == XmlNodeType_EndElement) break;
+
+        if (!wcscmp(name, L"Default"))
+            hr = content_types_add_default(reader, defaults);
+        else if (!wcscmp(name, L"Override"))
+            hr = content_types_add_override(reader, overrides);
+        else
+            FIXME("Unknown node: %s\n", debugstr_w(name));
+
+        if (FAILED(hr)) break;
+    }
+done:
+    IXmlReader_Release(reader);
+    return hr;
+}
+
+/* The stream should be at the start of the central directory. */
+static HRESULT compress_read_entries(IOpcFactory *factory, IStream *stream, OPC_READ_FLAGS flags, ULONG dir_records,
+                                     struct opc_part_set *partset)
+{
+    static const char *content_types_name = "[Content_Types].xml";
+    ULONG i, part_count = 0, nameW_len = 0, nameA_len = 0;
+    struct zip_entry content_types = {0};
+    BOOL found_content_types = FALSE;
+    struct zip_part *parts = NULL;
+    struct rb_tree type_overrides;
+    struct rb_tree type_defaults;
+    WCHAR *nameW = NULL;
+    char *nameA = NULL;
+    HRESULT hr;
+
+    rb_init(&type_defaults, content_type_entry_compare);
+    rb_init(&type_overrides, content_type_entry_compare);
+
+    for (i = 0; i < dir_records; i++)
+    {
+        struct zip32_central_directory_header dir = {0};
+        struct zip64_extra_field ext = {0};
+        struct zip_entry entry = {0};
+        OPC_COMPRESSION_OPTIONS opt;
+        ULONG read, ext_size = 0;
+        LARGE_INTEGER off;
+
+        hr = IStream_Read(stream, &dir, sizeof(dir), &read);
+        if (hr != S_OK)
+            goto done;
+        if (dir.name_length + 1 > nameA_len)
+        {
+            char *tmp;
+
+            nameA_len = dir.name_length + 1;
+            if (!(tmp = realloc(nameA, nameA_len)))
+            {
+                hr = E_OUTOFMEMORY;
+                goto done;
+            }
+            nameA = tmp;
+        }
+        nameA[dir.name_length] = '\0';
+
+        hr = IStream_Read(stream, nameA, dir.name_length, &read);
+        if (hr != S_OK)
+            goto done;
+        /* If any of the fields are UINT32_MAX, there is an extra ZIP64 extended information field */
+        if (dir.uncompressed_size == UINT32_MAX)
+            ext_size = 8;
+        if (dir.compressed_size == UINT32_MAX)
+            ext_size = 16;
+        if (dir.local_file_offset == UINT32_MAX)
+            ext_size = 24;
+        if (ext_size)
+            ext_size += 4; /* For the signature and size fields. */
+        /* Make sure that the central directory record actually indicates there is a ZIP64 extended field. */
+        if (dir.extra_length < ext_size)
+        {
+            hr = OPC_E_ZIP_CORRUPTED_ARCHIVE;
+            goto done;
+        }
+        if (ext_size && ((hr = IStream_Read(stream, &ext, ext_size, &read) != S_OK)))
+            goto done;
+
+        off.QuadPart = dir.extra_length - ext_size;
+        /* Skip any extra data that we haven't read. */
+        if (off.QuadPart && FAILED(hr = IStream_Seek(stream, off, STREAM_SEEK_CUR, NULL)))
+            goto done;
+        opt = dir.method ? deflate_opts[(dir.flags & DEFLATE_LEVEL_MASK) >> 1] : OPC_COMPRESSION_NONE;
+        entry.uncompressed_size = (dir.uncompressed_size == UINT32_MAX) ? ext.uncompressed_size : dir.uncompressed_size;
+        entry.compressed_size = (dir.compressed_size == UINT32_MAX) ? ext.compressed_size : dir.compressed_size;
+        entry.crc32 = dir.crc32;
+        entry.local_file_offset.QuadPart = (dir.local_file_offset == UINT32_MAX) ? ext.offset : dir.local_file_offset;
+
+        off.QuadPart = dir.comment_length;
+        if (dir.comment_length && FAILED(hr = IStream_Seek(stream, off, STREAM_SEEK_CUR, NULL)))
+            goto done;
+        if (!strcmp(nameA, content_types_name))
+        {
+            if (found_content_types)
+            {
+                hr = OPC_E_ZIP_DUPLICATE_NAME;
+                goto done;
+            }
+            content_types = entry;
+            found_content_types = TRUE;
+        }
+        else
+        {
+            IOpcPartUri *name_uri;
+            struct zip_part *tmp;
+            INT len;
+
+            TRACE("Adding new OPC part %s: %s, %s\n", debugstr_a(nameA), debugstr_OPC_COMPRESSION_OPTIONS(opt),
+                  debugstr_zip_entry(&entry));
+
+            len = MultiByteToWideChar(CP_ACP, 0, nameA, -1, NULL, 0);
+            if (len > nameW_len)
+            {
+                WCHAR *tmp;
+
+                nameW_len = len;
+                if (!(tmp = realloc(nameW, len * sizeof(WCHAR))))
+                {
+                    hr = E_OUTOFMEMORY;
+                    goto done;
+                }
+                nameW = tmp;
+            }
+            MultiByteToWideChar(CP_ACP, 0, nameA, -1, nameW, len);
+            if (FAILED(hr = IOpcFactory_CreatePartUri(factory, nameW, &name_uri)))
+                goto done;
+            if (!(tmp = realloc(parts, (part_count + 1) * sizeof(*parts))))
+            {
+                IOpcPartUri_Release(name_uri);
+                hr = E_OUTOFMEMORY;
+                goto done;
+            }
+            parts = tmp;
+            tmp = &parts[part_count++];
+            tmp->entry = entry;
+            tmp->opt = opt;
+            tmp->name = name_uri;
+        }
+    }
+
+    if (!found_content_types)
+    {
+        hr = OPC_E_MISSING_CONTENT_TYPES;
+        goto done;
+    }
+    hr = compress_read_content_types(stream, &content_types, &type_defaults, &type_overrides);
+
+    for (i = 0; i < part_count && SUCCEEDED(hr); i++)
+    {
+        const struct content_type_entry *content_type;
+        const struct rb_entry *entry;
+        BSTR str;
+
+        if (FAILED(hr = IOpcPartUri_GetAbsoluteUri(parts[i].name, &str))) goto done;
+        /* First, check if if there is "Override" entry for this part. */
+        entry = rb_get(&type_overrides, str);
+        SysFreeString(str);
+        if (!entry)
+        {
+            if (FAILED(hr = IOpcPartUri_GetExtension(parts[i].name, &str))) goto done;
+            entry = rb_get(&type_defaults, &str[1]); /* Omit the leading dot. */
+        }
+        if (!entry)
+        {
+            hr = E_INVALIDARG;
+            goto done;
+        }
+
+        content_type = RB_ENTRY_VALUE(entry, struct content_type_entry, entry);
+        hr = opc_part_set_add_zip_part(partset, stream, &parts[i].entry, parts[i].opt, flags, parts[i].name,
+                                       content_type->type);
+        if (FAILED(hr)) goto done;
+    }
+
+done:
+    rb_destroy(&type_defaults, content_type_entry_destroy, NULL);
+    rb_destroy(&type_overrides, content_type_entry_destroy, NULL);
+    for (i = 0; i < part_count; i++)
+        IOpcPartUri_Release(parts[i].name);
+    free(parts);
+    free(nameA);
+    free(nameW);
+    return hr == S_FALSE ? OPC_E_ZIP_CORRUPTED_ARCHIVE : hr;
+}
+
+HRESULT compress_open_archive(IOpcFactory *factory, IStream *stream, OPC_READ_FLAGS flags,
+                              struct opc_part_set *part_set)
+{
+    struct zip32_end_of_central_directory end = {0};
+    ULARGE_INTEGER end_dir_start;
+    LARGE_INTEGER off;
+    HRESULT hr;
+
+    off.QuadPart = -sizeof(end);
+    hr = IStream_Seek(stream, off, STREAM_SEEK_END, &end_dir_start);
+    /* Start from the end of the archive to find a end of central directory header. */
+    while (SUCCEEDED(hr))
+    {
+        struct zip64_end_of_central_directory_locator locator = {0};
+        struct zip64_end_of_central_directory end64 = {0};
+        LARGE_INTEGER central_dir_start;
+        ULONG read, dir_records;
+
+        if (FAILED(hr = IStream_Read(stream, &end, sizeof(end), &read)))
+            return hr;
+        if (hr == S_FALSE || end.signature != ZIP32_EOCD)
+            goto next;
+        /* Check any of the fields in the header are UINT16_MAX, and there are enough bytes for a EOCD locator and EOCD64 record.
+         * In that case, this might be a ZIP64 archive. */
+        if ((end.records_total == UINT16_MAX || end.directory_size == UINT16_MAX || end.directory_offset == UINT16_MAX) &&
+            end_dir_start.QuadPart >= (sizeof(locator) + sizeof(end64)))
+        {
+                ULARGE_INTEGER loc_start, end64_start;
+
+                /* ZIP64 uses an additional End of Central Directory Locator record. */
+                off.QuadPart = end_dir_start.QuadPart - sizeof(locator);
+                if (FAILED(hr = IStream_Seek(stream, off, STREAM_SEEK_SET, &loc_start)))
+                    goto next;
+                if (FAILED(hr = IStream_Read(stream, &locator, sizeof(locator), &read)))
+                    return hr;
+                if (hr == S_FALSE || locator.signature != ZIP64_EOCD64_LOCATOR ||
+                    locator.eocd64_offset >= loc_start.QuadPart ||
+                    loc_start.QuadPart - locator.eocd64_offset < sizeof(end64))
+                    goto next;
+                off.QuadPart = locator.eocd64_offset;
+                if (FAILED(hr = IStream_Seek(stream, off, STREAM_SEEK_SET, &end64_start)))
+                    goto next;
+                if (FAILED(hr = IStream_Read(stream, &end64, sizeof(end64), &read)))
+                    return hr;
+                if (hr == S_FALSE || end64.signature != ZIP64_EOCD64 || end64.size < (sizeof(end64) - 12))
+                    goto next;
+                central_dir_start.QuadPart = end64.directory_offset;
+                dir_records = end64.records_total;
+        }
+        else /* Otherwise, treat it as ZIP32. */
+        {
+            /* Check if end.directory_offset actually points to the start of central directory. */
+            if (end.directory_offset >= end_dir_start.QuadPart ||
+                end_dir_start.QuadPart - end.directory_offset < sizeof(end))
+                goto next;
+            central_dir_start.QuadPart = end.directory_offset;
+            dir_records = end.records_total;
+        }
+
+        /* The central directory can't be located after the EOCD header. */
+        if (central_dir_start.QuadPart >= end_dir_start.QuadPart)
+            goto next;
+        if (FAILED(hr = IStream_Seek(stream, central_dir_start, STREAM_SEEK_SET, NULL)))
+            goto next;
+        return compress_read_entries(factory, stream, flags, dir_records, part_set);
+
+    /* Seek back sizeof(end) bytes from where we initially were, and try again. */
+    next:
+        if (FAILED(hr = IStream_Seek(stream, *(LARGE_INTEGER *)&end_dir_start, STREAM_SEEK_SET, NULL)))
+            return hr;
+        off.QuadPart = -sizeof(end);
+        hr = IStream_Seek(stream, off, STREAM_SEEK_CUR, &end_dir_start);
+    }
+
+    return hr;
 }

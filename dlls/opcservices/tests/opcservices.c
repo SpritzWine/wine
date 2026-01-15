@@ -1319,7 +1319,7 @@ static void test_read_package(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
 
     hr = IOpcFactory_ReadPackageFromStream(factory, stream, OPC_READ_DEFAULT, &package);
-    todo_wine ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     IStream_Release(stream);
     if (FAILED(hr)) goto done;
 
@@ -1342,7 +1342,7 @@ static void test_read_package(void)
 
         hr = IOpcPart_GetContentType(part, &type);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-        todo_wine ok(!wcscmp(type, parts[i].type), "Unexpected type %s != %s.\n", debugstr_w(type), debugstr_w(parts[i].type));
+        ok(!wcscmp(type, parts[i].type), "Unexpected type %s != %s.\n", debugstr_w(type), debugstr_w(parts[i].type));
         CoTaskMemFree(type);
 
         options = ~0u;
