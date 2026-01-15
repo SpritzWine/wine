@@ -1678,9 +1678,7 @@ static void test_query_battery(void)
        "expected MaxCapacity %lu to be greater than or equal to RemainingCapacity %lu\n",
        bs.MaxCapacity, bs.RemainingCapacity);
 
-    if (!bs.BatteryPresent)
-        time_left = 0;
-    else if (!bs.Charging && (LONG)bs.Rate < 0)
+    if ((LONG)bs.Rate < 0)
         time_left = 3600 * bs.RemainingCapacity / -(LONG)bs.Rate;
     else
         time_left = ~0u;

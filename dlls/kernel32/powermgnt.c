@@ -65,11 +65,11 @@ BOOL WINAPI GetSystemPowerStatus(LPSYSTEM_POWER_STATUS ps)
     {
         ps->BatteryLifePercent = bs.MaxCapacity ? 100 * bs.RemainingCapacity / bs.MaxCapacity : 100;
         ps->BatteryLifeTime = bs.EstimatedTime;
-        if (!bs.Charging && (LONG)bs.Rate < 0)
+        if ((LONG)bs.Rate < 0)
             ps->BatteryFullLifeTime = 3600 * bs.MaxCapacity / -(LONG)bs.Rate;
 
         ps->BatteryFlag = 0;
-        if (bs.Charging)
+        if (bs.Rate > 0)
             ps->BatteryFlag |= BATTERY_FLAG_CHARGING;
         if (ps->BatteryLifePercent > 66)
             ps->BatteryFlag |= BATTERY_FLAG_HIGH;
