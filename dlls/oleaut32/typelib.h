@@ -106,8 +106,8 @@ typedef struct tagMSFT_SegDir {
                              /* offset in some table???? */
 /*7*/MSFT_pSeg pNameHashTab; /* always created, always same size (0x200) */
                              /* hash table with offsets to names */
-/*8*/MSFT_pSeg pNametab;     /* name tables */
-/*9*/MSFT_pSeg pStringtab;   /* string table */
+/*8*/MSFT_pSeg pNameTab;     /* name tables */
+/*9*/MSFT_pSeg pStringTab;   /* string table */
 /*A*/MSFT_pSeg pTypdescTab;  /* table with type descriptors */
 /*B*/MSFT_pSeg pArrayDescriptions;
 /*C*/MSFT_pSeg pCustData;    /* data table, used for custom data and default */
@@ -259,6 +259,10 @@ typedef struct {
     INT   onext;    /* next offset, -1 if last */
 } MSFT_RefRecord;
 
+typedef struct {
+    UINT8 pad[0x80]; /* currently unknown structure. */
+} MSFT_GuidHashEntry;
+
 /* this is how a guid is stored */
 typedef struct {
     GUID guid;
@@ -269,7 +273,11 @@ typedef struct {
 			   by imported typeinfos) */
     INT   next_hash;    /* offset to next guid in the hash bucket */
 } MSFT_GuidEntry;
-/* some data preceding entries in the name table */
+
+typedef struct {
+    UINT8   pad[0x200]; /* currently unknown structure. */
+} MSFT_NameHash;
+
 typedef struct {
     INT   hreftype;     /* is -1 if name is for neither a typeinfo,
 			   a variable, or a function (that is, name

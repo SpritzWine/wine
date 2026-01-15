@@ -7743,11 +7743,9 @@ static void test_FindName(void)
     ti = (void*)0xdeadbeef;
     hr = ITypeLib_FindName(tl, buffW, 0, &ti, &memid, &c);
     ok(hr == S_OK, "got 0x%08lx\n", hr);
-todo_wine {
     ok(memid == MEMBERID_NIL, "got %ld\n", memid);
     ok(!lstrcmpW(buffW, wszGUID), "got %s\n", wine_dbgstr_w(buffW));
     ok(c == 1, "got %d\n", c);
-}
     if (c == 1)
         ITypeInfo_Release(ti);
 

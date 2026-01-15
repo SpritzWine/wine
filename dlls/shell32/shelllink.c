@@ -51,6 +51,7 @@
 #include "msi.h"
 #include "appmgmt.h"
 
+#include "debughlp.h"
 #include "initguid.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shell);
@@ -1558,7 +1559,8 @@ static HRESULT WINAPI IShellLinkW_fnQueryInterface(
 
     TRACE("(%p)->(%s)\n", This, debugstr_guid(riid));
 
-    *ppvObj = NULL;
+    if (!ppvObj)
+        return E_POINTER;
 
     if(IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IShellLinkA))
     {
@@ -1595,16 +1597,16 @@ static HRESULT WINAPI IShellLinkW_fnQueryInterface(
     else if(IsEqualIID(riid, &IID_IPropertyStore))
     {
         *ppvObj = &This->IPropertyStore_iface;
+    } else {
+        *ppvObj = NULL;
+        ERR("-- Interface: E_NOINTERFACE riid->(%s)\n", shdebugstr_guid(riid));
+        return E_NOINTERFACE;
     }
 
-    if(*ppvObj)
-    {
-        IUnknown_AddRef((IUnknown*)*ppvObj);
-        TRACE("-- Interface: (%p)->(%p)\n", ppvObj, *ppvObj);
-        return S_OK;
-    }
-    ERR("-- Interface: E_NOINTERFACE\n");
-    return E_NOINTERFACE;
+    IUnknown_AddRef((IUnknown*)*ppvObj);
+    TRACE("-- Interface: (%p)->(%p)\n", ppvObj, *ppvObj);
+
+    return S_OK;
 }
 
 /******************************************************************************
