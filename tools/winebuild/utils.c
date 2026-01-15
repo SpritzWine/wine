@@ -357,7 +357,7 @@ const char *get_nm_command(void)
 {
     if (!nm_command.count)
     {
-        static const char * const commands[] = { "nm", "gnm", NULL };
+        static const char * const commands[] = { "gcc-nm", "nm", "gnm", NULL };
         nm_command = find_tool( "nm", commands );
     }
     if (nm_command.count > 1)

@@ -1740,6 +1740,13 @@ int main(int argc, char **argv)
                         use_pic = true;
                     else if (!strcmp("-fno-PIC", args.str[i]) || !strcmp("-fno-pic", args.str[i]))
                         use_pic = false;
+                    /* LTO options are available for both the compiler and the linker */
+                    else if ((!strncmp("-flto", args.str[i], 5) && (!args.str[i][5] || args.str[i][5] == '=')) || !strcmp("-fno-lto", args.str[i]))
+                        raw_linker_arg = 1;
+                    else if (!strncmp("-flto-partition=", args.str[i], 16))
+                        raw_linker_arg = 1;
+                    else if (!strcmp("-fuse-linker-plugin", args.str[i]) || !strcmp("-fno-use-linker-plugin", args.str[i]))
+                        raw_linker_arg = 1;
 		    break;
                 case 'i':
                     if (!strcmp( "-isysroot", args.str[i] )) isysroot = args.str[i + 1];

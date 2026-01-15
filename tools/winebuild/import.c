@@ -1212,7 +1212,8 @@ void output_static_lib( const char *output_name, struct strarray files, int crea
 
     if (!create || target.platform != PLATFORM_WINDOWS)
     {
-        args = find_tool( "ar", NULL );
+        static const char * const commands[] = { "gcc-ar", "ar", NULL };
+        args = find_tool( "ar", commands );
         strarray_add( &args, create ? "rc" : "r" );
         strarray_add( &args, output_name );
     }
@@ -1230,7 +1231,8 @@ void output_static_lib( const char *output_name, struct strarray files, int crea
 
     if (target.platform != PLATFORM_WINDOWS)
     {
-        struct strarray ranlib = find_tool( "ranlib", NULL );
+        static const char * const commands[] = { "gcc-ranlib", "ranlib", NULL };
+        struct strarray ranlib = find_tool( "ranlib", commands );
         strarray_add( &ranlib, output_name );
         spawn( ranlib );
     }
