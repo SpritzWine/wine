@@ -84,6 +84,10 @@ DEFINE_GUID(DUMMY_GUID2, 0x12345678,0x1234,0x1234,0x22,0x22,0x22,0x22,0x22,0x22,
 DEFINE_GUID(DUMMY_GUID3, 0x12345678,0x1234,0x1234,0x23,0x23,0x23,0x23,0x23,0x23,0x23,0x23);
 
 extern const CLSID CLSID_FileSchemePlugin;
+extern const CLSID CLSID_AsfByteStreamPlugin;
+extern const CLSID CLSID_MPEG4ByteStreamHandlerPlugin;
+extern const CLSID CLSID_AVIByteStreamPlugin;
+extern const CLSID CLSID_MP3ByteStreamPlugin;
 
 DEFINE_MEDIATYPE_GUID(MEDIASUBTYPE_Base,0);
 DEFINE_GUID(MEDIASUBTYPE_ABGR32,D3DFMT_A8B8G8R8,0x524f,0x11ce,0x9f,0x53,0x00,0x20,0xaf,0x0b,0xa7,0x70);
@@ -13848,6 +13852,329 @@ static void test_undefined_queue_id(void)
     ok(hr == S_OK, "Failed to shut down, hr %#lx.\n", hr);
 }
 
+static void test_ByteStreamOutput(void)
+{
+    #define     TIME            (1 << 0)
+    #define     DURATION_VALUE  (1 << 1)
+    #define     DURATION_HR     (1 << 2)
+    #define     DTS_VALUE       (1 << 3)
+    #define     DTS_HR          (1 << 4)
+    #define     BUFFER_COUNT    (1 << 5)
+    #define     LENGTH          (1 << 6)
+    #define     DURATION        (DURATION_VALUE | DURATION_HR)
+    #define     DTS             (DTS_VALUE | DTS_HR)
+
+    static const WCHAR asf_mime_type[] = L"video/x-ms-wmv";
+    static const WCHAR mp4_mime_type[] = L"video/mp4";
+    static const WCHAR avi_mime_type[] = L"video/avi";
+    static const WCHAR mp3_mime_type[] = L"audio/mp3";
+
+    struct timestamps
+    {
+        LONGLONG time;
+        HRESULT duration_hr;
+        LONGLONG duration;
+        HRESULT dts_hr;
+        UINT64 dts;
+        DWORD buffer_count;
+        DWORD length;
+        UINT8 todo;
+    };
+    static const struct
+    {
+        const char *name;
+        const WCHAR *resource;
+        const WCHAR *mime_type;
+        const CLSID *class_id;
+        DWORD timeout;
+        struct timestamps expected[5];
+    }
+    tests[] =
+    {
+        {
+            "asf/wmv1",
+            L"test-wmv1.wmv",
+            asf_mime_type,
+            &CLSID_AsfByteStreamPlugin,
+            1000,
+            {
+                {       0, MF_E_NO_SAMPLE_DURATION, 0, MF_E_ATTRIBUTENOTFOUND, 0, 2, 9013, DURATION | BUFFER_COUNT | LENGTH },
+                {  330000, MF_E_NO_SAMPLE_DURATION, 0, MF_E_ATTRIBUTENOTFOUND, 0, 3, 6687, DURATION | BUFFER_COUNT | LENGTH },
+                {  660000, MF_E_NO_SAMPLE_DURATION, 0, MF_E_ATTRIBUTENOTFOUND, 0, 2, 6541, DURATION | BUFFER_COUNT | LENGTH },
+                { 1000000, MF_E_NO_SAMPLE_DURATION, 0, MF_E_ATTRIBUTENOTFOUND, 0, 3, 6365, DURATION | BUFFER_COUNT | LENGTH },
+                { 1330000, MF_E_NO_SAMPLE_DURATION, 0, MF_E_ATTRIBUTENOTFOUND, 0, 2, 5105, DURATION | BUFFER_COUNT | LENGTH },
+            },
+        },
+        {
+            "mp4/h-264",
+            L"test-h264.mp4",
+            mp4_mime_type,
+            &CLSID_MPEG4ByteStreamHandlerPlugin,
+            2000, /* Wine requires over one second to create MPEG4 byte stream handler, Windows is much faster */
+            {
+                { 1333332, S_OK, 333334, S_OK                  ,  666666, 11, 5479, TIME | DURATION_VALUE | DTS | BUFFER_COUNT | LENGTH },
+                { 2666665, S_OK, 333333, S_OK                  ,  999999,  4, 3668, TIME | DTS | BUFFER_COUNT | LENGTH },
+                { 1999998, S_OK, 333334, S_OK                  , 1333332,  4, 3756, TIME | DURATION_VALUE | DTS | BUFFER_COUNT | LENGTH },
+                { 1666666, S_OK, 333332, MF_E_ATTRIBUTENOTFOUND,       0,  4, 3630, DURATION_VALUE | BUFFER_COUNT | LENGTH },
+                { 2333332, S_OK, 333333, S_OK                  , 1999999,  4, 3635, TIME | DTS | BUFFER_COUNT | LENGTH },
+            },
+        },
+        {
+            "mp4/mpeg4",
+            L"test.mp4",
+            mp4_mime_type,
+            &CLSID_MPEG4ByteStreamHandlerPlugin,
+            2000, /* Wine requires over one second to create MPEG4 byte stream handler, Windows is much faster */
+            {
+                {       0, S_OK, 400000, MF_E_ATTRIBUTENOTFOUND, 0, 1, 82, LENGTH },
+                {  400000, S_OK, 400000, MF_E_ATTRIBUTENOTFOUND, 0, 1, 61, LENGTH },
+                {  800000, S_OK, 400000, MF_E_ATTRIBUTENOTFOUND, 0, 1, 86, LENGTH },
+                { 1200000, S_OK, 400000, MF_E_ATTRIBUTENOTFOUND, 0, 1, 68, LENGTH },
+                { 1600000, S_OK, 400000, MF_E_ATTRIBUTENOTFOUND, 0, 1, 68, LENGTH },
+            },
+        },
+        {
+            "avi/i420",
+            L"test-i420.avi",
+            avi_mime_type,
+            &CLSID_AVIByteStreamPlugin,
+            1000,
+            {
+                {       0, S_OK, 333333, MF_E_ATTRIBUTENOTFOUND, 0, 1, 1152 },
+                {  333333, S_OK, 333333, MF_E_ATTRIBUTENOTFOUND, 0, 1, 1152 },
+                {  666666, S_OK, 333333, MF_E_ATTRIBUTENOTFOUND, 0, 1, 1152 },
+                { 1000000, S_OK, 333333, MF_E_ATTRIBUTENOTFOUND, 0, 1, 1152 },
+                { 1333333, S_OK, 333333, MF_E_ATTRIBUTENOTFOUND, 0, 1, 1152 },
+            },
+        },
+        {
+            "mp3",
+            L"test-mp3.mp3",
+            mp3_mime_type,
+            &CLSID_MP3ByteStreamPlugin,
+            1000,
+            {
+                {        0, S_OK, 18808128, MF_E_ATTRIBUTENOTFOUND, 0, 1, 8141, DURATION_VALUE | LENGTH },
+                { 18808128, S_OK, 20375472, MF_E_ATTRIBUTENOTFOUND, 0, 1, 8112, TIME | DURATION_VALUE | LENGTH },
+                { 39183600, S_OK, 20375472, MF_E_ATTRIBUTENOTFOUND, 0, 1, 8112, TIME | DURATION_VALUE | LENGTH },
+                { 59559072, S_OK, 20375472, MF_E_ATTRIBUTENOTFOUND, 0, 1, 8112, TIME | DURATION_VALUE | LENGTH },
+                { 79934544, S_OK, 20375472, MF_E_ATTRIBUTENOTFOUND, 0, 1, 8112, TIME | DURATION_VALUE | LENGTH },
+            },
+        },
+    };
+
+    IMFByteStreamHandler *byte_stream_handler;
+    const struct timestamps *expected;
+    struct test_callback *callback;
+    IMFPresentationDescriptor *pd;
+    IMFByteStream *byte_stream;
+    MF_OBJECT_TYPE object_type;
+    DWORD buffer_count, length;
+    IMFAttributes *attributes;
+    LONGLONG time, duration;
+    IMFMediaSource *source;
+    IMFMediaStream *stream;
+    IMFMediaEvent *event;
+    MediaEventType met;
+    PROPVARIANT value;
+    IMFSample *sample;
+    WCHAR *filename;
+    HRESULT hr;
+    UINT64 dts;
+    ULONG ret;
+    INT i, j;
+
+    hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    for (i = 0; i < ARRAYSIZE(tests); i++)
+    {
+        winetest_push_context("%s timestamps", tests[i].name);
+
+        filename = load_resource(tests[i].resource);
+
+        hr = MFCreateFile(MF_ACCESSMODE_READ, MF_OPENMODE_FAIL_IF_NOT_EXIST, MF_FILEFLAGS_NONE, filename, &byte_stream);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = IMFByteStream_QueryInterface(byte_stream, &IID_IMFAttributes, (void**)&attributes);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = IMFAttributes_SetString(attributes, &MF_BYTESTREAM_CONTENT_TYPE, tests[i].mime_type);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        ret = IMFAttributes_Release(attributes);
+        ok(ret == 1, "Unexpected reference count %ld\n", ret);
+
+        hr = CoCreateInstance(tests[i].class_id, NULL, CLSCTX_INPROC_SERVER,
+                &IID_IMFByteStreamHandler, (void**)&byte_stream_handler);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        callback = create_test_callback(&test_async_callback_result_vtbl);
+
+        hr = IMFByteStreamHandler_BeginCreateObject(byte_stream_handler, byte_stream,
+                filename, MF_RESOLUTION_MEDIASOURCE, NULL, NULL, &callback->IMFAsyncCallback_iface, NULL);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        /* we don't test the reference count here as it fluctuates with time
+         * and implementation which are details we don't need/want to test
+         */
+        IMFByteStream_Release(byte_stream);
+
+        if (WaitForSingleObject(callback->event, tests[i].timeout) == WAIT_TIMEOUT)
+        {
+            ok(0, "timeout\n");
+            IMFAsyncCallback_Release(&callback->IMFAsyncCallback_iface);
+            IMFByteStreamHandler_Release(byte_stream_handler);
+            goto next_test;
+        }
+
+        hr = IMFByteStreamHandler_EndCreateObject(byte_stream_handler, callback->result,
+                &object_type, (IUnknown**)&source);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(object_type == MF_OBJECT_MEDIASOURCE, "Unexpected object_type %d\n", object_type);
+
+        Sleep(10); /* To ensure reference count is 0, we sleep */
+        ret = IMFAsyncResult_Release(callback->result);
+        ok(ret == 0, "Unexpected reference count %ld\n", ret);
+
+        ret = IMFAsyncCallback_Release(&callback->IMFAsyncCallback_iface);
+        ok(ret == 0, "Unexpected reference count %ld\n", ret);
+
+        ret = IMFByteStreamHandler_Release(byte_stream_handler);
+        ok(ret == 0, "Unexpected reference count %ld\n", ret);
+
+        hr = IMFMediaSource_CreatePresentationDescriptor(source, &pd);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        PropVariantInit(&value);
+        hr = IMFMediaSource_Start(source, pd, NULL, &value);
+
+        hr = IMFMediaSource_GetEvent(source, 0, &event);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = IMFMediaEvent_GetType(event, &met);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(met == MENewStream, "Got unexpected event %ld\n", met);
+
+        hr = IMFMediaEvent_GetValue(event, &value);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(value.vt == VT_UNKNOWN, "Unexpected value type %d\n", value.vt);
+
+        IMFMediaEvent_Release(event);
+
+        hr = IUnknown_QueryInterface(value.punkVal, &IID_IMFMediaStream, (void**)&stream);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = PropVariantClear(&value);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = IMFMediaStream_GetEvent(stream, 0, &event);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = IMFMediaEvent_GetType(event, &met);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(met == MEStreamStarted, "Got unexpected event %ld\n", met);
+
+        IMFMediaEvent_Release(event);
+
+        hr = IMFMediaSource_GetEvent(source, 0, &event);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        hr = IMFMediaEvent_GetType(event, &met);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+        ok(met == MESourceStarted, "Got unexpected event %ld\n", met);
+
+        IMFMediaEvent_Release(event);
+
+        for (j = 0; j < ARRAYSIZE(tests[i].expected); j++)
+        {
+            winetest_push_context("sample %d", j);
+
+            expected = tests[i].expected + j;
+
+            /* Request a media sample */
+            hr = IMFMediaStream_RequestSample(stream, NULL);
+            ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+            hr = IMFMediaStream_GetEvent(stream, 0, &event);
+            ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+            hr = IMFMediaEvent_GetType(event, &met);
+            ok(hr == S_OK, "Got hr %#lx.\n", hr);
+            ok(met == MEMediaSample, "Got unexpected event %ld\n", met);
+
+            if (met == MEMediaSample)
+            {
+                hr = IMFMediaEvent_GetValue(event, &value);
+                ok(hr == S_OK, "Got hr %#lx.\n", hr);
+                ok(value.vt == VT_UNKNOWN, "Unexpected value type %d\n", value.vt);
+
+                hr = IUnknown_QueryInterface(value.punkVal, &IID_IMFSample, (void**)&sample);
+                ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+                hr = PropVariantClear(&value);
+                ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+                time = -1;
+                hr = IMFSample_GetSampleTime(sample, &time);
+                ok(hr == S_OK, "Got unexpected hr %#lx when requesting sample time, expected S_OK.\n", hr);
+                todo_wine_if(expected->todo & TIME)
+                ok(time == expected->time, "Unexpected sample time %I64d, expected %I64d\n", time, expected->time);
+
+                duration = -1;
+                hr = IMFSample_GetSampleDuration(sample, &duration);
+                todo_wine_if(expected->todo & DURATION_HR)
+                ok(hr == expected->duration_hr,
+                        "Got hr %#lx when requesting sample duration, expected %#lx.\n", hr, expected->duration_hr);
+                if (expected->duration_hr == S_OK)
+                    todo_wine_if(expected->todo & DURATION_VALUE)
+                    ok(duration == expected->duration,
+                            "Unexpected sample duration %I64d, expected %I64d\n", duration, expected->duration);
+                dts = -1;
+                hr = IMFSample_GetUINT64(sample, &MFSampleExtension_DecodeTimestamp, &dts);
+                todo_wine_if(expected->todo & DTS_HR)
+                ok(hr == expected->dts_hr,
+                        "Got unexpected hr %#lx when requesting DTS, expected %#lx.\n", hr, expected->dts_hr);
+                if (expected->dts_hr == S_OK)
+                    todo_wine_if(expected->todo & DTS_VALUE)
+                    ok(dts == expected->dts, "Unexpected sample dts %I64d, expected %I64d\n", dts, expected->dts);
+
+                hr = IMFSample_GetBufferCount(sample, &buffer_count);
+                ok(hr == S_OK, "Got unexpected hr %#lx when requesting buffer count, expected S_OK.\n", hr);
+                todo_wine_if(expected->todo & BUFFER_COUNT)
+                ok(buffer_count == expected->buffer_count, "Unexpected buffer count %ld, expected %ld\n", buffer_count, expected->buffer_count);
+                hr = IMFSample_GetTotalLength(sample, &length);
+                ok(hr == S_OK, "Got unexpected hr %#lx when requesting total length, expected S_OK.\n", hr);
+                todo_wine_if(expected->todo & LENGTH)
+                ok(length == expected->length, "Unexpected buffer length %ld, expected %ld\n", length, expected->length);
+
+                IMFSample_Release(sample);
+            }
+
+            IMFMediaEvent_Release(event);
+
+            winetest_pop_context();
+        }
+
+        IMFMediaStream_Release(stream);
+
+        hr = IMFMediaSource_Shutdown(source);
+        ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+        ret = IMFMediaSource_Release(source);
+        ok(ret <= 1, "Unexpected reference count %ld\n", ret);
+
+next_test:
+        ret = DeleteFileW(filename);
+        ok(ret, "Failed to delete %s, error %lu.\n", debugstr_w(filename), GetLastError());
+
+        winetest_pop_context();
+    }
+
+    hr = MFShutdown();
+    ok(hr == S_OK, "Failed to shut down, hr %#lx.\n", hr);
+}
+
 START_TEST(mfplat)
 {
     char **argv;
@@ -13952,6 +14279,7 @@ START_TEST(mfplat)
     test_MFCreatePathFromURL();
     test_2dbuffer_copy();
     test_xvp_playback_mode();
+    test_ByteStreamOutput();
 
     CoUninitialize();
 }

@@ -46,3 +46,7 @@ test-mp3.mp4 RCDATA test-mp3.mp4
 /* gst-launch-1.0 videotestsrc num-buffers=5 ! video/x-raw,format=I420,width=32,height=24 ! avimux ! filesink location=test-i420.avi */
 /* @makedep: test-i420.avi */
 test-i420.avi RCDATA test-i420.avi
+
+/* gst-launch-1.0 audiotestsrc num-buffers=500 ! audioconvert ! lamemp3enc ! filesink location=test-mp3.mp3 */
+/* @makedep: test-mp3.mp3 */
+test-mp3.mp3 RCDATA test-mp3.mp3
