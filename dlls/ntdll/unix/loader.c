@@ -2121,6 +2121,23 @@ static void apple_main_thread(void)
 
 #if defined(__linux__) && !defined(__ANDROID__) && (defined(__i386__) || defined(__arm__))
 
+/* In the Win32 ABI, KUSER_SHARED_DATA is at a fixed address (0x7ffe0000), so
+ * it needs to be mapped precisely there in every virtual process space by the
+ * wine process loader.
+ *
+ * It is used to map kernel address space pages to user space, so that it is
+ * user-space readable without any syscall overhead.
+ *
+ * For that, we need to ensure that Linux doesn't map anything internal in that
+ * area, which it does if configured with a 2G/2G split. Unfortunately, Linux
+ * does initially map the stack there, along with its own version of shared
+ * data structure.
+ *
+ * More information:
+ *
+ * https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntddk/ns-ntddk-kuser_shared_data
+ * https://msrc-blog.microsoft.com/2022/04/05/randomizing-the-kuser_shared_data-structure-on-windows
+ */
 static void check_vmsplit( void *stack )
 {
     if (stack < (void *)0x80000000)
