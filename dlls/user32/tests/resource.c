@@ -37,6 +37,7 @@ static void test_LoadStringW(void)
     WCHAR copiedstringw[128], returnedstringw[128], *resourcepointer = NULL;
     char copiedstring[128], returnedstring[128];
     int length1, length2, retvalue, i;
+    LCID lang;
     static struct
     {
         int id;
@@ -95,6 +96,30 @@ static void test_LoadStringW(void)
     /* check again, with a different buflen value, that calling LoadStringW with buffer = NULL returns zero */
     retvalue = LoadStringW(hInst, 2, NULL, 128);
     ok(!retvalue, "LoadStringW returned a non-zero value when called with buffer = NULL, retvalue = %d\n", retvalue);
+
+    lang = GetUserDefaultLangID();
+    memset(returnedstringw, 0xcc, sizeof(returnedstringw));;
+    if (lang == MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_HONGKONG)
+            || lang == MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_MACAU))
+    {
+        length1 = LoadStringW(hInst, 1001, returnedstringw, sizeof(returnedstringw));
+        ok(length1 == 20, "Got length %d.\n", length1);
+        ok(!wcscmp(returnedstringw, L"Chinese, Traditional"), "Got string %s.\n", debugstr_w(returnedstringw));
+
+        length1 = LoadStringW(hInst, 1002, returnedstringw, sizeof(returnedstringw));
+        ok(!length1, "Got length %d.\n", length1);
+        ok(!*returnedstringw, "Got string %s.\n", debugstr_w(returnedstringw));
+    }
+    else if (lang == MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SINGAPORE))
+    {
+        length1 = LoadStringW(hInst, 1001, returnedstringw, sizeof(returnedstringw));
+        ok(length1 == 19, "Got length %d.\n", length1);
+        ok(!wcscmp(returnedstringw, L"Chinese, Simplified"), "Got string %s.\n", debugstr_w(returnedstringw));
+
+        length1 = LoadStringW(hInst, 1002, returnedstringw, sizeof(returnedstringw));
+        ok(!length1, "Got length %d.\n", length1);
+        ok(!*returnedstringw, "Got string %s.\n", debugstr_w(returnedstringw));
+    }
 
     /* Test builtin string table in user32. */
     if ((PRIMARYLANGID(LANGIDFROMLCID(GetSystemDefaultLCID())) != LANG_ENGLISH)

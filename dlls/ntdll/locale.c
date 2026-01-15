@@ -124,7 +124,14 @@ void locale_init(void)
     oem_cp = get_locale_data( locale_table, entry->idx )->idefaultcodepage;
 
     NtQueryDefaultLocale( TRUE, &user_resource_lcid );
-    user_resource_neutral_lcid = PRIMARYLANGID( user_resource_lcid );
+
+    if (user_resource_lcid == MAKELANGID( LANG_CHINESE, SUBLANG_CHINESE_HONGKONG )
+        || user_resource_lcid == MAKELANGID( LANG_CHINESE, SUBLANG_CHINESE_MACAU ))
+        user_resource_neutral_lcid = MAKELANGID( LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL );
+    else if (user_resource_lcid == MAKELANGID( LANG_CHINESE, SUBLANG_CHINESE_SINGAPORE ))
+        user_resource_neutral_lcid = MAKELANGID( LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED );
+    else
+        user_resource_neutral_lcid = PRIMARYLANGID( user_resource_lcid );
     if (user_resource_lcid == LOCALE_CUSTOM_UNSPECIFIED)
     {
         const NLS_LOCALE_LCNAME_INDEX *entry;
