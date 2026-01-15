@@ -1416,16 +1416,7 @@ static HRESULT WINAPI ClientRpcChannelBuffer_SendReceive(LPRPCCHANNELBUFFER ifac
 
         msg->ProcNum &= ~RPC_FLAGS_VALID_BIT;
 
-        if (!PostMessageW(message_state->target_hwnd, DM_EXECUTERPC, 0,
-                          (LPARAM)&message_state->params))
-        {
-            ERR("PostMessage failed with error %lu\n", GetLastError());
-
-            /* Note: message_state->params.iface doesn't have a reference and
-             * so doesn't need to be released */
-
-            hr = HRESULT_FROM_WIN32(GetLastError());
-        }
+        SendMessageW(message_state->target_hwnd, DM_EXECUTERPC, 0, (LPARAM)&message_state->params);
     }
     else
     {
