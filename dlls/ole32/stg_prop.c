@@ -918,7 +918,17 @@ static HRESULT WINAPI IPropertyStorage_fnDeleteMultiple(
             void *propid;
 
             if (dictionary_find(This->name_to_propid, rgpspec[i].lpwstr, &propid))
+            {
+                void *name;
+
                 dictionary_remove(This->propid_to_prop, propid);
+
+                if (dictionary_find(This->propid_to_name, propid, &name))
+                {
+                    dictionary_remove(This->propid_to_name, propid);
+                    dictionary_remove(This->name_to_propid, name);
+                }
+            }
         }
         else
         {
