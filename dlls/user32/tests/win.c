@@ -6399,49 +6399,49 @@ static void test_csparentdc(void)
    struct parentdc_test test_answer;
 
 #define nothing_todo {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}
-   const struct parentdc_test test1 = 
+   const struct parentdc_test test1 =
    {
         {{0, 0, 150, 150}, {0, 0, 150, 150}, {0, 0, 150, 150}}, nothing_todo,
-        {{0, 0, 40, 40}, {-20, -20, 130, 130}, {0, 0, 40, 40}}, {{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}},
-        {{0, 0, 40, 40}, {-40, -40, 110, 110}, {0, 0, 40, 40}}, {{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}},
+        {{0, 0, 40, 40}, {-20, -20, 130, 130}, {0, 0, 40, 40}}, nothing_todo,
+        {{0, 0, 40, 40}, {-40, -40, 110, 110}, {0, 0, 40, 40}}, nothing_todo,
    };
 
-   const struct parentdc_test test2 = 
+   const struct parentdc_test test2 =
    {
         {{0, 0, 150, 150}, {0, 0, 50, 50}, {0, 0, 50, 50}}, nothing_todo,
-        {{0, 0, 40, 40}, {-20, -20, 30, 30}, {0, 0, 30, 30}}, {{0, 0, 0, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}},
-        {{0, 0, 40, 40}, {-40, -40, 10, 10}, {0, 0, 10, 10}}, {{0, 0, 0, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}},
+        {{0, 0, 40, 40}, {-20, -20, 30, 30}, {0, 0, 30, 30}}, nothing_todo,
+        {{0, 0, 40, 40}, {-40, -40, 10, 10}, {0, 0, 10, 10}}, nothing_todo,
    };
 
-   const struct parentdc_test test3 = 
+   const struct parentdc_test test3 =
    {
         {{0, 0, 150, 150}, {0, 0, 10, 10}, {0, 0, 10, 10}}, nothing_todo,
         {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, nothing_todo,
         {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, nothing_todo,
    };
 
-   const struct parentdc_test test4 = 
+   const struct parentdc_test test4 =
    {
         {{0, 0, 150, 150}, {40, 40, 50, 50}, {40, 40, 50, 50}}, nothing_todo,
         {{0, 0, 40, 40}, {20, 20, 30, 30}, {20, 20, 30, 30}}, nothing_todo,
         {{0, 0, 40, 40}, {0, 0, 10, 10}, {0, 0, 10, 10}}, nothing_todo,
    };
 
-   const struct parentdc_test test5 = 
+   const struct parentdc_test test5 =
    {
         {{0, 0, 150, 150}, {20, 20, 60, 60}, {20, 20, 60, 60}}, nothing_todo,
         {{0, 0, 40, 40}, {-20, -20, 130, 130}, {0, 0, 40, 40}}, {{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}},
-        {{0, 0, 40, 40}, {-20, -20, 20, 20}, {0, 0, 20, 20}}, {{0, 0, 0, 0}, {1, 1, 0, 0}, {0, 0, 0, 0}},
+        {{0, 0, 40, 40}, {-20, -20, 20, 20}, {0, 0, 20, 20}}, nothing_todo,
    };
 
-   const struct parentdc_test test6 = 
+   const struct parentdc_test test6 =
    {
         {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, nothing_todo,
         {{0, 0, 40, 40}, {0, 0, 10, 10}, {0, 0, 10, 10}}, nothing_todo,
         {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, nothing_todo,
    };
 
-   const struct parentdc_test test7 = 
+   const struct parentdc_test test7 =
    {
         {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}, nothing_todo,
         {{0, 0, 40, 40}, {-20, -20, 130, 130}, {0, 0, 40, 40}}, {{0, 0, 0, 0}, {1, 1, 1, 1}, {0, 0, 0, 0}},

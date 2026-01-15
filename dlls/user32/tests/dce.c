@@ -515,10 +515,10 @@ static void test_begin_paint(void)
     EndPaint( hwnd_parentdc, &ps );
     GetClientRect( hwnd_parent, &parent_rect );
 
-    todo_wine ok( rect.left == parent_rect.left, "rect.left = %ld, expected %ld\n", rect.left, parent_rect.left );
-    todo_wine ok( rect.top == parent_rect.top, "rect.top = %ld, expected %ld\n", rect.top, parent_rect.top );
-    todo_wine ok( rect.right == parent_rect.right, "rect.right = %ld, expected %ld\n", rect.right, parent_rect.right );
-    todo_wine ok( rect.bottom == parent_rect.bottom, "rect.bottom = %ld, expected %ld\n", rect.bottom, parent_rect.bottom );
+    ok( rect.left == parent_rect.left, "rect.left = %ld, expected %ld\n", rect.left, parent_rect.left );
+    ok( rect.top == parent_rect.top, "rect.top = %ld, expected %ld\n", rect.top, parent_rect.top );
+    ok( rect.right == parent_rect.right, "rect.right = %ld, expected %ld\n", rect.right, parent_rect.right );
+    ok( rect.bottom == parent_rect.bottom, "rect.bottom = %ld, expected %ld\n", rect.bottom, parent_rect.bottom );
 
     hdc = GetDC( hwnd_parent );
     todo_wine ok( GetPixel( hdc, 60, 60 ) == cr, "error drawing outside of window client area\n" );
@@ -561,7 +561,6 @@ static void test_cropped_parentdc_paint_clipbox(void)
     IntersectRect( &expect_rect, &toplevel_rect, &parent_rect );
 
     MapWindowPoints( hwnd_child, hwnd_container, (POINT *)&rect, 2 );
-    todo_wine
     ok( EqualRect( &rect, &expect_rect ), "rect = %s, expected %s\n",
         wine_dbgstr_rect( &rect ), wine_dbgstr_rect( &expect_rect ) );
 
