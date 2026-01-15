@@ -2486,14 +2486,6 @@ UINT WINAPI MsiProvideAssemblyA( const char *szAssemblyName, const char *szAppCo
     return ERROR_CALL_NOT_IMPLEMENTED;
 }
 
-UINT WINAPI MsiProvideAssemblyW( const WCHAR *szAssemblyName, const WCHAR *szAppContext, DWORD dwInstallMode,
-                                 DWORD dwAssemblyInfo, WCHAR *lpPathBuf, DWORD *pcchPathBuf )
-{
-    FIXME( "%s, %s, %#lx, %#lx, %p, %p\n", debugstr_w(szAssemblyName), debugstr_w(szAppContext), dwInstallMode,
-           dwAssemblyInfo, lpPathBuf, pcchPathBuf );
-    return ERROR_CALL_NOT_IMPLEMENTED;
-}
-
 UINT WINAPI MsiProvideComponentFromDescriptorA( LPCSTR szDescriptor,
                 LPSTR szPath, LPDWORD pcchPath, LPDWORD pcchArgs )
 {
@@ -4290,6 +4282,9 @@ UINT WINAPI MsiProvideComponentW( const WCHAR *product, const WCHAR *feature, co
     case INSTALLSTATE_SOURCE:
         MsiUseFeatureW( product, feature );
         return ERROR_SUCCESS;
+
+    case INSTALLSTATE_ABSENT:
+        return ERROR_FILE_NOT_FOUND;
 
     default:
         TRACE("MsiGetComponentPathW returned %d\n", state);

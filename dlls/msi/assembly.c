@@ -251,11 +251,10 @@ WCHAR *msi_get_assembly_path( const WCHAR *displayname )
     return info.pszCurrentAssemblyPathBuf;
 }
 
-IAssemblyEnum *msi_create_assembly_enum( const WCHAR *displayname )
+static IAssemblyName *msi_create_assembly_name( const WCHAR *displayname )
 {
     HRESULT hr;
     IAssemblyName *name;
-    IAssemblyEnum *ret;
     WCHAR *str;
     DWORD len = 0;
 
@@ -283,6 +282,18 @@ IAssemblyEnum *msi_create_assembly_enum( const WCHAR *displayname )
     hr = pCreateAssemblyNameObject( &name, str, 0, NULL );
     free( str );
     if (FAILED( hr )) return NULL;
+
+    return name;
+}
+
+IAssemblyEnum *msi_create_assembly_enum( const WCHAR *displayname )
+{
+    HRESULT hr;
+    IAssemblyName *name;
+    IAssemblyEnum *ret;
+
+    if (!(name = msi_create_assembly_name( displayname )))
+        return NULL;
 
     hr = pCreateAssemblyEnum( &ret, NULL, name, ASM_CACHE_GAC, NULL );
     IAssemblyName_Release( name );
@@ -709,4 +720,85 @@ UINT ACTION_MsiUnpublishAssemblies( MSIPACKAGE *package )
         msiobj_release( &uirow->hdr );
     }
     return ERROR_SUCCESS;
+}
+
+UINT WINAPI MsiProvideAssemblyW( const WCHAR *assembly, const WCHAR *application, DWORD mode,
+                                 DWORD info, WCHAR *path, DWORD *len )
+{
+    UINT res;
+    IAssemblyName *asm_name;
+    BOOL win32 = info & MSIASSEMBLYINFO_WIN32ASSEMBLY, found = FALSE;
+    DWORD idx;
+    HKEY hkey;
+
+    TRACE( "%s, %s, %#lx, %#lx, %p, %p\n", debugstr_w(assembly), debugstr_w(application), mode, info, path, len );
+
+    if (!assembly || !len)
+        return ERROR_INVALID_PARAMETER;
+
+    if (application)
+        FIXME( "application context %s ignored\n", debugstr_w(application) );
+
+    if (!(asm_name = msi_create_assembly_name( assembly )))
+        return ERROR_INVALID_PARAMETER;
+
+    if ((res = open_global_assembly_key( MSIINSTALLCONTEXT_MACHINE /* FIXME */, win32, &hkey )))
+    {
+        WARN( "failed to open global assembly key %u\n", res );
+        goto done;
+    }
+
+    idx = 0;
+    for (;;)
+    {
+        WCHAR *name;
+        WCHAR val[20 + MAX_FEATURE_CHARS + 1 + 20 + 2]; /* base85_GUID + feaure + '>' + base85_GUID + 2 terminating NULLs */
+        DWORD name_sz, val_sz, type;
+        IAssemblyName *asm_name_enum;
+
+        name_sz = 1024;
+        name = malloc( name_sz );
+        val_sz = ARRAY_SIZE( val );
+        while ((res = RegEnumValueW( hkey, idx, name, &name_sz, NULL, &type, (BYTE *)val, &val_sz )) == ERROR_MORE_DATA)
+        {
+            if (val_sz > ARRAY_SIZE( val ))
+            {
+                FIXME( "value storage overflow (need %lu bytes)\n", val_sz );
+                break;
+            }
+            name = realloc( name, name_sz );
+        }
+
+        if (res != ERROR_SUCCESS || type != REG_MULTI_SZ)
+        {
+            free( name );
+            break;
+        }
+
+        if ((asm_name_enum = msi_create_assembly_name( name )))
+        {
+            if (IAssemblyName_IsEqual( asm_name, asm_name_enum, ASM_CMPF_IL_ALL ) == S_OK)
+            {
+                WCHAR product[MAX_FEATURE_CHARS+1], feature[MAX_FEATURE_CHARS+1], component[MAX_FEATURE_CHARS+1];
+                DWORD size;
+
+                found = TRUE;
+
+                if (!(res = MsiDecomposeDescriptorW( val, product, feature, component, &size )))
+                    res = MsiProvideComponentW( product, feature, component, INSTALLMODE_NODETECTION /* FIXME */, path, len );
+            }
+
+            IAssemblyName_Release( asm_name_enum );
+        }
+
+        free( name );
+        if (found) break;
+        idx++;
+    }
+
+    RegCloseKey( hkey );
+
+done:
+    IAssemblyName_Release( asm_name );
+    return found ? res : ERROR_UNKNOWN_COMPONENT;
 }

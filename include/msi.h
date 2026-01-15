@@ -256,6 +256,9 @@ typedef struct tagMSIPATCHSEQUENCEINFOW
 
 #define ERROR_PATCH_TARGET_NOT_FOUND        1642
 
+#define MSIASSEMBLYINFO_NETASSEMBLY   0
+#define MSIASSEMBLYINFO_WIN32ASSEMBLY 1
+
 /* Strings defined in msi.h */
 /* Advertised Information */
 
