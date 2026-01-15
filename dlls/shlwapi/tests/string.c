@@ -200,6 +200,28 @@ static const StrFromTimeIntervalResult StrFromTimeInterval_results[] = {
   { 493999507, 6, " 137 hr 13 min 20 sec" },
   { 493999507, 7, " 137 hr 13 min 20 sec" },
 
+  { 0xfffffe0c, 0, "" },
+  { 0xfffffe0c, 1, " 0 sec" },
+  { 0xfffffe0c, 2, " 0 sec" },
+  { 0xfffffe0c, 3, " 0 sec" },
+  { 0xfffffe0c, 4, " 0 sec" },
+  { 0xfffffe0c, 5, " 0 sec" },
+  { 0xfffffe0c, 6, " 0 sec" },
+  { 0xfffffe0c, 7, " 0 sec" },
+  { 0xfffffe0c, 8, " 0 sec" },
+
+  { 0xee6f4b07, 0, "" },
+  { 0xee6f4b07, 1, " 1000 hr" },
+  { 0xee6f4b07, 2, " 1100 hr" },
+  { 0xee6f4b07, 3, " 1110 hr" },
+  { 0xee6f4b07, 4, " 1111 hr" },
+  { 0xee6f4b07, 5, " 1111 hr 10 min" },
+  { 0xee6f4b07, 6, " 1111 hr 11 min" },
+  { 0xee6f4b07, 7, " 1111 hr 11 min 10 sec" },
+  { 0xee6f4b07, 8, " 1111 hr 11 min 11 sec" },
+  { 0xee6f4b07, 111111, " 1111 hr 11 min 11 sec" },
+  { 0xee6f4b07, -111111, " 1111 hr 11 min 11 sec" },
+
   { 0, 0, NULL }
 };
 
@@ -800,15 +822,57 @@ static void test_StrFromTimeIntervalA(void)
 {
   char szBuff[256];
   const StrFromTimeIntervalResult* result = StrFromTimeInterval_results;
+  int len, ret;
 
   while(result->ms)
   {
-    StrFromTimeIntervalA(szBuff, 256, result->ms, result->digits);
-
-    ok(!strcmp(result->time_interval, szBuff), "Formatted %ld %d wrong: %s\n",
+    len = strlen(result->time_interval);
+    ret = StrFromTimeIntervalA(0, 0, result->ms, result->digits);
+    ok(ret == len, "StrFromTimeIntervalA returned %d (expected %d) when predicting length of formatted %lu ms with %d digits\n",
+       ret, len, result->ms, result->digits);
+    ret = StrFromTimeIntervalA(szBuff, 256, result->ms, result->digits);
+    ok(ret == len, "StrFromTimeIntervalA returned %d (expected %d) when formatting %lu ms with %d digits\n",
+       ret, len, result->ms, result->digits);
+    ok(!strcmp(result->time_interval, szBuff), "Formatted %lu ms with %d digits wrong: %s\n",
        result->ms, result->digits, szBuff);
     result++;
   }
+
+  ret = StrFromTimeIntervalA(szBuff, 7, 1140011, 1);
+  ok(ret == 6, "StrFromTimeIntervalA truncating broken (returned %d, expected 6)\n", ret);
+  ok(!strcmp(" 10 mi", szBuff), "StrFromTimeIntervalA truncating broken (wrote \"%s\", expected \" 10 mi\")\n", szBuff);
+
+  ret = StrFromTimeIntervalA(szBuff, 1, 1140011, 1);
+  ok(ret == 0, "StrFromTimeIntervalA truncating broken (returned %d, expected 0)\n", ret);
+  ok(szBuff[0] == 0, "StrFromTimeIntervalA truncating broken (wrote \"%s\", expected \"\")\n", szBuff);
+
+  szBuff[0] = 'q';
+  szBuff[1] = 'w';
+  szBuff[2] = 0;
+  ret = StrFromTimeIntervalA(szBuff, 0, 111111, 111111);
+  ok(ret == 2, "StrFromTimeIntervalA doesn't work in lstrlenA mode (returned %d, expected 2)\n", ret);
+}
+
+static void test_StrFromTimeIntervalW(void)
+{
+  WCHAR buf[7];
+  int ret;
+
+  ret = StrFromTimeIntervalW(0, 2, 8888, 1);
+  ok(ret == 6, "StrFromTimeIntervalW returned %d (expected 6) when predicting length of formatted 8888 ms with 1 digit\n", ret);
+
+  ret = StrFromTimeIntervalW(buf, 7, 8888, 1);
+  ok(ret == 6, "StrFromTimeIntervalW returned %d (expected 6) when formatting 8888 ms with 1 digit\n", ret);
+  ok(!memcmp(" \09\0 \0s\0e\0c\0\0", buf, 14), "StrFromTimeIntervalW formatted 8888 ms with 1 digit wrong\n");
+
+  ret = StrFromTimeIntervalW(buf, 5, 8888, 1);
+  ok(ret == 4, "StrFromTimeIntervalW truncating broken (returned %d, expected 4)", ret);
+  ok(!memcmp(" \09\0 \0s\0\0", buf, 10), "StrFromTimeIntervalW truncating broken");
+
+  buf[0] = 'e';
+  buf[1] = 0;
+  ret = StrFromTimeIntervalW(buf, 0, 8888, 1);
+  ok(ret == 1, "StrFromTimeIntervalW doesn't work in lstrlenW mode (returned %d, expected 1)\n", ret);
 }
 
 static void test_StrCmpA(void)
@@ -1977,7 +2041,10 @@ START_TEST(string)
   else
     skip("An English UI and locale is required for the StrFormat*Size tests\n");
   if (is_lang_english())
+  {
     test_StrFromTimeIntervalA();
+    test_StrFromTimeIntervalW();
+  }
   else
     skip("An English UI is required for the StrFromTimeInterval tests\n");
 

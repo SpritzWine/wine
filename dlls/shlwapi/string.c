@@ -656,63 +656,132 @@ HRESULT WINAPI SHStrDupW(LPCWSTR src, LPWSTR * dest)
 }
 
 /*************************************************************************
- * SHLWAPI_WriteReverseNum
+ * SHLWAPI_StrFromTimeIntervalW_unsafe
  *
- * Internal helper for SHLWAPI_WriteTimeClass.
+ * Internal helper for StrFromTimeIntervalA and StrFromTimeIntervalW.
  */
-static inline LPWSTR SHLWAPI_WriteReverseNum(LPWSTR lpszOut, DWORD dwNum)
+static WCHAR *SHLWAPI_StrFromTimeIntervalW_unsafe(WCHAR *out, unsigned max_digits, unsigned ms)
 {
-  *lpszOut-- = '\0';
+  const unsigned _1000hr = 3600000000u;
+  const unsigned _100hr  = 360000000u;
+  const unsigned _10hr   = 36000000u;
+  const unsigned _1hr    = 3600000u;
+  const unsigned _10min  = 600000u;
+  const unsigned _1min   = 60000u;
+  const unsigned _10sec  = 10000u;
+  const unsigned _1sec   = 1000u;
 
-  /* Write a decimal number to a string, backwards */
-  do
+  unsigned used_digits = 0, abbreviation_len;
+
+  ms += 500; /* 4294966796 ms ≈ 0 sec — windows xp, windows vista, windows 7, windows 8.1, windows 11 */
+
+  if (ms >= _1hr && used_digits < max_digits)
   {
-    DWORD dwNextDigit = dwNum % 10;
-    *lpszOut-- = '0' + dwNextDigit;
-    dwNum = (dwNum - dwNextDigit) / 10;
-  } while (dwNum > 0);
+    _Static_assert(sizeof ms == 4, "code for formatting hour part only works for 32-bit ms");
+    *out++ = ' ';
 
-  return lpszOut;
-}
-
-/*************************************************************************
- * SHLWAPI_FormatSignificant
- *
- * Internal helper for SHLWAPI_WriteTimeClass.
- */
-static inline int SHLWAPI_FormatSignificant(LPWSTR lpszNum, int dwDigits)
-{
-  /* Zero non significant digits, return remaining significant digits */
-  while (*lpszNum)
-  {
-    lpszNum++;
-    if (--dwDigits == 0)
+    if (ms >= _1000hr)
     {
-      while (*lpszNum)
-        *lpszNum++ = '0';
-      return 0;
+      *out++ = '1'; /* hour part is in range 1000 to 1193 inclusive if this line runs */
+      used_digits++;
     }
+    if (ms >= _100hr)
+      *out++ = used_digits++ < max_digits ? ms % _1000hr / _100hr + '0' : '0';
+    if (ms >= _10hr)
+      *out++ = used_digits++ < max_digits ? ms % _100hr / _10hr + '0' : '0';
+    *out++ = used_digits++ < max_digits ? ms % _10hr / _1hr + '0' : '0';
+
+    abbreviation_len = LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_HOURS, out, 32);
+    if (abbreviation_len == 0)
+      WARN("failed to load hours abbreviation\n");
+    out += abbreviation_len;
   }
-  return dwDigits;
+
+  if (ms % _1hr >= _1min && used_digits < max_digits)
+  {
+    *out++ = ' ';
+
+    if (ms % _1hr >= _10min)
+    {
+      *out++ = ms % _1hr / _10min + '0';
+      used_digits++;
+    }
+    *out++ = used_digits++ < max_digits ? ms % _10min / _1min + '0' : '0';
+
+    abbreviation_len = LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_MINUTES, out, 32);
+    if (abbreviation_len == 0)
+      WARN("failed to load minutes abbreviation\n");
+    out += abbreviation_len;
+  }
+
+  if (used_digits < max_digits)
+  {
+    *out++ = ' ';
+
+    if (ms % _1min >= _10sec)
+    {
+      *out++ = ms % _1min / _10sec + '0';
+      used_digits++;
+    }
+    *out++ = used_digits++ < max_digits ? ms % _10sec / _1sec + '0' : '0';
+
+    abbreviation_len = LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_SECONDS, out, 32);
+    if (abbreviation_len == 0)
+      WARN("failed to load seconds abbreviation\n");
+    out += abbreviation_len;
+  }
+
+  return out;
 }
 
-/*************************************************************************
- * SHLWAPI_WriteTimeClass
- *
- * Internal helper for StrFromTimeIntervalW.
- */
-static int SHLWAPI_WriteTimeClass(LPWSTR lpszOut, DWORD dwValue,
-                                  UINT uClassStringId, int iDigits)
+enum
 {
-  WCHAR szBuff[64], *szOut = szBuff + 32;
+  SHLWAPI_StrFromTimeIntervalW_unsafe_buffer_len
+    = 1 /* space */
+    + 4 /* hours digits */
+    + 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_HOURS, out, 32) */
 
-  szOut = SHLWAPI_WriteReverseNum(szOut, dwValue);
-  iDigits = SHLWAPI_FormatSignificant(szOut + 1, iDigits);
-  *szOut = ' ';
-  LoadStringW(shlwapi_hInstance, uClassStringId, szBuff + 32, 32);
-  lstrcatW(lpszOut, szOut);
-  return iDigits;
-}
+    + 1 /* space */
+    + 2 /* minutes digits */
+    + 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_MINUTES, out, 32) */
+
+    + 1 /* space */
+    + 2 /* seconds digits */
+    + 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_SECONDS, out, 32) */
+    + 1, /* extra U+0000 character from LoadStringW (not part of result) */
+
+  /* multiplications by 3 because utf8 encoding converts 1 wchar greater than U+07FF to 3 bytes (except surrogate pairs which are converted 2 wchars to 4 bytes) */
+  SHLWAPI_StrFromTimeIntervalW_unsafe_convert_to_A_buffer_len_utf8
+    = 1 * 1 /* space */
+    + 1 * 4 /* hours digits */
+    + 3 * 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_HOURS, out, 32) */
+
+    + 1 * 1 /* space */
+    + 1 * 2 /* minutes digits */
+    + 3 * 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_MINUTES, out, 32) */
+
+    + 1 * 1 /* space */
+    + 1 * 2 /* seconds digits */
+    + 3 * 31, /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_SECONDS, out, 32) */
+
+  /* multiplications by 2 because codepage encodings convert 1 wchar to at most 2 bytes */
+  SHLWAPI_StrFromTimeIntervalW_unsafe_convert_to_A_buffer_len_codepage
+    = 2 * 1 /* space */
+    + 2 * 4 /* hours digits */
+    + 2 * 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_HOURS, out, 32) */
+
+    + 2 * 1 /* space */
+    + 2 * 2 /* minutes digits */
+    + 2 * 31 /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_MINUTES, out, 32) */
+
+    + 2 * 1 /* space */
+    + 2 * 2 /* seconds digits */
+    + 2 * 31, /* LoadStringW(shlwapi_hInstance, IDS_TIME_INTERVAL_SECONDS, out, 32) */
+
+  SHLWAPI_StrFromTimeIntervalW_unsafe_convert_to_A_buffer_len
+    = max(SHLWAPI_StrFromTimeIntervalW_unsafe_convert_to_A_buffer_len_utf8, SHLWAPI_StrFromTimeIntervalW_unsafe_convert_to_A_buffer_len_codepage)
+};
+
 
 /*************************************************************************
  * StrFromTimeIntervalA	[SHLWAPI.@]
@@ -742,25 +811,68 @@ static int SHLWAPI_WriteTimeClass(LPWSTR lpszOut, DWORD dwValue,
  *  For example, given dwMS represents 138 hours,43 minutes and 15 seconds, the
  *  following will result from the given values of iDigits:
  *
- *|  iDigits    1        2        3        4               5               ...
- *|  lpszStr   "100 hr" "130 hr" "138 hr" "138 hr 40 min" "138 hr 43 min"  ...
+ *|  iDigits    1         2         3         4                5                ...
+ *|  lpszStr   " 100 hr" " 130 hr" " 138 hr" " 138 hr 40 min" " 138 hr 43 min"  ...
  */
 INT WINAPI StrFromTimeIntervalA(LPSTR lpszStr, UINT cchMax, DWORD dwMS,
                                 int iDigits)
 {
-  INT iRet = 0;
+  WCHAR tmpW[SHLWAPI_StrFromTimeIntervalW_unsafe_buffer_len];
+  char tmpA[SHLWAPI_StrFromTimeIntervalW_unsafe_convert_to_A_buffer_len];
+  unsigned result;
 
   TRACE("(%p,%d,%ld,%d)\n", lpszStr, cchMax, dwMS, iDigits);
 
-  if (lpszStr && cchMax)
+  if (lpszStr == 0)
   {
-    WCHAR szBuff[128];
-    StrFromTimeIntervalW(szBuff, ARRAY_SIZE(szBuff), dwMS, iDigits);
-    WideCharToMultiByte(CP_ACP,0,szBuff,-1,lpszStr,cchMax,0,0);
+    if (iDigits == 0) /* don't let SHLWAPI_StrFromTimeIntervalW_unsafe(tmpW, iDigits, dwMS) - tmpW be 0 */
+      return 0;
+    result = WideCharToMultiByte(
+      CP_ACP,
+      0,
+      tmpW,
+      SHLWAPI_StrFromTimeIntervalW_unsafe(tmpW, iDigits, dwMS) - tmpW,
+      0,
+      0,
+      0,
+      0
+    );
+    if (result == 0)
+      WARN("WideCharToMultiByte failed\n");
+    return result;
   }
-  return iRet;
-}
 
+  if (cchMax == 0)
+    return lstrlenA(lpszStr); /* windows xp, windows vista, windows 7, windows 8.1, windows 11 are reading but not writing output and return 0 instead of crashing with invalid lpszStr */
+
+  if (iDigits == 0) /* don't let SHLWAPI_StrFromTimeIntervalW_unsafe(tmpW, iDigits, dwMS) - tmpW be 0 */
+  {
+    lpszStr[0] = 0;
+    return 0;
+  }
+
+  /* if cchMax >= 0x80000000 windows xp doesn't do anything weird */
+  /* if cchMax >= 0x80000000 windows vista, windows 7 do {return lstrlenA(lpszStr);} */
+  /* if cchMax >= 0x80000000 windows 8.1, windows 11 do {int r=lstrlenA(lpszStr);lpszStr[0]=0;return r;} */
+  /* this behaves like windows xp */
+  result = WideCharToMultiByte(
+    CP_ACP,
+    0,
+    tmpW,
+    SHLWAPI_StrFromTimeIntervalW_unsafe(tmpW, iDigits, dwMS) - tmpW,
+    tmpA,
+    sizeof tmpA,
+    0,
+    0
+  );
+  if (result == 0)
+    WARN("WideCharToMultiByte failed\n");
+  if (cchMax - 1 < result)
+    result = cchMax - 1;
+  memcpy(lpszStr, tmpA, result);
+  lpszStr[result] = 0;
+  return result;
+}
 
 /*************************************************************************
  * StrFromTimeIntervalW	[SHLWAPI.@]
@@ -770,43 +882,27 @@ INT WINAPI StrFromTimeIntervalA(LPSTR lpszStr, UINT cchMax, DWORD dwMS,
 INT WINAPI StrFromTimeIntervalW(LPWSTR lpszStr, UINT cchMax, DWORD dwMS,
                                 int iDigits)
 {
-  INT iRet = 0;
+  WCHAR tmp[SHLWAPI_StrFromTimeIntervalW_unsafe_buffer_len];
+  unsigned wchars_to_copy;
 
   TRACE("(%p,%d,%ld,%d)\n", lpszStr, cchMax, dwMS, iDigits);
 
-  if (lpszStr && cchMax)
-  {
-    WCHAR szCopy[128];
-    DWORD dwHours, dwMinutes;
+  if (lpszStr == 0)
+    return SHLWAPI_StrFromTimeIntervalW_unsafe(tmp, iDigits, dwMS) - tmp;
 
-    if (!iDigits || cchMax == 1)
-    {
-      *lpszStr = '\0';
-      return 0;
-    }
+  if (cchMax == 0)
+    return lstrlenW(lpszStr); /* windows xp, windows vista, windows 7, windows 8.1, windows 11 are reading but not writing output and return 0 instead of crashing with invalid lpszStr */
 
-    /* Calculate the time classes */
-    dwMS = (dwMS + 500) / 1000;
-    dwHours = dwMS / 3600;
-    dwMS -= dwHours * 3600;
-    dwMinutes = dwMS / 60;
-    dwMS -= dwMinutes * 60;
-
-    szCopy[0] = '\0';
-
-    if (dwHours)
-      iDigits = SHLWAPI_WriteTimeClass(szCopy, dwHours, IDS_TIME_INTERVAL_HOURS, iDigits);
-
-    if (dwMinutes && iDigits)
-      iDigits = SHLWAPI_WriteTimeClass(szCopy, dwMinutes, IDS_TIME_INTERVAL_MINUTES, iDigits);
-
-    if (iDigits) /* Always write seconds if we have significant digits */
-      SHLWAPI_WriteTimeClass(szCopy, dwMS, IDS_TIME_INTERVAL_SECONDS, iDigits);
-
-    lstrcpynW(lpszStr, szCopy, cchMax);
-    iRet = lstrlenW(lpszStr);
-  }
-  return iRet;
+  /* if cchMax >= 0x80000000 windows xp doesn't do anything weird */
+  /* if cchMax >= 0x80000000 windows vista, windows 7 do {return lstrlenW(lpszStr);} */
+  /* if cchMax >= 0x80000000 windows 8.1, windows 11 do {int r=lstrlenW(lpszStr);lpszStr[0]=0;return r;} */
+  /* this behaves like windows xp */
+  wchars_to_copy = SHLWAPI_StrFromTimeIntervalW_unsafe(tmp, iDigits, dwMS) - tmp;
+  if (cchMax - 1 < wchars_to_copy)
+    wchars_to_copy = cchMax - 1;
+  memcpy(lpszStr, tmp, wchars_to_copy * 2);
+  lpszStr[wchars_to_copy] = 0;
+  return wchars_to_copy;
 }
 
 /* Structure for formatting byte strings */
