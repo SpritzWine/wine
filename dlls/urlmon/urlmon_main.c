@@ -496,6 +496,28 @@ HRESULT WINAPI DllRegisterServerEx(void)
     return E_FAIL;
 }
 
+static BOOL StartsWithProtocol(LPCWSTR url, size_t len, LPCWSTR protocol)
+{
+    if (!url || !protocol)
+        return FALSE;
+
+    size_t protocolLen = wcslen(protocol);
+
+    if (len < protocolLen)
+        return FALSE;
+
+    if (_wcsnicmp(url, protocol, protocolLen) != 0)
+        return FALSE;
+
+    return len == protocolLen || url[protocolLen] == L':';
+}
+
+static BOOL IsDriveLetterURL(LPCWSTR url, size_t len)
+{
+    return (len >= 2 && url[1] == L':' &&
+        ((url[0] >= L'a' && url[0] <= L'z') || (url[0] >= L'A' && url[0] <= L'Z')));
+}
+
 /**************************************************************************
  *                 IsValidURL (URLMON.@)
  * 
@@ -510,18 +532,30 @@ HRESULT WINAPI DllRegisterServerEx(void)
  *  Success: S_OK.
  *  Failure: S_FALSE.
  *  returns E_INVALIDARG if one or more of the args is invalid.
- *
- * TODO:
- *  test functionality against windows to see what a valid URL is.
  */
 HRESULT WINAPI IsValidURL(LPBC pBC, LPCWSTR szURL, DWORD dwReserved)
 {
-    FIXME("(%p, %s, %ld): stub\n", pBC, debugstr_w(szURL), dwReserved);
+    const size_t MAX_URL_SIZE = 2078;
 
     if (dwReserved || !szURL)
         return E_INVALIDARG;
 
-    return S_OK;
+    const size_t len = wcslen(szURL);
+
+    if (len >= MAX_URL_SIZE)
+        return S_FALSE;
+
+    if (StartsWithProtocol(szURL, len, L"https") ||
+        StartsWithProtocol(szURL, len, L"http") ||
+        StartsWithProtocol(szURL, len, L"ftp") ||
+        StartsWithProtocol(szURL, len, L"file") ||
+        StartsWithProtocol(szURL, len, L"mailto") ||
+        StartsWithProtocol(szURL, len, L"mk") ||
+        IsDriveLetterURL(szURL, len) ||
+        PathIsUNCW(szURL))
+        return S_OK;
+
+    return S_FALSE;
 }
 
 /**************************************************************************

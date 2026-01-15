@@ -1760,6 +1760,148 @@ static void test_MkParseDisplayNameEx(void)
     IBindCtx_Release(bctx);
 }
 
+static const WCHAR* generate_long_url_valid()
+{
+    static WCHAR w[2078];
+    wmemset(w, L'd', 2077);
+    w[2077] = L'\0';
+
+    WCHAR prefix[4] = L"C:/";
+    wcsncpy(w, prefix, sizeof(prefix) / sizeof(WCHAR) - 1);
+
+    return w;
+}
+
+static const WCHAR* generate_long_url_invalid()
+{
+    static WCHAR w[2079];
+    wmemset(w, L'd', 2078);
+    w[2078] = L'\0';
+
+    WCHAR prefix[4] = L"C:/";
+    wcsncpy(w, prefix, sizeof(prefix) / sizeof(WCHAR) - 1);
+
+    return w;
+}
+
+static const struct {
+    const WCHAR* url;
+    HRESULT expected_result;
+} url_tests[] = {
+    {L"",1},
+    {L"://",1},
+    {L"a",1},
+    {L"7",1},
+    {L"%%%",1},
+    {L"-",1},
+    {L")(*&^%$#@!QAZWSXEDCRFVTGBYHNUJMIK<OL>P:?{",1},
+    {L"$$$",1},
+    {L";",1},
+    {L"\"\"\"",1},
+    {L"<>",1},
+    {L"???",1},
+    {L"ddd",1},
+    {L"@|@",1},
+    {L"#@|@",1},
+    {L"",1},
+    {L"vk.com",1},
+    {L"https://www.vk.com",0},
+    {L"httpc://www.vk.com",1},
+    {L"http://www.vk.com",0},
+    {L"ftp://www.vk.com",0},
+    {L"https://www.vk",0},
+    {L"https://www.vk.",0},
+    {L"https://www",0},
+    {L"https://",0},
+    {L"file://",0},
+    {L"f://",0},
+    {L"o://",0},
+    {L"ooo://",1},
+    {L"d://",0},
+    {L"dd://",1},
+    {L"C:/",0},
+    {L"C:/ss",0},
+    {L"ftp://",0},
+    {L"ftf://",1},
+    {L"\\\\Media\\Pictures\\Worth\\1000 words",0},
+    {L"\\\\\\\\Media\\Pictures\\Worth\\1000 words",0},
+    {L"\\\\\\\\Media\\Pictures\\Worth\\1000 words<",0},
+    {L"\\\\\\\\Media\\Pictures\\Worth\\1000 words:",0},
+    {L"\\\\\\\\Media\\Pictures\\Worth\\1000 words:s",0},
+    {L"\\\\\\\\Media\\Pictures\\Worth\\1000 words:.",0},
+    {L"\\\\?\\D:\\Plans\\Marshall",1},
+    {L"\\\\.\\D:\\Projects\\Human Genome",0},
+    {L"C:",0},
+    {L":",1},
+    {L".\\Manhattan",1},
+    {L"..\\Plans",1},
+    {L"\\Pacts",1},
+    {L"0:",1},
+    {L"\\\\Work\\Hard",0},
+    {L"\\\\192.168.1.15\\Hard",0},
+    {L"https://www.vk.com\1",0},
+    {L"sip://www.vk.co",1},
+    {L"sms://www.vk.co",1},
+    {generate_long_url_valid(),0},
+    {generate_long_url_invalid(),1},
+    {L"1:",1},
+    {L"/",1},
+    {L"\\",1},
+    {L"irc://www.x.com",1},
+    {L"data://www.x.com",1},
+    {L"\\\\&\\D:\\Plans\\Marshall",0},
+    {L"\\\\!\\D:\\Plans\\Marshall",0},
+    {L"\\\\j?j\\D:\\Plans\\Marshall",0},
+    {L"\\\\j?\\D:\\Plans\\Marshall",0},
+    {L"\\\\?j\\D:\\Plans\\Marshall",1},
+    {L"http://www.例子.com",0},
+    {L"http://例子.com",0},
+    {L"http://www.example.国际",0},
+    {L"http://192.0.2.1",0},
+    {L"https://[2001:0db8:85a3:0000:0000:8a2e:0370:7334]",0},
+    {L"http://localhost",0},
+    {L"https://localhost:8080",0},
+    {L"https://localhost:80808080",0},
+    {L"https://[2001:0db8:85a3:00000000:8a2e:0370:7334]",0},
+    {L"http://192.0.2222.1",0},
+    {L"http://www.example.com/a_b",0},
+    {L"http://www.example.com/a%20b",0},
+    {L"http://www.example.com/?a=b&c=d",0},
+    {L"http://www.example.com/#!abc",0},
+    {L"http://www.example.com/#abc",0},
+    {L"mailto:email@example.com",0},
+    {L"HTTP://www.EXAMPLE.com",0},
+    {L"hTTp://www.exaMple.com",0},
+    {L"mk://x",0},
+    {L"gopher://host /7a_gopher_selector%09foobar",1},
+    {L"http:/",0},
+    {L"http:",0},
+    {L"http",0},
+    {L"htt",1},
+    {L"https:/",0},
+    {L"https:",0},
+    {L"https",0},
+    {L"http",0},
+    {L"ftp:/",0},
+    {L"ftp:",0},
+    {L"ftp",0},
+    {L"ft",1},
+    {L"file:/",0},
+    {L"file:",0},
+    {L"file",0},
+    {L"fil",1},
+    {L"mailto:/",0},
+    {L"mailto:",0},
+    {L"mailto",0},
+    {L"mailt",1},
+    {L"mk:/",0},
+    {L"mk:",0},
+    {L"mk",0},
+    {L"m",1},
+    {L"mkkk",1},
+    {L"mkkk:/",1}
+};
+
 static void test_IsValidURL(void)
 {
     HRESULT hr;
@@ -1775,6 +1917,12 @@ static void test_IsValidURL(void)
 
     hr = IsValidURL(bctx, wszHttpWineHQ, 0);
     ok(hr == S_OK, "Expected S_OK, got %08lx\n", hr);
+
+    DWORD i;
+    for(i = 0; i < ARRAY_SIZE(default_feature_tests); ++i) {
+        hr = IsValidURL(bctx, url_tests[i].url, 0);
+        ok(hr == url_tests[i].expected_result, "[%d] Expected %08lx, got %08lx\n", i, url_tests[i].expected_result, hr);
+    }
 
     IBindCtx_Release(bctx);
 }
