@@ -884,7 +884,50 @@ static DWORD emulate_instruction( EXCEPTION_RECORD *rec, CONTEXT *context )
         }
         break;  /* Unable to emulate it */
     }
+    case 0x38:
+    case 0x39: /* cmp r/m r/m */
+    {
+        ULONG64 *data = (ULONG64*)INSTR_GetOperandAddr(context, instr + 1, prefixlen + 1, long_addr, rex, segprefix, &len);
+        ULONG64 *data2 = (ULONG64*)INSTR_GetOperandAddr(context, instr + 2, prefixlen + 2, long_addr, rex, segprefix, &len);
+        SIZE_T offset = (BYTE*)data - user_shared_data;
+        SIZE_T offset2 = (BYTE*)data2 - user_shared_data;
+        SIZE_T data_size = get_op_size(long_op, rex);
+        BOOL is_user_shared_data = FALSE;
+        ULONG64 cmp1, cmp2, bitmask;
+        if(offset <= KSHARED_USER_DATA_PAGE_SIZE - data_size)
+        {
+            TRACE("USD offset %#x at %p\n",(unsigned int) offset, (void*) context->Rip);
+            data = (ULONG64*)(wine_user_shared_data + offset);
+            is_user_shared_data = TRUE;
+        }
+        if(offset2 <= KSHARED_USER_DATA_PAGE_SIZE - data_size)
+        {
+            TRACE("USD offset %#x at %p\n", (unsigned int) offset2, (void*) context->Rip);
+            data2 = (ULONG64*)(wine_user_shared_data + offset2);
+            is_user_shared_data = TRUE;
+        }
+        if(is_user_shared_data)
+        {
+            /* clear ZF and CF */
+            context->EFlags &= ~(1UL << 6);
+            context->EFlags &= ~(1UL);
 
+            bitmask = ((1ULL << (8 * data_size)) - 1); 
+            /* FIXME("bitmask %llx\n", bitmask); */
+
+            cmp1 = (*data) & bitmask; 
+            cmp2 = (*data2) & bitmask;
+
+            if(cmp1 == cmp2)
+                context->EFlags |= (1UL << 6); /* ZF */
+            else if(cmp1 < cmp2)
+                context->EFlags |= 1UL; /* CF */
+
+            context->Rip += prefixlen + len + 1;
+            return ExceptionContinueExecution;
+        }
+        break;
+    }
     case 0xa0: /* mov Ob, AL */
     case 0xa1: /* mov Ovqp, rAX */
     {
