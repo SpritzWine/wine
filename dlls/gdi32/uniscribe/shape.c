@@ -3158,7 +3158,7 @@ static void ShapeCharGlyphProp_Thai( HDC hdc, ScriptCache *psc, SCRIPT_ANALYSIS 
     /* Do not allow justification between marks and their base */
     for (i = 0; i < cGlyphs; i++)
     {
-        if (!pGlyphProp[i].sva.fClusterStart)
+        if (!pGlyphProp[i].sva.fClusterStart && (i-dirL) >= 0)
             pGlyphProp[i-dirL].sva.uJustification = SCRIPT_JUSTIFY_NONE;
     }
 }
