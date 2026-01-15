@@ -762,6 +762,65 @@ PDH_STATUS WINAPI PdhGetFormattedCounterValue( PDH_HCOUNTER handle, DWORD format
 }
 
 /***********************************************************************
+ *              PdhGetFormattedCounterArrayA   (PDH.@)
+ */
+PDH_STATUS WINAPI PdhGetFormattedCounterArrayA( PDH_HCOUNTER handle, DWORD format,
+                                                DWORD *size, DWORD *count,
+                                                PDH_FMT_COUNTERVALUE_ITEM_A *items )
+{
+    PDH_STATUS ret = PDH_MORE_DATA;
+    struct counter *counter = handle;
+
+    TRACE("%p %lx %p %p %p\n", handle, format, size, count, items);
+
+    if (!size || !count ) return PDH_INVALID_ARGUMENT;
+
+    EnterCriticalSection( &pdh_handle_cs );
+    if (!counter || counter->magic != PDH_MAGIC_COUNTER)
+    {
+        LeaveCriticalSection( &pdh_handle_cs );
+        return PDH_INVALID_HANDLE;
+    }
+    if (counter->status)
+    {
+        LeaveCriticalSection( &pdh_handle_cs );
+        return PDH_INVALID_DATA;
+    }
+
+    LeaveCriticalSection( &pdh_handle_cs );
+    return ret;
+}
+
+/***********************************************************************
+ *              PdhGetFormattedCounterArrayW   (PDH.@)
+ */
+PDH_STATUS WINAPI PdhGetFormattedCounterArrayW( PDH_HCOUNTER handle, DWORD format,
+                                                DWORD *size, DWORD *count,
+                                                PDH_FMT_COUNTERVALUE_ITEM_W *items )
+{
+    PDH_STATUS ret = PDH_MORE_DATA;
+    struct counter *counter = handle;
+
+    TRACE("%p %lx %p %p %p\n", handle, format, size, count, items);
+
+    if (!size || !count) return PDH_INVALID_ARGUMENT;
+
+    EnterCriticalSection( &pdh_handle_cs );
+    if (!counter || counter->magic != PDH_MAGIC_COUNTER)
+    {
+        LeaveCriticalSection( &pdh_handle_cs );
+        return PDH_INVALID_HANDLE;
+    }
+    if (counter->status)
+    {
+        LeaveCriticalSection( &pdh_handle_cs );
+        return PDH_INVALID_DATA;
+    }
+
+    LeaveCriticalSection( &pdh_handle_cs );
+    return ret;
+}
+/***********************************************************************
  *              PdhGetRawCounterValue   (PDH.@)
  */
 PDH_STATUS WINAPI PdhGetRawCounterValue( PDH_HCOUNTER handle, LPDWORD type,

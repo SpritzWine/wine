@@ -32,6 +32,8 @@ static HMODULE pdh;
 static PDH_STATUS   (WINAPI *pPdhAddEnglishCounterA)(PDH_HQUERY, LPCSTR, DWORD_PTR, PDH_HCOUNTER *);
 static PDH_STATUS   (WINAPI *pPdhAddEnglishCounterW)(PDH_HQUERY, LPCWSTR, DWORD_PTR, PDH_HCOUNTER *);
 static PDH_STATUS   (WINAPI *pPdhCollectQueryDataWithTime)(PDH_HQUERY, LONGLONG *);
+static PDH_STATUS   (WINAPI *pPdhGetFormattedCounterArrayA)(PDH_HCOUNTER, DWORD, LPDWORD, LPDWORD, PPDH_FMT_COUNTERVALUE_ITEM_A);
+static PDH_STATUS   (WINAPI *pPdhGetFormattedCounterArrayW)(PDH_HCOUNTER, DWORD, LPDWORD, LPDWORD, PPDH_FMT_COUNTERVALUE_ITEM_W);
 static PDH_STATUS   (WINAPI *pPdhValidatePathExA)(PDH_HLOG, LPCSTR);
 static PDH_STATUS   (WINAPI *pPdhValidatePathExW)(PDH_HLOG, LPCWSTR);
 static double       (WINAPI *pPdhVbGetDoubleCounterValue)(PDH_HCOUNTER, PDH_STATUS *);
@@ -68,6 +70,8 @@ static void init_function_ptrs( void )
     GETFUNCPTR( PdhAddEnglishCounterA )
     GETFUNCPTR( PdhAddEnglishCounterW )
     GETFUNCPTR( PdhCollectQueryDataWithTime )
+    GETFUNCPTR( PdhGetFormattedCounterArrayA )
+    GETFUNCPTR( PdhGetFormattedCounterArrayW )
     GETFUNCPTR( PdhValidatePathExA )
     GETFUNCPTR( PdhValidatePathExW )
     GETFUNCPTR( PdhVbGetDoubleCounterValue )
@@ -337,6 +341,111 @@ static void test_PdhCollectQueryDataWithTime( void )
 
     ret = pPdhCollectQueryDataWithTime( query, &time );
     ok(ret == ERROR_SUCCESS, "PdhCollectQueryDataWithTime failed 0x%08lx\n", ret);
+
+    ret = PdhCloseQuery( query );
+    ok(ret == ERROR_SUCCESS, "PdhCloseQuery failed 0x%08lx\n", ret);
+}
+
+static void test_PdhGetFormattedCounterArrayA( void )
+{
+    PDH_STATUS ret;
+    PDH_HQUERY query;
+    PDH_HCOUNTER counter;
+    PDH_FMT_COUNTERVALUE_ITEM_A *items = NULL;
+    DWORD size, count;
+
+    ret = PdhOpenQueryA( NULL, 0, &query );
+    ok(ret == ERROR_SUCCESS, "PdhOpenQueryA failed 0x%08lx\n", ret);
+
+    ret = PdhAddCounterA( query, "\\System\\System Up Time", 0, &counter );
+    ok(ret == ERROR_SUCCESS, "PdhAddCounterA failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayA( NULL, PDH_FMT_LARGE, NULL, NULL, NULL );
+    ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayA( NULL, PDH_FMT_LARGE, &size, NULL, NULL );
+    ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayA( NULL, PDH_FMT_LARGE, &size, &count, NULL );
+    todo_wine ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    size = 0;
+    ret = pPdhGetFormattedCounterArrayA( NULL, PDH_FMT_LARGE, &size, &count, NULL );
+    ok(ret == PDH_INVALID_HANDLE, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayA( NULL, PDH_FMT_LARGE, &size, &count, items );
+    ok(ret == PDH_INVALID_HANDLE, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayA( counter, PDH_FMT_LARGE, NULL, NULL, NULL );
+    ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayA( counter, PDH_FMT_LARGE, &size, &count, NULL );
+    todo_wine ok(ret == PDH_NO_DATA, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = PdhCollectQueryData( query );
+    ok(ret == ERROR_SUCCESS, "PdhCollectQueryData failed 0x%08lx\n", ret);
+
+    count = 0;
+    ret = pPdhGetFormattedCounterArrayA( counter, PDH_FMT_LARGE, &size, &count, NULL );
+    ok(ret == PDH_MORE_DATA, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+    todo_wine ok(size > 0, "Got size %ld\n", size);
+    todo_wine ok(count > 0, "Got count %ld\n", count);
+
+    items = (PDH_FMT_COUNTERVALUE_ITEM_A *) malloc(size);
+    ret = pPdhGetFormattedCounterArrayA( counter, PDH_FMT_LARGE, &size, &count, items );
+    todo_wine ok(ret == ERROR_SUCCESS, "PdhGetFormattedCounterArrayA failed 0x%08lx\n", ret);
+
+    ret = PdhCloseQuery( query );
+    ok(ret == ERROR_SUCCESS, "PdhCloseQuery failed 0x%08lx\n", ret);
+}
+
+static void test_PdhGetFormattedCounterArrayW( void )
+{
+    PDH_STATUS ret;
+    PDH_HQUERY query;
+    PDH_HCOUNTER counter;
+    PDH_FMT_COUNTERVALUE_ITEM_W *items = NULL;
+    DWORD size, count;
+
+    ret = PdhOpenQueryW( NULL, 0, &query );
+    ok(ret == ERROR_SUCCESS, "PdhOpenQueryW failed 0x%08lx\n", ret);
+
+    ret = PdhAddCounterW( query, L"\\System\\System Up Time", 0, &counter );
+    ok(ret == ERROR_SUCCESS, "PdhAddCounterW failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( NULL, PDH_FMT_LARGE, NULL, NULL, NULL );
+    ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( NULL, PDH_FMT_LARGE, &size, NULL, NULL );
+    ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( NULL, PDH_FMT_LARGE, &size, &count, NULL );
+    todo_wine ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    size = 0;
+    ret = pPdhGetFormattedCounterArrayW( NULL, PDH_FMT_LARGE, &size, &count, NULL );
+    ok(ret == PDH_INVALID_HANDLE, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( NULL, PDH_FMT_LARGE, &size, &count, items );
+    ok(ret == PDH_INVALID_HANDLE, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( counter, PDH_FMT_LARGE, NULL, NULL, NULL );
+    ok(ret == PDH_INVALID_ARGUMENT, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( counter, PDH_FMT_LARGE, &size, &count, NULL );
+    todo_wine ok(ret == PDH_NO_DATA, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+
+    ret = PdhCollectQueryData( query );
+    ok(ret == ERROR_SUCCESS, "PdhCollectQueryData failed 0x%08lx\n", ret);
+
+    ret = pPdhGetFormattedCounterArrayW( counter, PDH_FMT_LARGE, &size, &count, NULL );
+    ok(ret == PDH_MORE_DATA, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
+    todo_wine ok(size != 0, "Got size %ld\n", size);
+    todo_wine ok(count != 0, "Got count %ld\n", count);
+
+    items = (PDH_FMT_COUNTERVALUE_ITEM_W *) malloc(size);
+    ret = pPdhGetFormattedCounterArrayW( counter, PDH_FMT_LARGE, &size, &count, items );
+    todo_wine ok(ret == ERROR_SUCCESS, "PdhGetFormattedCounterArrayW failed 0x%08lx\n", ret);
 
     ret = PdhCloseQuery( query );
     ok(ret == ERROR_SUCCESS, "PdhCloseQuery failed 0x%08lx\n", ret);
@@ -1035,6 +1144,8 @@ START_TEST(pdh)
     if (pPdhAddEnglishCounterW) test_PdhAddEnglishCounterW();
     if (pPdhCollectQueryDataWithTime) test_PdhCollectQueryDataWithTime();
 
+    if (pPdhGetFormattedCounterArrayA) test_PdhGetFormattedCounterArrayA();
+    if (pPdhGetFormattedCounterArrayW) test_PdhGetFormattedCounterArrayW();
     test_PdhGetFormattedCounterValue();
     test_PdhGetRawCounterValue();
     test_PdhSetCounterScaleFactor();
