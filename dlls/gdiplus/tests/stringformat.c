@@ -373,12 +373,28 @@ static void test_getgenericdefault(void)
     expect(Ok, stat);
 }
 
+void set_rect_empty(RectF *rect)
+{
+     rect->X = 0;
+     rect->Y = 0;
+     rect->Width = 0;
+     rect->Height = 0;
+}
+
 static void test_stringformatflags(void)
 {
     GpStringFormat *format;
     GpStatus stat;
 
-    INT flags;
+    HDC hdc;
+    GpGraphics *graphics;
+    LOGFONTA lf;
+    GpFont *font;
+    RectF rect, bounds;
+    REAL height;
+    const WCHAR *string = L"Hello";
+    INT flags, linesfilled;
+
 
     stat = GdipCreateStringFormat(0, LANG_NEUTRAL, &format);
     expect(Ok, stat);
@@ -429,6 +445,42 @@ static void test_stringformatflags(void)
     stat = GdipGetStringFormatFlags(format, &flags);
     expect(Ok, stat);
     expect(0xdeadbeef, flags);
+
+    hdc = CreateCompatibleDC(0);
+    GdipCreateFromHDC(hdc, &graphics);
+    memset(&lf, 0, sizeof(lf));
+
+    lstrcpyA(lf.lfFaceName, "Tahoma");
+    lf.lfHeight = -100;
+    stat = GdipCreateFontFromLogfontA(hdc, &lf, &font);
+    expect(Ok, stat);
+    stat = GdipGetFontHeight(font, graphics, &height);
+    stat = GdipSetStringFormatFlags(format, StringFormatFlagsLineLimit);
+    expect(Ok, stat);
+    stat = GdipGetStringFormatFlags(format, &flags);
+    expect(Ok, stat);
+    expect(StringFormatFlagsLineLimit, flags);
+    /* Get an estimate of line height */
+    set_rect_empty(&rect);
+    set_rect_empty(&bounds);
+    stat = GdipMeasureString(graphics, string, 5, font, &rect, format, &bounds, NULL, NULL);
+    expect(Ok, stat);
+
+    /* request to draw in a shallow rectangle with half the line height */
+    rect.Height = bounds.Height / 2;
+    rect.Width = 600;
+    set_rect_empty(&bounds);
+    stat = GdipMeasureString(graphics, string, 5, font, &rect, format, &bounds, NULL, &linesfilled);
+    expect(Ok, stat);
+    todo_wine
+    expectf(rect.Height, bounds.Height);
+
+    todo_wine
+    expect(1, linesfilled);
+
+    DeleteObject(hdc);
+    GdipDeleteGraphics(graphics);
+    GdipDeleteFont(font);
 
     stat = GdipDeleteStringFormat(format);
     expect(Ok, stat);
