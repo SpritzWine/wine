@@ -94,6 +94,8 @@ struct work_item
     IWorkItemHandler IWorkItemHandler_iface;
     LONG refcount;
     HANDLE event;
+    unsigned int agile : 1;
+    unsigned int cancel : 1;
 };
 
 static struct work_item * impl_from_IWorkItemHandler(IWorkItemHandler *iface)
@@ -103,8 +105,11 @@ static struct work_item * impl_from_IWorkItemHandler(IWorkItemHandler *iface)
 
 static HRESULT STDMETHODCALLTYPE work_item_QueryInterface(IWorkItemHandler *iface, REFIID riid, void **obj)
 {
+    struct work_item *item = impl_from_IWorkItemHandler(iface);
+
     if (IsEqualIID(riid, &IID_IWorkItemHandler)
-        || IsEqualIID(riid, &IID_IUnknown))
+        || IsEqualIID(riid, &IID_IUnknown)
+        || (item->agile && IsEqualIID(riid, &IID_IAgileObject)))
     {
         *obj = iface;
         IWorkItemHandler_AddRef(iface);
@@ -150,9 +155,12 @@ static HRESULT STDMETHODCALLTYPE work_item_Invoke(IWorkItemHandler *iface, IAsyn
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     if (SUCCEEDED(hr)) ok(status == Started, "Unexpected status %d.\n", status);
 
-    hr = IAsyncInfo_Cancel(async_info);
-    todo_wine
-    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    if (item->cancel)
+    {
+        hr = IAsyncInfo_Cancel(async_info);
+        todo_wine
+            ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    }
 
     IAsyncInfo_Release(async_info);
 
@@ -184,7 +192,7 @@ static const IWorkItemHandlerVtbl work_item_vtbl =
     work_item_Invoke,
 };
 
-static HRESULT create_work_item(IWorkItemHandler **item)
+static HRESULT create_work_item(IWorkItemHandler **item, BOOLEAN agile, BOOLEAN cancel)
 {
     struct work_item *object;
 
@@ -196,6 +204,8 @@ static HRESULT create_work_item(IWorkItemHandler **item)
     object->IWorkItemHandler_iface.lpVtbl = &work_item_vtbl;
     object->refcount = 1;
     object->event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    object->agile = agile;
+    object->cancel = cancel;
 
     *item = &object->IWorkItemHandler_iface;
 
@@ -230,7 +240,7 @@ static void test_RunAsync(void)
     hr = IThreadPoolStatics_RunAsync(threadpool_statics, NULL, &action);
     ok(hr == E_INVALIDARG, "Unexpected hr %#lx.\n", hr);
 
-    hr = create_work_item(&item_iface);
+    hr = create_work_item(&item_iface, FALSE, TRUE);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     item = impl_from_IWorkItemHandler(item_iface);
 
@@ -285,8 +295,82 @@ static void test_RunAsync(void)
     RoUninitialize();
 }
 
+static void pump_messages(void)
+{
+    MSG msg;
+
+    while (!MsgWaitForMultipleObjects(0, NULL, FALSE, 1000, QS_ALLINPUT))
+    {
+        while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
+            DispatchMessageW(&msg);
+    }
+}
+
+static void test_RunAsync_STA(void)
+{
+    IThreadPoolStatics *threadpool_statics;
+    IWorkItemHandler *item_iface;
+    struct work_item *item;
+    IAsyncAction *action;
+    HSTRING classid;
+    HRESULT hr;
+    DWORD ret;
+
+    hr = RoInitialize(RO_INIT_SINGLETHREADED);
+    ok(SUCCEEDED(hr), "Unexpected hr %#lx.\n", hr);
+
+    hr = WindowsCreateString(threadpool_class_name, wcslen(threadpool_class_name), &classid);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    hr = RoGetActivationFactory(classid, &IID_IThreadPoolStatics, (void **)&threadpool_statics);
+    WindowsDeleteString(classid);
+    ok(hr == S_OK || broken(hr == REGDB_E_CLASSNOTREG), "Unexpected hr %#lx.\n", hr);
+    if (hr == REGDB_E_CLASSNOTREG)
+    {
+        RoUninitialize();
+        return;
+    }
+
+    hr = create_work_item(&item_iface, FALSE, FALSE);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    item = impl_from_IWorkItemHandler(item_iface);
+
+    /* Non-agile IWorkItemHandlers will not be dispatched on another thread, so the wait should timeout. */
+    hr = IThreadPoolStatics_RunAsync(threadpool_statics, item_iface, &action);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    ret = WaitForSingleObject(item->event, 1000);
+    todo_wine
+    ok(ret == WAIT_TIMEOUT, "Unexpected wait result %lu.\n", ret);
+
+    pump_messages();
+    ret = WaitForSingleObject(item->event, 1000);
+    todo_wine
+    ok(!ret, "Unexpected wait result %lu.\n", ret);
+
+    IAsyncAction_Release(action);
+    IWorkItemHandler_Release(item_iface);
+
+    /* Agile IWorkItemHandlers do get dispatched, so we can simply wait on item->event without pumping the message queue. */
+    hr = create_work_item(&item_iface, TRUE, FALSE);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    item = impl_from_IWorkItemHandler(item_iface);
+    hr = IThreadPoolStatics_RunAsync(threadpool_statics, item_iface, &action);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+
+    ret = WaitForSingleObject(item->event, 1000);
+    ok(!ret, "Unexpected wait result %lu.\n", ret);
+
+    IAsyncAction_Release(action);
+    IWorkItemHandler_Release(item_iface);
+
+    IThreadPoolStatics_Release(threadpool_statics);
+    RoUninitialize();
+    return;
+}
+
 START_TEST(threadpool)
 {
     test_interfaces();
     test_RunAsync();
+    test_RunAsync_STA();
 }

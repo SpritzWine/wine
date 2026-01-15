@@ -1,5 +1,5 @@
 TESTDLL = threadpoolwinrt.dll
-IMPORTS = combase uuid
+IMPORTS = combase user32 uuid
 
 SOURCES = \
 	threadpool.c
