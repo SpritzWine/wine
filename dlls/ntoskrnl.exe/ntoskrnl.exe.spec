@@ -61,6 +61,7 @@
 @ stub KeSetTimeUpdateNotifyRoutine
 @ stub KefAcquireSpinLockAtDpcLevel
 @ stub KefReleaseSpinLockFromDpcLevel
+@ stdcall KeIpiGenericCall(ptr long)
 @ stdcall KeGenericCallDpc(ptr ptr)
 @ stdcall KeSignalCallDpcDone(ptr)
 @ stdcall KeSignalCallDpcSynchronize(ptr)

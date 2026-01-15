@@ -4442,6 +4442,13 @@ BOOLEAN WINAPI KdRefreshDebuggerNotPresent(void)
     return !KdDebuggerEnabled;
 }
 
+ULONG_PTR WINAPI KeIpiGenericCall(KIPI_BROADCAST_WORKER *worker, ULONG_PTR context)
+{
+    FIXME("semi-stub: %p %Ix\n", worker, context);
+
+    return worker(context);
+}
+
 struct generic_call_dpc_context
 {
     DEFERRED_REVERSE_BARRIER *reverse_barrier;
