@@ -920,6 +920,7 @@ enable_win16
 enable_win64
 enable_tests
 enable_build_id
+enable_split_debug
 enable_maintainer_mode
 enable_sast
 enable_silent_rules
@@ -2539,6 +2540,7 @@ Optional Features:
                           binaries)
   --disable-tests         do not build the regression tests
   --enable-build-id       include .buildid section in output objects
+  --enable-split-debug    enable split debug info
   --enable-maintainer-mode
                           enable maintainer-specific build rules
   --enable-sast           enable static application security testing using
@@ -4283,6 +4285,12 @@ fi
 if test ${enable_build_id+y}
 then :
   enableval=$enable_build_id;
+fi
+
+# Check whether --enable-split-debug was given.
+if test ${enable_split_debug+y}
+then :
+  enableval=$enable_split_debug;
 fi
 
 # Check whether --enable-maintainer-mode was given.
@@ -9493,6 +9501,7 @@ fi } ;;
         esac
       done
     fi
+    test "x$enable_split_debug" != xyes || as_fn_append wine_crossdebug " split"
     eval "${wine_arch}_DEBUG=\$wine_crossdebug"
 
     test "x$enable_werror" != xyes || { as_ac_var=`printf "%s\n" "ac_cv_${wine_arch}_cflags_-Werror" | sed "$as_sed_sh"`
