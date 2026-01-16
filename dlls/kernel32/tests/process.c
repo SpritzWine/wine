@@ -1155,6 +1155,41 @@ static void test_CommandLine(void)
     cmdline = GetCommandLineW();
     ok(cmdline == cmdline_backup, "Expected cached address from TEB, got %p\n", cmdline);
     NtCurrentTeb()->Peb->ProcessParameters->CommandLine.Buffer = cmdline_backup;
+
+    /* Test quoted command line without file extension*/
+    sprintf(buffer, "%s", selfname);
+    p = strrchr(buffer, '.');
+    *p = 0;
+
+    get_file_name(resfile);
+    sprintf(buffer2, "\" %s\" process dump \"%s\"", buffer, resfile);
+    ret = CreateProcessA(NULL, buffer2, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &info);
+    ok(!ret, "CreateProcessA unexpectedly succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "Expected ERROR_FILE_NOT_FOUND, got %ld\n", GetLastError());
+
+    get_file_name(resfile);
+    sprintf(buffer2, "\"%s \" process dump \"%s\"", buffer, resfile);
+    ret = CreateProcessA(NULL, buffer2, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &info);
+    todo_wine
+    ok(ret, "CreateProcess (%s) failed : %ld\n", buffer, GetLastError());
+    if (info.hProcess)
+    {
+        wait_child_process(&info);
+        release_memory();
+        DeleteFileA(resfile);
+    }
+
+    get_file_name(resfile);
+    sprintf(buffer2, "\"\t%s\" process dump \"%s\"", buffer, resfile);
+    ret = CreateProcessA(NULL, buffer2, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &info);
+    ok(!ret, "CreateProcessA unexpectedly succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "Expected ERROR_FILE_NOT_FOUND, got %ld\n", GetLastError());
+
+    get_file_name(resfile);
+    sprintf(buffer2, "\"%s\t\" process dump \"%s\"", buffer, resfile);
+    ret = CreateProcessA(NULL, buffer2, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &info);
+    ok(!ret, "CreateProcessA unexpectedly succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "Expected ERROR_FILE_NOT_FOUND, got %ld\n", GetLastError());
 }
 
 static void test_Directory(void)
