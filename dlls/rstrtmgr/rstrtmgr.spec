@@ -3,7 +3,7 @@
 @ stdcall RmEndSession(long)
 @ stub RmGetFilterList
 @ stdcall RmGetList(long ptr ptr ptr ptr)
-@ stub RmJoinSession
+@ stdcall RmJoinSession(ptr ptr)
 @ stdcall RmRegisterResources(long long ptr long ptr long ptr)
 @ stdcall RmRemoveFilter(long wstr ptr wstr)
 @ stub RmReserveHeap

@@ -117,3 +117,13 @@ DWORD WINAPI RmRemoveFilter(DWORD handle, LPCWSTR moduleName, RM_UNIQUE_PROCESS 
         debugstr_w(serviceShortName));
     return ERROR_SUCCESS;
 }
+
+/***********************************************************************
+ * RmJoinSession (rstrtmgr.@)
+ *
+ */
+DWORD WINAPI RmJoinSession(DWORD *sessionhandle, const WCHAR *sessionkey)
+{
+    FIXME("stub! sessionhandle:%p, sessionkey:%p\n", sessionhandle, sessionkey);
+    return ERROR_SUCCESS;
+}
