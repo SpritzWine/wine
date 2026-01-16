@@ -3063,6 +3063,236 @@ static void test_aac_decoder(void)
     test_aac_decoder_channels(raw_aac_input_type_desc);
 }
 
+static void test_aac_decoder_timestamps(void)
+{
+    struct timestamps
+    {
+        LONGLONG time;
+        LONGLONG duration;
+    };
+
+    static const BYTE aac_raw_codec_data[] = {0x12, 0x08};
+    static const struct attribute_desc raw_aac_input_type_desc[] =
+    {
+        ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio, .required = TRUE),
+        ATTR_GUID(MF_MT_SUBTYPE, MFAudioFormat_RAW_AAC1, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 44100, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_NUM_CHANNELS, 1),
+        ATTR_BLOB(MF_MT_USER_DATA, aac_raw_codec_data, sizeof(aac_raw_codec_data), .required = TRUE),
+        {0},
+    };
+    static const struct attribute_desc output_type_desc[] =
+    {
+        ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio, .required = TRUE),
+        ATTR_GUID(MF_MT_SUBTYPE, MFAudioFormat_PCM, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_NUM_CHANNELS, 1, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 44100, .required = TRUE),
+        {0},
+    };
+    const MFT_OUTPUT_STREAM_INFO output_info =
+    {
+        .dwFlags = MFT_INPUT_STREAM_WHOLE_SAMPLES,
+        .cbSize = 0xc000,
+    };
+
+    static const struct timestamps exp_44_1kHz[] =
+    {
+        {       0, 232200 },
+        {  232200, 232200 },
+        {  464400, 232200 },
+        {  696600, 232200 },
+        {  928800, 232200 },
+        { 1161000, 232200 },
+        { 1393200, 232200 },
+        { 1625400, 232200 },
+        { 1857600, 232200 },
+        { 2089800, 232200 },
+    };
+    static const struct timestamps input_sample_ts[] =
+    {
+        {  666666, 166667 },
+        {  833333, 166666 },
+        {  999999, 166666 },
+        { 1166665, 166667 },
+        { 1333332, 166667 },
+        { 1499999, 166667 },
+        { 1666666, 166666 },
+        { 1833332, 166667 },
+        { 1999999, 166667 },
+        { 2166666, 166666 },
+        { 2333332, 166667 },
+        { 2499999, 166667 },
+        { 2666666, 166667 },
+        { 2833333, 166666 },
+        { 2999999, 166666 },
+        { 3166665, 166667 },
+        { 3333332, 166667 },
+        { 3499999, 166667 },
+        { 3666666, 166666 },
+        { 3833332, 166667 },
+        { 3999999, 166667 },
+    };
+    static const struct timestamps exp_sample_ts[] =
+    {
+        {  666666, 232200 },
+        {  833333, 232200 },
+        {  999999, 232200 },
+        { 1166665, 232200 },
+        { 1333332, 232200 },
+        { 1499999, 232200 },
+        { 1666666, 232200 },
+        { 1833332, 232200 },
+        { 1999999, 232200 },
+        { 2166666, 232200 },
+    };
+
+    IMFSample *input_sample, *output_sample;
+    IMFTransform *transform;
+    LONGLONG duration, time;
+    const BYTE *aacenc_data;
+    ULONG aacenc_data_len;
+    DWORD output_status;
+    ULONG i, j, ret;
+    HRESULT hr;
+
+    hr = CoInitialize(NULL);
+    ok(hr == S_OK, "Failed to initialize, hr %#lx.\n", hr);
+
+    winetest_push_context("aacdec timestamps");
+
+    /* Test when 44.1kHz sample rate is provided and samples contain no timestamps */
+    if (FAILED(hr = CoCreateInstance(&CLSID_MSAACDecMFT, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IMFTransform, (void **)&transform)))
+        goto failed;
+
+    check_mft_set_input_type(transform, raw_aac_input_type_desc, S_OK);
+    check_mft_set_output_type(transform, output_type_desc, S_OK);
+
+    check_mft_get_output_stream_info(transform, S_OK, &output_info);
+
+    hr = IMFTransform_ProcessMessage(transform, MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    ok(hr == S_OK, "Got %#lx\n", hr);
+
+    load_resource(L"aacencdata.bin", &aacenc_data, &aacenc_data_len);
+    ok(aacenc_data_len == 24861, "got length %lu\n", aacenc_data_len);
+
+    output_sample = create_sample(NULL, output_info.cbSize);
+    for (i = 0; i < ARRAYSIZE(exp_44_1kHz);)
+    {
+        winetest_push_context("%lu", i);
+        hr = check_mft_process_output(transform, output_sample, &output_status);
+        ok(hr == S_OK || hr == MF_E_TRANSFORM_NEED_MORE_INPUT, "ProcessOutput returned %#lx\n", hr);
+        if (hr == S_OK)
+        {
+            hr = IMFSample_GetSampleTime(output_sample, &time);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine_if(i)
+            ok(time == exp_44_1kHz[i].time, "got time %I64d, expected %I64d\n", time, exp_44_1kHz[i].time);
+            hr = IMFSample_GetSampleDuration(output_sample, &duration);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine
+            ok(duration == exp_44_1kHz[i].duration, "got duration %I64d, expected %I64d\n", duration, exp_44_1kHz[i].duration);
+            ret = IMFSample_Release(output_sample);
+            ok(ret == 0, "Release returned %ld\n", ret);
+            output_sample = create_sample(NULL, output_info.cbSize);
+            i++;
+        }
+        else if (!aacenc_data_len)
+        {
+            i = ARRAYSIZE(exp_44_1kHz) + 1;
+            ok(0, "Ran out of input data\n");
+        }
+        else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
+        {
+            DWORD size = *(DWORD *)aacenc_data;
+            input_sample = create_sample(aacenc_data + sizeof(size), size);
+            aacenc_data += size + sizeof(size);
+            aacenc_data_len -= size + sizeof(size);
+            hr = IMFTransform_ProcessInput(transform, 0, input_sample, 0);
+            ok(hr == S_OK, "ProcessInput returned %#lx\n", hr);
+            ret = IMFSample_Release(input_sample);
+            ok(ret <= 1, "Release returned %ld\n", ret);
+        }
+        winetest_pop_context();
+    }
+
+    ret = IMFSample_Release(output_sample);
+    ok(ret == 0, "Release returned %lu\n", ret);
+    ret = IMFTransform_Release(transform);
+    ok(ret == 0, "Release returned %lu\n", ret);
+
+    /* Test when provided sample timestamps disagree with input */
+    hr = CoCreateInstance(&CLSID_MSAACDecMFT, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IMFTransform, (void **)&transform);
+    ok(hr == S_OK, "Got %#lx\n", hr);
+
+    check_mft_set_input_type(transform, raw_aac_input_type_desc, S_OK);
+    check_mft_set_output_type(transform, output_type_desc, S_OK);
+
+    check_mft_get_output_stream_info(transform, S_OK, &output_info);
+
+    hr = IMFTransform_ProcessMessage(transform, MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    ok(hr == S_OK, "Got %#lx\n", hr);
+
+    load_resource(L"aacencdata.bin", &aacenc_data, &aacenc_data_len);
+    ok(aacenc_data_len == 24861, "got length %lu\n", aacenc_data_len);
+
+    j = 0;
+    output_sample = create_sample(NULL, output_info.cbSize);
+    for (i = 0; i < ARRAYSIZE(exp_sample_ts);)
+    {
+        winetest_push_context("%lu", i);
+        hr = check_mft_process_output(transform, output_sample, &output_status);
+        ok(hr == S_OK || hr == MF_E_TRANSFORM_NEED_MORE_INPUT, "ProcessOutput returned %#lx\n", hr);
+        if (hr == S_OK)
+        {
+            hr = IMFSample_GetSampleTime(output_sample, &time);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            ok(time == exp_sample_ts[i].time, "got time %I64d, expected %I64d\n", time, exp_sample_ts[i].time);
+            hr = IMFSample_GetSampleDuration(output_sample, &duration);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine
+            ok(duration == exp_sample_ts[i].duration, "got duration %I64d, expected %I64d\n", duration, exp_sample_ts[i].duration);
+            ret = IMFSample_Release(output_sample);
+            ok(ret == 0, "Release returned %ld\n", ret);
+            output_sample = create_sample(NULL, output_info.cbSize);
+            i++;
+        }
+        else if (j == ARRAYSIZE(input_sample_ts))
+        {
+            i = ARRAYSIZE(exp_sample_ts) + 1;
+            ok(0, "Ran out of input data\n");
+        }
+        else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
+        {
+            DWORD size = *(DWORD *)aacenc_data;
+            input_sample = create_sample(aacenc_data + sizeof(size), size);
+            aacenc_data += size + sizeof(size);
+            aacenc_data_len -= size + sizeof(size);
+            hr = IMFSample_SetSampleTime(input_sample, input_sample_ts[j].time);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            hr = IMFSample_SetSampleDuration(input_sample, input_sample_ts[j].duration);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            j++;
+            hr = IMFTransform_ProcessInput(transform, 0, input_sample, 0);
+            ok(hr == S_OK, "ProcessInput returned %#lx\n", hr);
+            ret = IMFSample_Release(input_sample);
+            ok(ret <= 1, "Release returned %ld\n", ret);
+        }
+        winetest_pop_context();
+    }
+
+    ret = IMFSample_Release(output_sample);
+    ok(ret == 0, "Release returned %lu\n", ret);
+    ret = IMFTransform_Release(transform);
+    ok(ret == 0, "Release returned %lu\n", ret);
+
+failed:
+    winetest_pop_context();
+    CoUninitialize();
+}
+
 static const BYTE wma_codec_data[10] = {0, 0x44, 0, 0, 0x17, 0, 0, 0, 0, 0};
 static const ULONG wmaenc_block_size = 1487;
 static const ULONG wmadec_block_size = 0x2000;
@@ -4113,6 +4343,242 @@ static void test_wma_decoder_dmo_output_type(void)
     ok(ret == 0, "Release returned %lu\n", ret);
     CoUninitialize();
     winetest_pop_context();
+}
+
+static void test_wma_decoder_timestamps(void)
+{
+    struct timestamps
+    {
+        LONGLONG time;
+        LONGLONG duration;
+        BOOL todo_time;
+        BOOL todo_duration;
+    };
+
+    const struct attribute_desc input_type_desc[] =
+    {
+        ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio, .required = TRUE),
+        ATTR_GUID(MF_MT_SUBTYPE, MFAudioFormat_WMAudioV8, .required = TRUE),
+        ATTR_BLOB(MF_MT_USER_DATA, wma_codec_data, sizeof(wma_codec_data), .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, wmaenc_block_size, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 22050, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_NUM_CHANNELS, 2, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 4003), /* not required by SetInputType, but needed for the transform to work */
+        ATTR_UINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16),
+        {0},
+    };
+    static const struct attribute_desc output_type_desc[] =
+    {
+        ATTR_GUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio, .required = TRUE),
+        ATTR_GUID(MF_MT_SUBTYPE, MFAudioFormat_PCM, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_NUM_CHANNELS, 2, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 22050, .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 2 * (16 / 8), .required = TRUE),
+        ATTR_UINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 2 * (16 / 8) * 22050, .required = TRUE),
+        {0},
+    };
+
+    const MFT_OUTPUT_STREAM_INFO output_info =
+    {
+        .cbSize = wmadec_block_size,
+        .cbAlignment = 1,
+    };
+
+    static const struct timestamps exp_22050Hz[] =
+    {
+        {       0, 928798 },
+        {  928798, 928798 },
+        { 1857596, 928798 },
+        { 2786394, 464399, FALSE, TRUE },
+        { 3250793, 928798, TRUE },
+        { 4179591, 928798, TRUE },
+        { 5108390, 928798, TRUE },
+        { 6037188, 928798, TRUE },
+        { 6965986, 928798, TRUE },
+        { 7894784, 928798, TRUE },
+    };
+    static const struct timestamps input_sample_ts[] =
+    {
+        {        0,      1 },
+        {  4170000, 928798 },
+        {  7890000, 464399 },
+        { 11140000, 580499 },
+        { 14390000, 812698 },
+        { 17640000, 928798 },
+        { 20890000, 928798 },
+        { 24140000, 928798 },
+        { 26930000, 464399 },
+        { 30180000, 928798 },
+        { 33170000, 928798 },
+        { 36210000, 464399 },
+        { 39460000, 928798 },
+        { 42720000, 928798 },
+        { 45610000, 464399 },
+        { 48760000, 580499 },
+        { 52470000, 928798 },
+        { 55720000, 928798 },
+        { 59440000, 928798 },
+        { 63150000, 928798 },
+        { 69300000, 928798 },
+    };
+    static const struct timestamps exp_sample_ts[] =
+    {
+        {       0, 928798 },
+        {  928798, 928798 },
+        { 1857596, 928798 },
+        { 2786394, 464399, FALSE, TRUE },
+        { 4169614, 928798, TRUE },
+        { 5098412, 928798, TRUE },
+        { 6027210, 928798, TRUE },
+        { 6956009, 928798, TRUE },
+        { 7889795, 928798, TRUE },
+        { 8818594, 928798, TRUE },
+    };
+
+    IMFSample *input_sample, *output_sample;
+    IMFTransform *transform;
+    LONGLONG duration, time;
+    const BYTE *wmaenc_data;
+    ULONG wmaenc_data_len;
+    DWORD output_status;
+    ULONG i, j, ret;
+    HRESULT hr;
+
+    hr = CoInitialize(NULL);
+    ok(hr == S_OK, "Failed to initialize, hr %#lx.\n", hr);
+
+    winetest_push_context("wmadec timestamps");
+
+    /* Test when 44.1kHz sample rate is provided and samples contain no timestamps */
+    if (FAILED(hr = CoCreateInstance(&CLSID_CWMADecMediaObject, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IMFTransform, (void **)&transform)))
+        goto failed;
+
+    check_mft_set_input_type(transform, input_type_desc, S_OK);
+    check_mft_set_output_type(transform, output_type_desc, S_OK);
+
+    check_mft_get_output_stream_info(transform, S_OK, &output_info);
+
+    hr = IMFTransform_ProcessMessage(transform, MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    ok(hr == S_OK, "Got %#lx\n", hr);
+
+    load_resource(L"wmaencdata.bin", &wmaenc_data, &wmaenc_data_len);
+    ok(wmaenc_data_len % wmaenc_block_size == 0, "got length %lu\n", wmaenc_data_len);
+
+    output_sample = create_sample(NULL, output_info.cbSize);
+    for (i = 0; i < ARRAYSIZE(exp_22050Hz);)
+    {
+        winetest_push_context("%lu", i);
+        hr = check_mft_process_output(transform, output_sample, &output_status);
+        ok(hr == S_OK || hr == MF_E_TRANSFORM_NEED_MORE_INPUT, "ProcessOutput returned %#lx\n", hr);
+        if (hr == S_OK)
+        {
+            hr = IMFSample_GetSampleTime(output_sample, &time);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine_if(exp_22050Hz[i].todo_time)
+            ok(time == exp_22050Hz[i].time, "got time %I64d, expected %I64d\n", time, exp_22050Hz[i].time);
+            hr = IMFSample_GetSampleDuration(output_sample, &duration);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine_if(exp_22050Hz[i].todo_duration)
+            ok(duration == exp_22050Hz[i].duration, "got duration %I64d, expected %I64d\n", duration, exp_22050Hz[i].duration);
+            ret = IMFSample_Release(output_sample);
+            ok(ret == 0, "Release returned %ld\n", ret);
+            output_sample = create_sample(NULL, output_info.cbSize);
+            i++;
+        }
+        else if (!wmaenc_data_len)
+        {
+            i = ARRAYSIZE(exp_22050Hz) + 1;
+            ok(0, "Ran out of input data\n");
+        }
+        else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
+        {
+            input_sample = create_sample(wmaenc_data, wmaenc_block_size);
+            wmaenc_data += wmaenc_block_size;
+            wmaenc_data_len -= wmaenc_block_size;
+            hr = IMFTransform_ProcessInput(transform, 0, input_sample, 0);
+            ok(hr == S_OK, "ProcessInput returned %#lx\n", hr);
+            ret = IMFSample_Release(input_sample);
+            ok(ret <= 1, "Release returned %ld\n", ret);
+        }
+        winetest_pop_context();
+    }
+
+    ret = IMFSample_Release(output_sample);
+    ok(ret == 0, "Release returned %lu\n", ret);
+    ret = IMFTransform_Release(transform);
+    ok(ret == 0, "Release returned %lu\n", ret);
+
+    /* Test when provided sample timestamps disagree with input */
+    hr = CoCreateInstance(&CLSID_CWMADecMediaObject, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IMFTransform, (void **)&transform);
+    ok(hr == S_OK, "Got %#lx\n", hr);
+
+    check_mft_set_input_type(transform, input_type_desc, S_OK);
+    check_mft_set_output_type(transform, output_type_desc, S_OK);
+
+    check_mft_get_output_stream_info(transform, S_OK, &output_info);
+
+    hr = IMFTransform_ProcessMessage(transform, MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    ok(hr == S_OK, "Got %#lx\n", hr);
+
+    load_resource(L"wmaencdata.bin", &wmaenc_data, &wmaenc_data_len);
+    ok(wmaenc_data_len % wmaenc_block_size == 0, "got length %lu\n", wmaenc_data_len);
+
+    j = 0;
+    output_sample = create_sample(NULL, output_info.cbSize);
+    for (i = 0; i < ARRAYSIZE(exp_sample_ts);)
+    {
+        winetest_push_context("%lu", i);
+        hr = check_mft_process_output(transform, output_sample, &output_status);
+        ok(hr == S_OK || hr == MF_E_TRANSFORM_NEED_MORE_INPUT, "ProcessOutput returned %#lx\n", hr);
+        if (hr == S_OK)
+        {
+            hr = IMFSample_GetSampleTime(output_sample, &time);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine_if(exp_sample_ts[i].todo_time)
+            ok(time == exp_sample_ts[i].time, "got time %I64d, expected %I64d\n", time, exp_sample_ts[i].time);
+            hr = IMFSample_GetSampleDuration(output_sample, &duration);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            todo_wine_if(exp_sample_ts[i].todo_duration)
+            ok(duration == exp_sample_ts[i].duration, "got duration %I64d, expected %I64d\n", duration, exp_sample_ts[i].duration);
+            ret = IMFSample_Release(output_sample);
+            ok(ret == 0, "Release returned %ld\n", ret);
+            output_sample = create_sample(NULL, output_info.cbSize);
+            i++;
+        }
+        else if (j == ARRAYSIZE(input_sample_ts))
+        {
+            i = ARRAYSIZE(exp_sample_ts) + 1;
+            ok(0, "Ran out of input data\n");
+        }
+        else if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT)
+        {
+            input_sample = create_sample(wmaenc_data, wmaenc_block_size);
+            wmaenc_data += wmaenc_block_size;
+            wmaenc_data_len -= wmaenc_block_size;
+            hr = IMFSample_SetSampleTime(input_sample, input_sample_ts[j].time);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            hr = IMFSample_SetSampleDuration(input_sample, input_sample_ts[j].duration);
+            ok(hr == S_OK, "Got %#lx\n", hr);
+            j++;
+            hr = IMFTransform_ProcessInput(transform, 0, input_sample, 0);
+            ok(hr == S_OK, "ProcessInput returned %#lx\n", hr);
+            ret = IMFSample_Release(input_sample);
+            ok(ret <= 1, "Release returned %ld\n", ret);
+        }
+        winetest_pop_context();
+    }
+
+    ret = IMFSample_Release(output_sample);
+    ok(ret == 0, "Release returned %lu\n", ret);
+    ret = IMFTransform_Release(transform);
+    ok(ret == 0, "Release returned %lu\n", ret);
+
+failed:
+    winetest_pop_context();
+    CoUninitialize();
 }
 
 #define next_h264_sample(a, b) next_h264_sample_(__LINE__, a, b)
@@ -11349,10 +11815,12 @@ START_TEST(transform)
     test_aac_encoder();
     test_aac_decoder();
     test_aac_decoder_user_data();
+    test_aac_decoder_timestamps();
     test_wma_encoder();
     test_wma_decoder();
     test_wma_decoder_dmo_input_type();
     test_wma_decoder_dmo_output_type();
+    test_wma_decoder_timestamps();
     test_h264_encoder();
     test_h264_decoder();
     test_h264_decoder_timestamps();
