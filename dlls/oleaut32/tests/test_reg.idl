@@ -171,6 +171,12 @@ library register_test
         void testget8([out, retval] int* value);
         [propput, id(11)]
         void testput8([in] int value);
+        [id(12)]
+        HRESULT testbstrnone(BSTR* value, [out, retval] BSTR* retvalue);
+        [id(13)]
+        HRESULT testbstrin([in] BSTR* value, [out, retval] BSTR* retvalue);
+        [id(14)]
+        HRESULT testbstrout([out] BSTR* value, [out, retval] BSTR* retvalue);
     }
 
     /* uuid is same as for test_struct2 in test_tlb.idl, fields are different */

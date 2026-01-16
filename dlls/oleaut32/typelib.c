@@ -7326,7 +7326,7 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
                         }
                         else if ((rgvt[i] & VT_BYREF) && !V_ISBYREF(src_arg))
                         {
-                            if (wParamFlags & PARAMFLAG_FIN)
+                            if ((wParamFlags & PARAMFLAG_FIN) || (wParamFlags == PARAMFLAG_NONE))
                                 hres = VariantChangeType(&missing_arg[i], src_arg, 0, rgvt[i] & ~VT_BYREF);
                             else
                                 V_VT(&missing_arg[i]) = rgvt[i] & ~VT_BYREF;

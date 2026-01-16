@@ -1454,22 +1454,70 @@ static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid)
 
     lstrcpyW(buf, progid);
     lstrcatW(buf, L"\\CLSID");
-    if (open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
+    if (!open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
     {
-        free(buf);
+        if (!RegQueryValueW(xhkey, NULL, buf2, &buf2len))
+        {
+            RegCloseKey(xhkey);
+            free(buf);
+            return guid_from_string(buf2, clsid) ? S_OK : CO_E_CLASSSTRING;
+        }
         WARN("couldn't open key for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
+        RegCloseKey(xhkey);
+        xhkey = NULL;
     }
     free(buf);
 
-    if (RegQueryValueW(xhkey, NULL, buf2, &buf2len))
+    buf = malloc((lstrlenW(progid) + 8) * sizeof(WCHAR));
+    if (!buf) return E_OUTOFMEMORY;
+    lstrcpyW(buf, progid);
+    lstrcatW(buf, L"\\CurVer");
+
+    if (!open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
     {
-        RegCloseKey(xhkey);
-        WARN("couldn't query clsid value for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
+        LONG curverlen = 0;
+        if (!RegQueryValueW(xhkey, NULL, NULL, &curverlen))
+        {
+            WCHAR *curver = malloc(curverlen * sizeof(WCHAR));
+            if (!curver)
+            {
+                free(buf);
+                RegCloseKey(xhkey);
+                return E_OUTOFMEMORY;
+            }
+            if (!RegQueryValueW(xhkey, NULL, curver, &curverlen))
+            {
+                RegCloseKey(xhkey);
+                free(buf);
+
+                 buf = malloc((lstrlenW(curver) + 8) * sizeof(WCHAR));
+                 if (!buf)
+                 {
+                     free(curver);
+                     return E_OUTOFMEMORY;
+                 }
+
+                 lstrcpyW(buf, curver);
+                 lstrcatW(buf, L"\\CLSID");
+                 if(!open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
+                 {
+                     if (RegQueryValueW(xhkey, NULL, buf2, &buf2len))
+                     {
+                         RegCloseKey(xhkey);
+                         WARN("couldn't query clsid value for ProgID %s\n", debugstr_w(progid));
+                         return CO_E_CLASSSTRING;
+                     }
+                     free(buf);
+                     free(curver);
+                     RegCloseKey(xhkey);
+                     return guid_from_string(buf2, clsid) ? S_OK : CO_E_CLASSSTRING;
+                 }
+            }
+        }
     }
+    if (buf) free(buf);
     RegCloseKey(xhkey);
-    return guid_from_string(buf2, clsid) ? S_OK : CO_E_CLASSSTRING;
+    return CO_E_CLASSSTRING;
 }
 
 /******************************************************************************
