@@ -469,6 +469,8 @@ RPCRTAPI RPC_STATUS RPC_ENTRY
 RPCRTAPI RPC_STATUS RPC_ENTRY
   RpcServerUnregisterIfEx( RPC_IF_HANDLE IfSpec, UUID* MgrTypeUuid, int RundownContextHandles );
 
+RPCRTAPI RPC_STATUS RPC_ENTRY
+  RpcServerUseAllProtseqsIf( unsigned int MaxCalls, RPC_IF_HANDLE IfSpec, void *SecurityDescriptor );
 
 RPCRTAPI RPC_STATUS RPC_ENTRY
   RpcServerUseProtseqA(RPC_CSTR Protseq, unsigned int MaxCalls, void *SecurityDescriptor);

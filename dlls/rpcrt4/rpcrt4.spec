@@ -446,7 +446,7 @@
 @ stdcall RpcServerUnregisterIfEx(ptr ptr long)
 @ stub RpcServerUseAllProtseqs
 @ stub RpcServerUseAllProtseqsEx
-@ stub RpcServerUseAllProtseqsIf
+@ stdcall RpcServerUseAllProtseqsIf(long ptr ptr)
 @ stub RpcServerUseAllProtseqsIfEx
 @ stdcall RpcServerUseProtseqA(str long ptr)
 @ stdcall RpcServerUseProtseqEpA(str  long str  ptr)

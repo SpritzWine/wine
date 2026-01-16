@@ -908,6 +908,20 @@ RPC_STATUS WINAPI RpcServerInqBindings( RPC_BINDING_VECTOR** BindingVector )
   return status;
 }
 
+RPC_STATUS WINAPI RpcServerUseAllProtseqsIf( unsigned int MaxCalls, RPC_IF_HANDLE IfSpec, void *SecurityDescriptor )
+{
+  PRPC_SERVER_INTERFACE iface = (PRPC_SERVER_INTERFACE)IfSpec;
+  /*don't really care if this is a client or server interface because the part of the ABI we care about is the same*/
+  TRACE("Binding RPC to %u endpoints\n", iface->RpcProtseqEndpointCount);
+  for(unsigned int i = 0;i < iface->RpcProtseqEndpointCount;i++) {
+    RPC_STATUS result = RpcServerUseProtseqEpA(iface->RpcProtseqEndpoint[i].RpcProtocolSequence, MaxCalls, iface->RpcProtseqEndpoint[i].Endpoint, SecurityDescriptor);
+    TRACE("Bound to RPC to proto: %s; endpoint: %s; with result: %ld\n", iface->RpcProtseqEndpoint[i].RpcProtocolSequence, iface->RpcProtseqEndpoint[i].Endpoint, result);
+    if(result != RPC_S_OK)
+      return result;
+  }
+  return RPC_S_OK;
+}
+
 /***********************************************************************
  *             RpcServerUseProtseqEpA (RPCRT4.@)
  */
