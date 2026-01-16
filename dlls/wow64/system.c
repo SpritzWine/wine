@@ -358,6 +358,9 @@ NTSTATUS WINAPI wow64_NtQuerySystemInformation( UINT *args )
         if (retlen) *retlen = sizeof(SYSTEM_BASIC_INFORMATION32);
         return status;
 
+    case SystemBootEnvironmentInformation:  /* SYSTEM_BOOT_ENVIRONMENT_INFORMATION */
+        return NtQuerySystemInformation(class, ptr, len, retlen);
+
     case SystemProcessInformation:  /* SYSTEM_PROCESS_INFORMATION */
     case SystemExtendedProcessInformation:  /* SYSTEM_PROCESS_INFORMATION */
     {

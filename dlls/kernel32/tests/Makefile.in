@@ -16,6 +16,7 @@ SOURCES = \
 	environ.c \
 	fiber.c \
 	file.c \
+	firmware.c \
 	format_msg.c \
 	generated.c \
 	heap.c \

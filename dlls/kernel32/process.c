@@ -707,13 +707,43 @@ WORD WINAPI GetMaximumProcessorGroupCount(void)
 }
 
 /***********************************************************************
- *           GetFirmwareEnvironmentVariableA     (KERNEL32.@)
+ *           GetFirmwareEnvironmentVariableExW     (KERNEL32.@)
  */
-DWORD WINAPI GetFirmwareEnvironmentVariableA(LPCSTR name, LPCSTR guid, PVOID buffer, DWORD size)
+DWORD WINAPI GetFirmwareEnvironmentVariableExW(LPCWSTR name, LPCWSTR guid, PVOID buffer, DWORD size, PDWORD attributes)
 {
-    FIXME("stub: %s %s %p %lu\n", debugstr_a(name), debugstr_a(guid), buffer, size);
-    SetLastError(ERROR_INVALID_FUNCTION);
-    return 0;
+    GUID vendor = {0};
+    NTSTATUS status;
+    UNICODE_STRING uname;
+    UNICODE_STRING uguid;
+    DWORD ret_size = size;
+
+    if(!name || !guid || !attributes)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    RtlInitUnicodeString(&uguid, guid);
+
+    if (!set_ntstatus(RtlGUIDFromString(&uguid, &vendor)))
+        return 0;
+
+    RtlInitUnicodeString(&uname, name);
+
+    status = NtQuerySystemEnvironmentValueEx(&uname, &vendor, buffer,
+                                             &ret_size, attributes);
+    if (status)
+    {
+        if(status == STATUS_VARIABLE_NOT_FOUND)
+            SetLastError(ERROR_ENVVAR_NOT_FOUND);
+        else if(status == STATUS_NOT_IMPLEMENTED)
+            SetLastError(ERROR_INVALID_FUNCTION);
+        else
+            SetLastError(RtlNtStatusToDosError(status));
+        ret_size = 0;
+    }
+
+    return ret_size;
 }
 
 /***********************************************************************
@@ -721,9 +751,61 @@ DWORD WINAPI GetFirmwareEnvironmentVariableA(LPCSTR name, LPCSTR guid, PVOID buf
  */
 DWORD WINAPI GetFirmwareEnvironmentVariableW(LPCWSTR name, LPCWSTR guid, PVOID buffer, DWORD size)
 {
-    FIXME("stub: %s %s %p %lu\n", debugstr_w(name), debugstr_w(guid), buffer, size);
-    SetLastError(ERROR_INVALID_FUNCTION);
-    return 0;
+    DWORD attributes;
+    return GetFirmwareEnvironmentVariableExW(name, guid, buffer, size, &attributes);
+}
+
+/***********************************************************************
+ *           GetFirmwareEnvironmentVariableExA     (KERNEL32.@)
+ */
+DWORD WINAPI GetFirmwareEnvironmentVariableExA(LPCSTR name, LPCSTR guid, PVOID buffer, DWORD size, PDWORD attributes)
+{
+    int nsize;
+    LPWSTR wname;
+    LPWSTR wguid;
+    DWORD ret_size;
+
+    if(!name || !guid || !attributes)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
+    nsize = MultiByteToWideChar(CP_ACP, 0, guid, -1, NULL, 0);
+
+    if (!(wguid = HeapAlloc(GetProcessHeap(), 0, nsize * sizeof(wguid))))
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return 0;
+    }
+
+    MultiByteToWideChar(CP_ACP, 0, guid, -1, wguid, nsize);
+
+    nsize = MultiByteToWideChar(CP_ACP, 0, name, -1, NULL, 0);
+
+    if (!(wname = HeapAlloc(GetProcessHeap(), 0, nsize * sizeof(wname))))
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return 0;
+    }
+
+    MultiByteToWideChar(CP_ACP, 0, name, -1, wname, nsize);
+
+    ret_size = GetFirmwareEnvironmentVariableExW(wname, wguid, buffer, size, attributes);
+
+    HeapFree(GetProcessHeap(), 0, wname);
+    HeapFree(GetProcessHeap(), 0, wguid);
+
+    return ret_size;
+}
+
+/***********************************************************************
+ *           GetFirmwareEnvironmentVariableA     (KERNEL32.@)
+ */
+DWORD WINAPI GetFirmwareEnvironmentVariableA(LPCSTR name, LPCSTR guid, PVOID buffer, DWORD size)
+{
+    DWORD attributes;
+    return GetFirmwareEnvironmentVariableExA(name, guid, buffer, size, &attributes);
 }
 
 /***********************************************************************
@@ -751,10 +833,20 @@ BOOL WINAPI SetFirmwareEnvironmentVariableW(const WCHAR *name, const WCHAR *guid
  */
 BOOL WINAPI GetFirmwareType(FIRMWARE_TYPE *type)
 {
+    SYSTEM_BOOT_ENVIRONMENT_INFORMATION boot_info = {0};
+
     if (!type)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    if(!set_ntstatus(NtQuerySystemInformation(SystemBootEnvironmentInformation,
+                                              &boot_info, sizeof(boot_info), NULL)))
         return FALSE;
 
-    *type = FirmwareTypeUnknown;
+    *type = boot_info.FirmwareType;
+
     return TRUE;
 }
 

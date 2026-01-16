@@ -35,6 +35,7 @@ static NTSTATUS (WINAPI * pNtQuerySystemInformation)(SYSTEM_INFORMATION_CLASS, P
 static NTSTATUS (WINAPI * pNtQueryInformationProcess)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 static NTSTATUS (WINAPI * pNtSetSystemInformation)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG);
 static NTSTATUS (WINAPI * pRtlGetNativeSystemInformation)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
+static NTSTATUS (WINAPI * pNtQuerySystemEnvironmentValueEx)(PUNICODE_STRING, LPGUID, PVOID, PULONG, PULONG);
 static NTSTATUS (WINAPI * pNtQuerySystemInformationEx)(SYSTEM_INFORMATION_CLASS, void*, ULONG, void*, ULONG, ULONG*);
 static NTSTATUS (WINAPI * pNtPowerInformation)(POWER_INFORMATION_LEVEL, PVOID, ULONG, PVOID, ULONG);
 static NTSTATUS (WINAPI * pNtQueryInformationThread)(HANDLE, THREADINFOCLASS, PVOID, ULONG, PULONG);
@@ -94,6 +95,7 @@ static void InitFunctionPtrs(void)
     NTDLL_GET_PROC(NtQuerySystemInformation);
     NTDLL_GET_PROC(NtQueryInformationProcess);
     NTDLL_GET_PROC(NtQuerySystemInformationEx);
+    NTDLL_GET_PROC(NtQuerySystemEnvironmentValueEx);
     NTDLL_GET_PROC(NtSetSystemInformation);
     NTDLL_GET_PROC(RtlGetNativeSystemInformation);
     NTDLL_GET_PROC(NtPowerInformation);
@@ -324,6 +326,83 @@ static void test_query_basic(void)
             break;
         }
     }
+}
+
+static void test_query_boot_and_system_env(void)
+{
+    NTSTATUS status;
+    ULONG ret_size;
+    BOOLEAN secureboot;
+    DWORD attributes;
+    UNICODE_STRING secureboot_name;
+    GUID secureboot_guid = {0x8be4df61, 0x93ca, 0x11d2, {0xaa, 0x0d, 0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c}};
+    SYSTEM_BOOT_ENVIRONMENT_INFORMATION bi = {0};
+
+    /*
+     * NtQuerySystemInformation - SystemBootEnvironmentInformation
+     */
+    status = pNtQuerySystemInformation(SystemBootEnvironmentInformation, &bi, sizeof(bi), &ret_size);
+    if (status == STATUS_NOT_IMPLEMENTED)
+    {
+        skip("NtQuerySystemInformation - SystemBootEnvironmentInformation not implemented.\n");
+        return;
+    }
+    ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS.\n");
+
+    ok(ret_size == sizeof(bi), "Expected ret_size == sizeof(SYSTEM_BOOT_ENVIRONMENT_INFORMATION).\n");
+
+    ok(bi.FirmwareType == FirmwareTypeBios || bi.FirmwareType == FirmwareTypeUefi,
+       "Expected FirmwareTypeBios or FirmwareTypeUefi, got %02x\n", bi.FirmwareType);
+
+    ok(bi.BootIdentifier.Data1 != 0, "A non-zero BootIdentifier value is expected.\n");
+
+    status = pNtQuerySystemInformation(SystemBootEnvironmentInformation, NULL, sizeof(bi), NULL);
+    ok(status == STATUS_ACCESS_VIOLATION, "Expected STATUS_ACCESS_VIOLATION.\n");
+
+    status = pNtQuerySystemInformation(SystemBootEnvironmentInformation, NULL, 0, NULL);
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "Expected STATUS_INFO_LENGTH_MISMATCH.\n");
+
+    /*
+     * NtQuerySystemEnvironmentValueEx
+     */
+    RtlInitUnicodeString(&secureboot_name, L"SecureBoot");
+    ret_size = sizeof(secureboot);
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, &secureboot_guid, &secureboot, &ret_size, &attributes);
+    if(bi.FirmwareType != FirmwareTypeUefi)
+        ok(status == STATUS_NOT_IMPLEMENTED, "Expected STATUS_NOT_IMPLEMENTED on non-UEFI boots.\n");
+
+    if (status == STATUS_NOT_IMPLEMENTED)
+    {
+        skip("NtQuerySystemEnvironmentValueEx not implemented.\n");
+        return;
+    }
+
+    ok(status == STATUS_SUCCESS || status == STATUS_VARIABLE_NOT_FOUND, "Expected STATUS_SUCCESS or STATUS_VARIABLE_NOT_FOUND.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(NULL, NULL, &secureboot, &ret_size, &attributes);
+    ok(status == STATUS_INVALID_PARAMETER, "Expected STATUS_INVALID_PARAMETER.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(NULL, &secureboot_guid, &secureboot, &ret_size, &attributes);
+    ok(status == STATUS_INVALID_PARAMETER, "Expected STATUS_INVALID_PARAMETER.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, NULL, &secureboot, &ret_size, &attributes);
+    ok(status == STATUS_INVALID_PARAMETER, "Expected STATUS_INVALID_PARAMETER.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, &secureboot_guid, NULL, NULL, NULL);
+    ok(status == STATUS_INVALID_PARAMETER, "Expected STATUS_INVALID_PARAMETER.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, &secureboot_guid, &secureboot, NULL, NULL);
+    ok(status == STATUS_INVALID_PARAMETER, "Expected STATUS_INVALID_PARAMETER.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, &secureboot_guid, &secureboot, NULL, &attributes);
+    ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, &secureboot_guid, NULL, &ret_size, NULL);
+    ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS.\n");
+
+    status = pNtQuerySystemEnvironmentValueEx(&secureboot_name, &secureboot_guid, NULL, &ret_size, &attributes);
+    ok(status == STATUS_SUCCESS, "Expected STATUS_SUCCESS.\n");
 }
 
 static void test_query_cpu(void)
@@ -4397,6 +4476,7 @@ START_TEST(info)
 
     /* NtQuerySystemInformation */
     test_query_basic();
+    test_query_boot_and_system_env();
     test_query_cpu();
     test_query_performance();
     test_query_timeofday();

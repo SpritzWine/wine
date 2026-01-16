@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
@@ -3179,6 +3180,101 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         break;
     }
 
+    case SystemBootEnvironmentInformation: /* 90 */
+    {
+        static SYSTEM_BOOT_ENVIRONMENT_INFORMATION boot_info = {0};
+        struct stat stat_info = {0};
+        ssize_t ssz;
+#if defined(__linux__) || defined(__gnu_linux__)
+        int fd;
+        char buffer[32];
+#endif
+        len = sizeof(boot_info);
+        if (size == len)
+        {
+#if defined(__linux__) || defined(__gnu_linux__)
+            if (boot_info.FirmwareType == FirmwareTypeUnknown)
+            {
+                if (!stat("/sys/firmware/efi", &stat_info))
+                    boot_info.FirmwareType = FirmwareTypeUefi;
+                else
+                    boot_info.FirmwareType = FirmwareTypeBios;
+            }
+#elif defined(__APPLE__)
+            /*
+            * Since 2006, Mac computers use Extensible Firmware Interface (EFI).
+            * Reference: https://support.apple.com/guide/security/uefi-firmware-security-in-an-intel-based-mac-seced055bcf6/web
+            */
+            boot_info.FirmwareType = FirmwareTypeUefi;
+#else
+            boot_info.FirmwareType = FirmwareTypeBios;
+#endif
+            if (boot_info.BootIdentifier.Data1 == 0)
+            {
+#if defined(__linux__) || defined(__gnu_linux__)
+                if (!stat("/etc/machine-id", &stat_info) && stat_info.st_size >= 32)
+                {
+                    fd = open("/etc/machine-id", O_RDONLY);
+                    if (fd == -1)
+                        goto try_read_hostid;
+                    ssz = read(fd, &buffer, 32);
+                    if (ssz < 0)
+                    {
+                        close(fd);
+                        goto try_read_hostid;
+                    }
+                    close(fd);
+                    if (sscanf(buffer,
+                               "%08X%04hX%04hX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX",
+                               (unsigned int *)&boot_info.BootIdentifier.Data1, &boot_info.BootIdentifier.Data2,
+                               &boot_info.BootIdentifier.Data3, &boot_info.BootIdentifier.Data4[0],
+                               &boot_info.BootIdentifier.Data4[1], &boot_info.BootIdentifier.Data4[2],
+                               &boot_info.BootIdentifier.Data4[3], &boot_info.BootIdentifier.Data4[4],
+                               &boot_info.BootIdentifier.Data4[5], &boot_info.BootIdentifier.Data4[6],
+                               &boot_info.BootIdentifier.Data4[7]) != 11)
+                        goto try_read_hostid;
+                }
+                else
+                {
+                try_read_hostid:
+#endif
+#ifdef __APPLE__
+                    if (!stat("/Users", &stat_info) || !stat("/System", &stat_info))
+#else
+                    if (!stat("/home", &stat_info) || !stat("/usr", &stat_info))
+#endif
+                    {
+                        boot_info.BootIdentifier.Data1 = gethostid() & 0xFFFFFFFF;
+                        boot_info.BootIdentifier.Data2 = stat_info.st_dev & 0xFFFF;
+                        boot_info.BootIdentifier.Data3 = stat_info.st_ino & 0xFFFF;
+                        boot_info.BootIdentifier.Data4[0] = 'W' ^ (boot_info.BootIdentifier.Data1 & 0xFF);
+                        boot_info.BootIdentifier.Data4[1] = 'I' ^ ((boot_info.BootIdentifier.Data1 >> 4) & 0xFF);
+                        boot_info.BootIdentifier.Data4[2] = 'N' ^ ((boot_info.BootIdentifier.Data1 >> 8) & 0xFF);
+                        boot_info.BootIdentifier.Data4[3] = 'E' ^ ((boot_info.BootIdentifier.Data1 >> 12) & 0xFF);
+                        boot_info.BootIdentifier.Data4[4] = 'B' ^ ((boot_info.BootIdentifier.Data1 >> 16) & 0xFF);
+                        boot_info.BootIdentifier.Data4[5] = 'O' ^ ((boot_info.BootIdentifier.Data1 >> 20) & 0xFF);
+                        boot_info.BootIdentifier.Data4[6] = 'O' ^ ((boot_info.BootIdentifier.Data1 >> 24) & 0xFF);
+                        boot_info.BootIdentifier.Data4[7] = 'T' ^ ((boot_info.BootIdentifier.Data1 >> 28) & 0xFF);
+                    }
+#if defined(__linux__) || defined(__gnu_linux__)
+                }
+#endif
+                boot_info.BootIdentifier.Data3 &= 0x0fff;
+                boot_info.BootIdentifier.Data3 |= (4 << 12);
+                /* Set the topmost bits of Data4 (clock_seq_hi_and_reserved) as
+                 * specified in RFC 4122, section 4.4.
+                 */
+                boot_info.BootIdentifier.Data4[0] &= 0x3f;
+                boot_info.BootIdentifier.Data4[0] |= 0x80;
+            }
+            if (!info) ret = STATUS_ACCESS_VIOLATION;
+            else memcpy(info, &boot_info, len);
+        }
+        else ret = STATUS_INFO_LENGTH_MISMATCH;
+        if (ret_size) *ret_size = len;
+        break;
+    }
+
     case SystemCpuInformation:  /* 1 */
         if (size >= (len = sizeof(SYSTEM_CPU_INFORMATION)))
         {
@@ -4103,9 +4199,133 @@ NTSTATUS WINAPI NtQuerySystemEnvironmentValue( UNICODE_STRING *name, WCHAR *buff
 NTSTATUS WINAPI NtQuerySystemEnvironmentValueEx( UNICODE_STRING *name, GUID *vendor, void *buffer,
                                                  ULONG *retlen, ULONG *attrib )
 {
+#if defined(__linux__) || defined(__gnu_linux__)
+    int fd, rc;
+    size_t bytes, pos = 0;
+    ssize_t ssz;
+    char buff[4];
+    char *cname;
+    char filename[PATH_MAX + 1];
+    NTSTATUS status;
+    struct stat stat_info = {0};
+    static SYSTEM_BOOT_ENVIRONMENT_INFORMATION boot_info = {0};
+
+    if(boot_info.FirmwareType == FirmwareTypeUnknown)
+    {
+        status = NtQuerySystemInformation(SystemBootEnvironmentInformation,
+                                 &boot_info, sizeof(boot_info), NULL);
+        if(status != STATUS_SUCCESS) return status;
+    }
+
+    if(boot_info.FirmwareType != FirmwareTypeUefi)
+    {
+        /*
+        * This behavior matches the behavior of Windows for non-UEFI boots,
+        * and older versions of Windows.
+        */
+        return STATUS_NOT_IMPLEMENTED;
+    }
+
+    if(!name || !vendor || (name && vendor && !retlen && !attrib))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    cname = (char *) malloc(wcslen(name->Buffer) * 3 + 1);
+    if(!cname)
+        return STATUS_MEMORY_NOT_ALLOCATED;
+
+    rc = ntdll_wcstoumbs(name->Buffer, wcslen(name->Buffer) + 1, cname, wcslen(name->Buffer) * 3 + 1, TRUE);
+    if(rc <= 0) {
+        free(cname);
+        return STATUS_SOME_NOT_MAPPED;
+    }
+
+    snprintf(filename, sizeof(filename),
+             "/sys/firmware/efi/efivars/%s-%08lx-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx",
+             cname, (unsigned long)vendor->Data1, vendor->Data2, vendor->Data3,
+             vendor->Data4[0], vendor->Data4[1], vendor->Data4[2], vendor->Data4[3],
+             vendor->Data4[4], vendor->Data4[5], vendor->Data4[6], vendor->Data4[7]);
+
+    fd = open(filename, O_RDONLY);
+    if (fd == -1)
+    {
+        free(cname);
+        return STATUS_VARIABLE_NOT_FOUND;
+    }
+
+    rc = fstat(fd, &stat_info);
+    if (rc < 0 || stat_info.st_size == 0)
+        goto done;
+
+    if(attrib) ssz = read(fd, attrib, 4);
+    else ssz = read(fd, buff, 4); // lseek not work in efifs.
+    if (ssz < 0) goto done;
+
+    if(buffer && retlen)
+    {
+        if (stat_info.st_size - 4 < *retlen)
+            bytes = stat_info.st_size - 4;
+        else
+            bytes = *retlen;
+        while (pos < bytes)
+        {
+            ssz = read(fd, (char *) buffer + pos, bytes - pos);
+            if (ssz < 0) goto done;
+            pos += ssz;
+        }
+        *retlen = ssz & 0xFFFFFFFF;
+    }
+    else if(retlen) *retlen = (stat_info.st_size - 4) & 0xFFFFFFFF;
+
+    close(fd);
+    return STATUS_SUCCESS;
+
+done:
+    free(cname);
+    if (fd >= 0)
+        close(fd);
+    return STATUS_UNSUCCESSFUL;
+#elif defined(__APPLE__)
+    int rc;
+    char *cname;
+    GUID secureboot_guid = {0x8be4df61, 0x93ca, 0x11d2, {0xaa, 0x0d, 0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c}};
+    if(!name || !vendor || (name && vendor && !retlen && !attrib))
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    cname = (char *) malloc(wcslen(name->Buffer) * 3 + 1);
+    if(!cname)
+        return STATUS_MEMORY_NOT_ALLOCATED;
+
+    rc = ntdll_wcstoumbs(name->Buffer, wcslen(name->Buffer) + 1, cname, wcslen(name->Buffer) * 3 + 1, TRUE);
+    if(rc <= 0) {
+        free(cname);
+        return STATUS_SOME_NOT_MAPPED;
+    }
+    /*
+     * Since 2006, Mac computers use Extensible Firmware Interface (EFI).
+     * Apple requires a developer account and mandatory code signing,
+     * and the entire system boot process is verified, we can return SecureBoot enabled.
+     * Reference: https://support.apple.com/guide/security/uefi-firmware-security-in-an-intel-based-mac-seced055bcf6/web
+     */
+    if(!memcmp(vendor, &secureboot_guid, sizeof(secureboot_guid)) && !strcmp(cname, "SecureBoot"))
+    {
+        if(attrib) *attrib = 0x06;
+        if(buffer && retlen && *retlen == sizeof(BOOLEAN)) *((BOOLEAN *)buffer) = 1;
+        else if(retlen) *retlen = sizeof(BOOLEAN) & 0xFFFFFFFF;
+        free(cname);
+        return STATUS_SUCCESS;
+    }
+
+    free(cname);
+    return STATUS_VARIABLE_NOT_FOUND;
+#else
     FIXME( "(%s, %s, %p, %p, %p), stub\n", debugstr_us(name),
            debugstr_guid(vendor), buffer, retlen, attrib );
     return STATUS_NOT_IMPLEMENTED;
+#endif
 }
 
 
