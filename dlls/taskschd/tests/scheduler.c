@@ -1277,6 +1277,96 @@ static void change_settings(ITaskDefinition *taskdef, struct settings *test)
     ITaskSettings_Release(set);
 }
 
+static void test_repetition_pattern(IRepetitionPattern *pattern)
+{
+    static const struct
+    {
+        const WCHAR *dur;
+        const WCHAR *ivl;
+        HRESULT      hr;
+    }
+    start_test[] =
+    {
+        {L"P5D", L"PT30M", S_OK},
+        {L"invalid", L"invalid", S_OK},
+    };
+    BSTR duration, interval;
+    VARIANT_BOOL stopatend;
+    HRESULT hr;
+    ULONG i;
+
+    hr = IRepetitionPattern_get_Duration(pattern, NULL);
+    ok(hr == E_POINTER, "get_Duration failed: %08lx\n", hr);
+
+    hr = IRepetitionPattern_get_Interval(pattern, NULL);
+    ok(hr == E_POINTER, "get_Interval failed: %08lx\n", hr);
+
+    duration = (BSTR)0xdeadbeef;
+    hr = IRepetitionPattern_get_Duration(pattern, &duration);
+    ok(hr == S_OK, "get_Duration failed: %08lx\n", hr);
+    ok(duration == NULL, "duration not set\n");
+
+    interval = (BSTR)0xdeadbeef;
+    hr = IRepetitionPattern_get_Interval(pattern, &interval);
+    ok(hr == S_OK, "get_Interval failed: %08lx\n", hr);
+    ok(interval == NULL, "interval not set\n");
+
+    for (i = 0; i < ARRAY_SIZE(start_test); i++)
+    {
+        winetest_push_context("%lu", i);
+        duration = SysAllocString(start_test[i].dur);
+        hr = IRepetitionPattern_put_Duration(pattern, duration);
+        ok(hr == start_test[i].hr, "got %08lx expected %08lx\n", hr, start_test[i].hr);
+        SysFreeString(duration);
+        if (hr == S_OK)
+        {
+            duration = NULL;
+            hr = IRepetitionPattern_get_Duration(pattern, &duration);
+            ok(hr == S_OK, "got %08lx\n", hr);
+            ok(duration != NULL, "duration not set\n");
+            ok(!lstrcmpW(duration, start_test[i].dur), "got %s\n", wine_dbgstr_w(duration));
+            SysFreeString(duration);
+        }
+
+        interval = SysAllocString(start_test[i].ivl);
+        hr = IRepetitionPattern_put_Interval(pattern, interval);
+        ok(hr == start_test[i].hr, "got %08lx expected %08lx\n", hr, start_test[i].hr);
+        SysFreeString(interval);
+        if (hr == S_OK)
+        {
+            duration = NULL;
+            hr = IRepetitionPattern_get_Interval(pattern, &interval);
+            ok(hr == S_OK, "got %08lx\n", hr);
+            ok(interval != NULL, "interval not set\n");
+            ok(!lstrcmpW(interval, start_test[i].ivl), "got %s\n", wine_dbgstr_w(interval));
+            SysFreeString(interval);
+        }
+        winetest_pop_context();
+    }
+
+    hr = IRepetitionPattern_put_Duration(pattern, NULL);
+    ok(hr == S_OK, "put_Duration failed: %08lx\n", hr);
+
+    hr = IRepetitionPattern_put_Interval(pattern, NULL);
+    ok(hr == S_OK, "put_Interval failed: %08lx\n", hr);
+
+    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, NULL);
+    ok(hr == E_POINTER, "get_Enabled failed: %08lx\n", hr);
+
+    stopatend = VARIANT_TRUE;
+    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
+    ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
+    ok(stopatend == VARIANT_FALSE, "got %d\n", stopatend);
+
+    hr = IRepetitionPattern_put_StopAtDurationEnd(pattern, VARIANT_TRUE);
+    ok(hr == S_OK, "put_StopAtDurationEnd failed: %08lx\n", hr);
+
+    stopatend = VARIANT_FALSE;
+    hr = IRepetitionPattern_get_StopAtDurationEnd(pattern, &stopatend);
+    ok(hr == S_OK, "get_StopAtDurationEnd failed: %08lx\n", hr);
+    ok(stopatend == VARIANT_TRUE, "got %d\n", stopatend);
+}
+
 static void test_daily_trigger(ITrigger *trigger)
 {
     static const struct
@@ -1295,6 +1385,7 @@ static void test_daily_trigger(ITrigger *trigger)
         {L"invalid", L"invalid", S_OK},
     };
     IDailyTrigger *daily_trigger;
+    IRepetitionPattern *rep_pattern = NULL;
     BSTR start_boundary, end_boundary;
     VARIANT_BOOL enabled;
     short interval;
@@ -1303,6 +1394,11 @@ static void test_daily_trigger(ITrigger *trigger)
 
     hr = ITrigger_QueryInterface(trigger, &IID_IDailyTrigger, (void**)&daily_trigger);
     ok(hr == S_OK, "Could not get IDailyTrigger iface: %08lx\n", hr);
+
+    hr = IDailyTrigger_get_Repetition(daily_trigger, &rep_pattern);
+    ok(hr == S_OK, "get_Repetition failed: %08lx\n", hr);
+
+    if (hr == S_OK) test_repetition_pattern(rep_pattern);
 
     interval = -1;
     hr = IDailyTrigger_get_DaysInterval(daily_trigger, &interval);
