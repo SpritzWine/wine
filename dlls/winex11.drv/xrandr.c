@@ -496,8 +496,6 @@ static BOOL is_broken_driver(void)
         /* Check if it is NVIDIA proprietary driver */
         if (XQueryExtension( gdi_display, "NV-CONTROL", &major, &event, &error ))
         {
-            ERR_(winediag)("Broken NVIDIA RandR detected, falling back to RandR 1.0. "
-                           "Please consider using the Nouveau driver instead.\n");
             pXRRFreeScreenResources( screen_resources );
             return TRUE;
         }
