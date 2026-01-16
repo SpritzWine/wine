@@ -2805,7 +2805,6 @@ static HRESULT WINAPI session_commands_callback_Invoke(IMFAsyncCallback *iface, 
         case SESSION_CMD_SET_TOPOLOGY:
             session->presentation.flags &= ~SESSION_FLAG_SOURCE_SHUTDOWN;
             session_set_topology(session, op->set_topology.flags, op->set_topology.topology);
-            session_command_complete(session);
             break;
         case SESSION_CMD_START:
             if (session->presentation.flags & SESSION_FLAG_SOURCE_SHUTDOWN)
@@ -2839,11 +2838,13 @@ static HRESULT WINAPI session_commands_callback_Invoke(IMFAsyncCallback *iface, 
             break;
         case SESSION_CMD_SHUTDOWN:
             session_clear_command_list(session);
-            session_command_complete(session);
             break;
         default:
             ;
     }
+
+    if (session->presentation.flags & SESSION_FLAG_PENDING_COMMAND)
+        session_command_complete(session);
 
     LeaveCriticalSection(&session->cs);
 
