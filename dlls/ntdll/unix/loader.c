@@ -1932,9 +1932,9 @@ static void start_main_thread(void)
 #define WINE_JAVA_CLASS "org/winehq/wine/WineActivity"
 #endif
 
-JavaVM *java_vm = NULL;
-jobject java_object = 0;
-unsigned short java_gdt_sel = 0;
+DECLSPEC_EXPORT JavaVM *java_vm = NULL;
+DECLSPEC_EXPORT jobject java_object = 0;
+DECLSPEC_EXPORT unsigned short java_gdt_sel = 0;
 
 /* main Wine initialisation */
 static jstring wine_init_jni( JNIEnv *env, jobject obj, jobjectArray cmdline, jobjectArray environment )
@@ -1943,6 +1943,8 @@ static jstring wine_init_jni( JNIEnv *env, jobject obj, jobjectArray cmdline, jo
     char *str;
     char error[1024];
     int i, argc, length;
+
+    virtual_init();
 
     /* get the command line array */
 
@@ -2011,7 +2013,6 @@ static jstring wine_init_jni( JNIEnv *env, jobject obj, jobjectArray cmdline, jo
     main_argv = argv;
 
     init_paths();
-    virtual_init();
     init_environment();
 
 #ifdef __i386__

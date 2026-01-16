@@ -132,6 +132,7 @@ struct ioctl_android_create_window
     struct ioctl_header hdr;
     int                 parent;
     float               scale;
+    bool                is_desktop;
 };
 
 struct ioctl_android_destroy_window
@@ -717,15 +718,15 @@ static jobject load_java_method( jmethodID *method, const char *name, const char
     return object;
 }
 
-static void create_desktop_window( HWND hwnd )
+static void create_desktop_window(void)
 {
     static jmethodID method;
     jobject object;
 
-    if (!(object = load_java_method( &method, "createDesktopWindow", "(I)V" ))) return;
+    if (!(object = load_java_method( &method, "createDesktopWindow", "()V" ))) return;
 
     wrap_java_call();
-    (*jni_env)->CallVoidMethod( jni_env, object, method, HandleToLong( hwnd ));
+    (*jni_env)->CallVoidMethod( jni_env, object, method );
     unwrap_java_call();
 }
 
@@ -744,10 +745,10 @@ static NTSTATUS createWindow_ioctl( void *data, DWORD in_size, DWORD out_size, U
 
     TRACE( "hwnd %08x opengl %u parent %08x\n", res->hdr.hwnd, res->hdr.opengl, res->parent );
 
-    if (!(object = load_java_method( &method, "createWindow", "(IZIFI)V" ))) return STATUS_NOT_SUPPORTED;
+    if (!(object = load_java_method( &method, "createWindow", "(IZZIFI)V" ))) return STATUS_NOT_SUPPORTED;
 
     wrap_java_call();
-    (*jni_env)->CallVoidMethod( jni_env, object, method, res->hdr.hwnd, res->hdr.opengl, res->parent, res->scale, pid );
+    (*jni_env)->CallVoidMethod( jni_env, object, method, res->hdr.hwnd, res->is_desktop, res->hdr.opengl, res->parent, res->scale, pid );
     unwrap_java_call();
     return STATUS_SUCCESS;
 }
@@ -1157,7 +1158,7 @@ NTSTATUS android_java_init( void *arg )
     if (!(java_vm = *p_java_vm)) return STATUS_UNSUCCESSFUL;  /* not running under Java */
 
     init_java_thread( java_vm );
-    create_desktop_window( NtUserGetDesktopWindow() );
+    create_desktop_window();
     return STATUS_SUCCESS;
 }
 
@@ -1188,7 +1189,7 @@ void start_android_device(void)
 
 static int android_ioctl( enum android_ioctl code, void *in, DWORD in_size, void *out, DWORD *out_size )
 {
-    static const WCHAR deviceW[] = {'\\','\\','.','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
+    static const WCHAR deviceW[] = {'\\','D','e','v','i','c','e','\\','W','i','n','e','A','n','d','r','o','i','d',0 };
     static HANDLE device;
     IO_STATUS_BLOCK iosb;
     NTSTATUS status;
@@ -1254,9 +1255,9 @@ static void buffer_decRef( struct android_native_base_t *base )
 static int dequeueBuffer( struct ANativeWindow *window, struct ANativeWindowBuffer **buffer, int *fence )
 {
     struct native_win_wrapper *win = (struct native_win_wrapper *)window;
-    struct ioctl_android_dequeueBuffer res;
+    struct ioctl_android_dequeueBuffer res = {0};
     DWORD size = sizeof(res);
-    int ret, use_win32 = !gralloc_module && !gralloc1_device;
+    int ret = 0, use_win32 = !gralloc_module && !gralloc1_device;
 
     res.hdr.hwnd = HandleToLong( win->hwnd );
     res.hdr.opengl = win->opengl;
@@ -1351,6 +1352,7 @@ static int queueBuffer( struct ANativeWindow *window, struct ANativeWindowBuffer
 static int dequeueBuffer_DEPRECATED( struct ANativeWindow *window, struct ANativeWindowBuffer **buffer )
 {
     int fence, ret = dequeueBuffer( window, buffer, &fence );
+    __sync_synchronize();
 
     if (!ret) wait_fence_and_close( fence );
     return ret;
@@ -1556,6 +1558,7 @@ struct ANativeWindow *create_ioctl_window( HWND hwnd, BOOL opengl, float scale )
     req.hdr.opengl = win->opengl;
     req.parent = get_ioctl_win_parent( NtUserGetAncestor( hwnd, GA_PARENT ));
     req.scale = scale;
+    req.is_desktop = hwnd == NtUserGetDesktopWindow();
     android_ioctl( IOCTL_CREATE_WINDOW, &req, sizeof(req), NULL, NULL );
 
     return &win->win;
