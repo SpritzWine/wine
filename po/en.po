@@ -15089,7 +15089,7 @@ msgstr "Hybrid"
 
 #: programs/ipconfig/ipconfig.rc:44
 msgid "IP routing enabled"
-msgstr "IP routing enabled"
+msgstr "IP routeing enabled"
 
 #: programs/ipconfig/ipconfig.rc:46
 msgid "Physical address"

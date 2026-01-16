@@ -8,6 +8,8 @@ SOURCES = \
 	de.po \
 	el.po \
 	en.po \
+	en_CA.po \
+	en_PH.po \
 	en_US.po \
 	eo.po \
 	es.po \
