@@ -112,6 +112,7 @@ static void add_usb_device(libusb_device *libusb_device)
     struct libusb_device_descriptor device_desc;
     struct unix_device *unix_device;
     struct usb_event usb_event;
+    const size_t pp_len = sizeof(usb_event.u.added_device.portpath);
     int ret;
 
     libusb_get_device_descriptor(libusb_device, &device_desc);
@@ -144,9 +145,12 @@ static void add_usb_device(libusb_device *libusb_device)
     usb_event.u.added_device.subclass = device_desc.bDeviceSubClass;
     usb_event.u.added_device.protocol = device_desc.bDeviceProtocol;
     usb_event.u.added_device.busnum = libusb_get_bus_number(libusb_device);
-    usb_event.u.added_device.portnum = libusb_get_port_number(libusb_device);
     usb_event.u.added_device.interface = false;
     usb_event.u.added_device.interface_index = -1;
+    if ((ret = libusb_get_port_numbers(libusb_device, (uint8_t *)&usb_event.u.added_device.portpath, pp_len)) < 0)
+        ret = 0;
+    if (ret < pp_len)
+        memset((uint8_t *)&usb_event.u.added_device.portpath + ret, 0, pp_len - ret);
 
     if (!(ret = libusb_get_active_config_descriptor(libusb_device, &config_desc)))
     {
