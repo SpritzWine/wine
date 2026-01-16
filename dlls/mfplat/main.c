@@ -6298,10 +6298,10 @@ static HRESULT resolver_get_bytestream_url_hint(IMFByteStream *stream, WCHAR con
     return S_OK;
 }
 
-static HRESULT resolver_create_gstreamer_handler(IMFByteStreamHandler **handler)
+static HRESULT resolver_create_generic_handler(IMFByteStreamHandler **handler)
 {
-    static const GUID CLSID_GStreamerByteStreamHandler = {0x317df618, 0x5e5a, 0x468a, {0x9f, 0x15, 0xd8, 0x27, 0xa9, 0xa0, 0x81, 0x62}};
-    return CoCreateInstance(&CLSID_GStreamerByteStreamHandler, NULL, CLSCTX_INPROC_SERVER, &IID_IMFByteStreamHandler, (void **)handler);
+    static const GUID CLSID_WineByteStreamPlugin = {0x3f6eb6c1,0xea89,0x4312,{0x85,0x04,0x8d,0x82,0x10,0xbb,0xf8,0x8c}};
+    return CoCreateInstance(&CLSID_WineByteStreamPlugin, NULL, CLSCTX_INPROC_SERVER, &IID_IMFByteStreamHandler, (void **)handler);
 }
 
 static HRESULT resolver_get_bytestream_handler(IMFByteStream *stream, const WCHAR *url, DWORD flags,
@@ -6342,7 +6342,7 @@ static HRESULT resolver_get_bytestream_handler(IMFByteStream *stream, const WCHA
         hr = resolver_create_bytestream_handler(stream, flags, mimeW, url_ext, handler);
 
         if (FAILED(hr))
-            hr = resolver_create_gstreamer_handler(handler);
+            hr = resolver_create_generic_handler(handler);
     }
 
     CoTaskMemFree(mimeW);
@@ -6360,7 +6360,7 @@ static HRESULT resolver_get_bytestream_handler(IMFByteStream *stream, const WCHA
     hr = resolver_create_bytestream_handler(stream, flags, NULL, url_ext, handler);
 
     if (FAILED(hr))
-        hr = resolver_create_gstreamer_handler(handler);
+        hr = resolver_create_generic_handler(handler);
 
     return hr;
 }

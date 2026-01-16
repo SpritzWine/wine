@@ -1,0 +1,12 @@
+MODULE    = winedmo5.dll
+UNIXLIB   = winedmo5.so
+IMPORTS   = mfuuid
+PARENTSRC = ../winedmo
+UNIX_CFLAGS  = $(FFMPEG5_CFLAGS) -DWINEDMO_VERSION=5
+UNIX_LIBS    = $(FFMPEG5_LIBS) $(PTHREAD_LIBS)
+
+SOURCES = \
+	main.c \
+	unix_demuxer.c \
+	unix_media_type.c \
+	unixlib.c

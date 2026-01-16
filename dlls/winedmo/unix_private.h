@@ -22,6 +22,14 @@
 
 #include <stdint.h>
 
+#if !defined(HAVE_FFMPEG) && defined(WINEDMO_VERSION)
+#if (WINEDMO_VERSION == 4 && defined(HAVE_FFMPEG4)) || (WINEDMO_VERSION == 5 && defined(HAVE_FFMPEG5)) || \
+    (WINEDMO_VERSION == 6 && defined(HAVE_FFMPEG6)) || (WINEDMO_VERSION == 7 && defined(HAVE_FFMPEG7)) || \
+    (WINEDMO_VERSION == 8 && defined(HAVE_FFMPEG8))
+#define HAVE_FFMPEG
+#endif
+#endif
+
 #ifdef HAVE_FFMPEG
 #include <libavutil/avutil.h>
 #include <libavutil/imgutils.h>

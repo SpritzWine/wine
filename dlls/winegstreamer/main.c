@@ -108,7 +108,7 @@ static HRESULT video_format_from_media_type(IMFMediaType *media_type, MFVIDEOFOR
     return hr;
 }
 
-static HRESULT wg_media_type_from_mf(IMFMediaType *media_type, struct wg_media_type *wg_media_type)
+HRESULT wg_media_type_from_mf(IMFMediaType *media_type, struct wg_media_type *wg_media_type)
 {
     HRESULT hr;
 

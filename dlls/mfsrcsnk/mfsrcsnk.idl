@@ -45,3 +45,10 @@ coclass WAVByteStreamPlugin {}
     uuid(a82e50ba-8e92-41eb-9df2-433f50ec2993)
 ]
 coclass MP3ByteStreamPlugin {}
+
+[
+    helpstring("Wine Byte Stream Handler"),
+    threading(both),
+    uuid(3f6eb6c1-ea89-4312-8504-8d8210bbf88c)
+]
+coclass WineByteStreamPlugin {}
