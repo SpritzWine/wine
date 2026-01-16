@@ -71,7 +71,7 @@ static void test_propertystore(IPropertyStore *store)
     hr = IPropertyStore_GetValue(store, (const PROPERTYKEY*)&DEVPKEY_Device_FriendlyName, &pv);
     ok(hr == S_OK, "Failed with %#lx\n", hr);
     ok(pv.vt == VT_LPWSTR && pv.pwszVal, "Device_FriendlyName value had wrong type: %#x or was NULL\n", pv.vt);
-    todo_wine ok(!wcscmp(temp, pv.pwszVal), "Expected Device_FriendlyName %s, but got %s\n", debugstr_w(temp), debugstr_w(pv.pwszVal));
+    ok(!wcscmp(temp, pv.pwszVal), "Expected Device_FriendlyName %s, but got %s\n", debugstr_w(temp), debugstr_w(pv.pwszVal));
     PropVariantClear(&pv);
 
     pv.vt = VT_EMPTY;
