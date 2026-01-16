@@ -2922,6 +2922,33 @@ static void test_NtUserRegisterWindowMessage(void)
     ok( !wcscmp( buf, L"#0xabc" ), "buf = %s\n", debugstr_w(buf) );
 }
 
+static CALLBACK DWORD test_NtUserNotifyIMEStatus_thread(void *user_data)
+{
+    HWND hwnd = user_data;
+
+    /* validate that the user driver does not crash */
+    NtUserNotifyIMEStatus(hwnd, 0);
+
+    return 0;
+}
+
+static void test_NtUserNotifyIMEStatus(void)
+{
+    HWND hwnd;
+    HANDLE thread;
+
+    winetest_push_context("notifyime");
+
+    hwnd = CreateWindowW( L"static", L"static", WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL | WS_CLIPSIBLINGS, CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, 0, 0, NULL, 0 );
+    thread = CreateThread( NULL, 0, test_NtUserNotifyIMEStatus_thread, hwnd, 0, NULL );
+
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+    DestroyWindow(hwnd);
+
+    winetest_pop_context();
+}
+
 START_TEST(win32u)
 {
     char **argv;
@@ -2951,6 +2978,7 @@ START_TEST(win32u)
         return;
     }
 
+    test_NtUserNotifyIMEStatus();
     test_NtUserEnumDisplayDevices();
     test_window_props();
     test_class();
