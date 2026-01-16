@@ -1769,6 +1769,18 @@ static NTSTATUS fd_set_file_info( int fd, UINT attr, BOOL force_set_xattr )
 }
 
 
+static BOOL is_unix_path_drive_root( const char *path )
+{
+    if (strncmp( path, config_dir, strlen( config_dir )))
+        return FALSE;
+    path += strlen( config_dir );
+    if (strncmp( path, "/dosdevices/", 12 ))
+        return FALSE;
+    path += 12;
+    return path[0] >= 'a' && path[0] <= 'z' && !strcmp( path + 1, ":/" );
+}
+
+
 /* get the stat info and file attributes for a file (by name) */
 static int get_file_info( const char *path, struct stat *st, ULONG *attr, ULONG *reparse_tag )
 {
@@ -1792,7 +1804,7 @@ static int get_file_info( const char *path, struct stat *st, ULONG *attr, ULONG 
             if (reparse_tag) *reparse_tag = IO_REPARSE_TAG_LX_SYMLINK;
         }
     }
-    else if (S_ISDIR( st->st_mode ) && (parent_path = malloc( len + 4 )))
+    else if (S_ISDIR( st->st_mode ) && !is_unix_path_drive_root( path ) && (parent_path = malloc( len + 4 )))
     {
         struct stat parent_st;
 
