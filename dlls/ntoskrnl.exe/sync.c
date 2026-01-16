@@ -438,6 +438,52 @@ void WINAPI KeInitializeGuardedMutex(PKGUARDED_MUTEX mutex)
     KeInitializeEvent(&mutex->Event, SynchronizationEvent, FALSE);
 }
 
+/***********************************************************************
+ *           KeAcquireGuardedMutexUnsafe   (NTOSKRNL.EXE.@)
+ */
+void WINAPI KeAcquireGuardedMutexUnsafe(PKGUARDED_MUTEX mutex)
+{
+    LONG count; 
+
+    TRACE("mutex %p.\n", mutex);
+
+    count = InterlockedDecrement( &mutex->Count );
+    if (count < 0)
+        KeWaitForSingleObject( &mutex->Event, Executive, KernelMode, FALSE, NULL );
+}
+
+/***********************************************************************
+ *           KeAcquireGuardedMutex   (NTOSKRNL.EXE.@)
+ */
+void WINAPI KeAcquireGuardedMutex(PKGUARDED_MUTEX mutex)
+{
+    /* FIXME: Enter Guarded Region */
+    KeAcquireGuardedMutexUnsafe(mutex);
+}
+
+/***********************************************************************
+ *           KeReleaseGuardedMutexUnsafe   (NTOSKRNL.EXE.@)
+ */
+void WINAPI KeReleaseGuardedMutexUnsafe(PKGUARDED_MUTEX mutex)
+{
+    LONG count;
+
+    TRACE("mutex %p.\n", mutex);
+
+    count = InterlockedIncrement( &mutex->Count );
+    if (count < 1)
+        KeSetEvent( &mutex->Event, IO_NO_INCREMENT, FALSE );
+}
+
+/***********************************************************************
+ *           KeReleaseGuardedMutex   (NTOSKRNL.EXE.@)
+ */
+void WINAPI KeReleaseGuardedMutex(PKGUARDED_MUTEX mutex)
+{
+    KeReleaseGuardedMutexUnsafe(mutex);
+    /* FIXME: Leave Guarded Region */
+}
+
 static void CALLBACK ke_timer_complete_proc(PTP_CALLBACK_INSTANCE instance, void *timer_, PTP_TIMER tp_timer)
 {
     KTIMER *timer = timer_;

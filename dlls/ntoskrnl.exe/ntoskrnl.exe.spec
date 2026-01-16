@@ -52,12 +52,16 @@
 @ stdcall -fastcall IofCompleteRequest(ptr long)
 @ stdcall -arch=!i386 KeAcquireInStackQueuedSpinLock(ptr ptr)
 @ stdcall -fastcall KeAcquireInStackQueuedSpinLockAtDpcLevel(ptr ptr)
+@ stdcall KeAcquireGuardedMutexUnsafe(ptr)
+@ stdcall KeAcquireGuardedMutex(ptr)
 @ stdcall KeEnterGuardedRegion()
 @ stdcall KeExpandKernelStackAndCallout(ptr ptr long)
 @ stdcall KeExpandKernelStackAndCalloutEx(ptr ptr long long ptr)
 @ stdcall KeLeaveGuardedRegion()
 @ stdcall -arch=!i386 KeReleaseInStackQueuedSpinLock(ptr)
 @ stdcall -fastcall KeReleaseInStackQueuedSpinLockFromDpcLevel(ptr)
+@ stdcall KeReleaseGuardedMutexUnsafe(ptr)
+@ stdcall KeReleaseGuardedMutex(ptr)
 @ stub KeSetTimeUpdateNotifyRoutine
 @ stub KefAcquireSpinLockAtDpcLevel
 @ stub KefReleaseSpinLockFromDpcLevel
