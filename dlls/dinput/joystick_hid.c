@@ -34,6 +34,7 @@
 
 #include "ddk/hidclass.h"
 #include "ddk/hidsdi.h"
+#include "cfgmgr32.h"
 #include "setupapi.h"
 #include "devguid.h"
 #include "dinput.h"
@@ -50,7 +51,7 @@
 WINE_DEFAULT_DEBUG_CHANNEL(dinput);
 
 DEFINE_GUID( GUID_DEVINTERFACE_WINEXINPUT,0x6c53d5fd,0x6480,0x440f,0xb6,0x18,0x47,0x67,0x50,0xc5,0xe1,0xa6 );
-DEFINE_GUID( hid_joystick_guid, 0x9e573edb, 0x7734, 0x11d2, 0x8d, 0x4a, 0x23, 0x90, 0x3f, 0xb6, 0xbd, 0xf7 );
+DEFINE_GUID( hid_joystick_guid, 0x9e573edb, 0x0000, 0x0000, 0x00, 0x00, 'D', 'E', 'S', 'T', 0x00, 0x00 );
 DEFINE_GUID( device_path_guid, 0x00000000, 0x0000, 0x0000, 0x8d, 0x4a, 0x23, 0x90, 0x3f, 0xb6, 0xbd, 0xf8 );
 
 struct pid_control_report
@@ -1422,9 +1423,11 @@ static HRESULT hid_joystick_device_try_open( const WCHAR *path, HANDLE *device, 
     BOOL has_accelerator, has_brake, has_clutch, has_z, has_pov;
     PHIDP_PREPARSED_DATA preparsed_data = NULL;
     HIDP_LINK_COLLECTION_NODE nodes[256];
-    DWORD type, size, button_count = 0;
+    DWORD type, size, crc32, button_count = 0;
     HIDP_BUTTON_CAPS buttons[10];
     HIDP_VALUE_CAPS value;
+    const WCHAR sep = L'#';
+    WCHAR *tmp, *device_path = NULL, *device_id = NULL, *instance_id = NULL;
     HANDLE device_file;
     ULONG node_count;
     NTSTATUS status;
@@ -1451,14 +1454,40 @@ static HRESULT hid_joystick_device_try_open( const WCHAR *path, HANDLE *device, 
     if (!HidD_GetProductString( device_file, instance->tszInstanceName, MAX_PATH * sizeof(WCHAR) )) goto failed;
     if (!HidD_GetProductString( device_file, instance->tszProductName, MAX_PATH * sizeof(WCHAR) )) goto failed;
 
-    if (!DeviceIoControl( device_file, IOCTL_HID_GET_WINE_RAWINPUT_HANDLE, NULL, 0, &handle, sizeof(handle), &size, NULL ))
+    if ((device_path = wcsdup( path )) && *device_path == L'\\' && (tmp = wcschr( device_path, sep )))
     {
-        ERR( "failed to get raw input handle, error %lu\n", GetLastError() );
-        goto failed;
+        device_id = ++tmp;
+        if ((tmp = wcschr( device_id, sep )))
+        {
+            *tmp = 0;
+            instance_id = ++tmp;
+            if ((tmp = wcsrchr( instance_id, sep )) && *(tmp + 1) == L'{')
+                *tmp = 0;
+            else instance_id = NULL;
+        }
     }
 
     instance->guidInstance = hid_joystick_guid;
-    instance->guidInstance.Data1 ^= handle;
+    if (device_id && *device_id && instance_id && *instance_id)
+    {
+        crc32 = RtlComputeCrc32( 0, (const BYTE *)CharUpperW( device_id ), wcslen( device_id ) * sizeof(WCHAR) );
+        instance->guidInstance.Data1 = crc32;
+        crc32 = RtlComputeCrc32( 0, (const BYTE *)CharUpperW( instance_id ), wcslen( instance_id ) * sizeof(WCHAR) );
+        instance->guidInstance.Data2 = HIWORD( crc32 );
+        instance->guidInstance.Data3 = LOWORD( crc32 );
+    }
+    else
+    {
+        if (!DeviceIoControl( device_file, IOCTL_HID_GET_WINE_RAWINPUT_HANDLE, NULL, 0, &handle, sizeof(handle), &size, NULL ))
+        {
+            ERR( "failed to get raw input handle, error %lu\n", GetLastError() );
+            goto failed;
+        }
+
+        instance->guidInstance.Data1 ^= handle;
+        instance->guidInstance.Data2 = attrs->VendorID;
+        instance->guidInstance.Data3 = attrs->ProductID;
+    }
     instance->guidProduct = dinput_pidvid_guid;
     instance->guidProduct.Data1 = MAKELONG( attrs->VendorID, attrs->ProductID );
     instance->guidFFDriver = GUID_NULL;
@@ -1563,11 +1592,13 @@ static HRESULT hid_joystick_device_try_open( const WCHAR *path, HANDLE *device, 
     instance->dwDevType = device_type_for_version( type, version ) | DIDEVTYPE_HID;
     TRACE("detected device type %#lx\n", instance->dwDevType);
 
+    free( device_path );
     *device = device_file;
     *preparsed = preparsed_data;
     return DI_OK;
 
 failed:
+    free( device_path );
     CloseHandle( device_file );
     HidD_FreePreparsedData( preparsed_data );
     return DIERR_DEVICENOTREG;

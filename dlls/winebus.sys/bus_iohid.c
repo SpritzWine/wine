@@ -272,7 +272,6 @@ static void handle_DeviceMatchingCallback(void *context, IOReturn result, void *
     struct device_desc desc =
     {
         .input = -1, .is_hidraw = TRUE,
-        .serialnumber = {'0','0','0','0',0},
     };
     struct iohid_device *impl;
     USAGE_AND_PAGE usages;

@@ -39,6 +39,8 @@ struct device_desc
     UINT input;
     UINT uid;
     UINT bus_type;
+    UINT bus_num;
+    UINT64 port_path;
     BOOL is_gamepad;
     BOOL is_hidraw;
 
@@ -159,9 +161,13 @@ enum unix_funcs
 static inline const char *debugstr_device_desc(struct device_desc *desc)
 {
     if (!desc) return "(null)";
-    return wine_dbg_sprintf("{vid %04x, pid %04x, version %04x, input %d, uid %08x, is_gamepad %u, is_hidraw %u, bus_type %u}",
-                            desc->vid, desc->pid, desc->version, desc->input, desc->uid,
-                            desc->is_gamepad, desc->is_hidraw, desc->bus_type);
+    return wine_dbg_sprintf("{vid %04x, pid %04x, version %04x, input %d, uid %08x, bus_type %u, bus_num %u, port_path %u.%u.%u.%u.%u.%u.%u.%u, is_gamepad %u, is_hidraw %u}",
+                            desc->vid, desc->pid, desc->version, desc->input, desc->uid, desc->bus_type,
+                            desc->bus_num, *(UINT8 *)&desc->port_path, *((UINT8 *)&desc->port_path + 1),
+                            *((UINT8 *)&desc->port_path + 2), *((UINT8 *)&desc->port_path + 3),
+                            *((UINT8 *)&desc->port_path + 4), *((UINT8 *)&desc->port_path + 5),
+                            *((UINT8 *)&desc->port_path + 6), *((UINT8 *)&desc->port_path + 7),
+                            desc->is_gamepad, desc->is_hidraw);
 }
 
 static inline BOOL is_xbox_gamepad(WORD vid, WORD pid)

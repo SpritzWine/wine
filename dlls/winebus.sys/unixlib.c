@@ -110,7 +110,7 @@ static const struct device_desc mouse_device_desc =
     .input = -1,
     .manufacturer = {'T','h','e',' ','W','i','n','e',' ','P','r','o','j','e','c','t',0},
     .product = {'W','i','n','e',' ','H','I','D',' ','m','o','u','s','e',0},
-    .serialnumber = {'0','0','0','0',0},
+    .serialnumber = {'8','4','5','E','0','0','0','1',0},
 };
 
 static NTSTATUS mouse_device_create(void *args)
@@ -205,7 +205,7 @@ static const struct device_desc keyboard_device_desc =
     .input = -1,
     .manufacturer = {'T','h','e',' ','W','i','n','e',' ','P','r','o','j','e','c','t',0},
     .product = {'W','i','n','e',' ','H','I','D',' ','k','e','y','b','o','a','r','d',0},
-    .serialnumber = {'0','0','0','0',0},
+    .serialnumber = {'8','4','5','E','0','0','0','2',0},
 };
 
 static NTSTATUS keyboard_device_create(void *args)

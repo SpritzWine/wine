@@ -175,7 +175,8 @@ static DWORD get_device_index(struct device_desc *desc, struct list **before)
     /* The device list is sorted, so just increment the index until it doesn't match an index already in the list */
     LIST_FOR_EACH_ENTRY(ext, &device_list, struct device_extension, entry)
     {
-        if (ext->desc.vid == desc->vid && ext->desc.pid == desc->pid && ext->desc.input == desc->input)
+        if (ext->desc.vid == desc->vid && ext->desc.pid == desc->pid && ext->desc.input == desc->input &&
+            !wcsicmp(ext->desc.serialnumber, desc->serialnumber))
         {
             if (ext->index != index)
             {
@@ -192,13 +193,24 @@ static DWORD get_device_index(struct device_desc *desc, struct list **before)
 static WCHAR *get_instance_id(DEVICE_OBJECT *device)
 {
     struct device_extension *ext = (struct device_extension *)device->DeviceExtension;
-    DWORD len = wcslen(ext->desc.serialnumber) + 33;
+    struct device_desc *desc = &ext->desc;
+    const DWORD sn_len = wcslen(desc->serialnumber);
+    DWORD len = (sn_len ? sn_len : sizeof(desc->port_path)*2) + 33;
     WCHAR *dst;
 
     if ((dst = ExAllocatePool(PagedPool, len * sizeof(WCHAR))))
     {
-        swprintf(dst, len, L"%u&%s&%x&%u&%u", ext->desc.version, ext->desc.serialnumber,
-                 ext->desc.uid, ext->index, ext->desc.is_gamepad);
+        if (sn_len && !ext->index)
+        {
+            swprintf(dst, len, L"%u&%x&%u&%s&%u", desc->version, desc->uid, ext->index,
+                     desc->serialnumber, desc->is_gamepad);
+        }
+        else
+        {
+            swprintf(dst, len, L"%u&%x&%u&%llx&%u", desc->version, desc->uid,
+                     desc->bus_num ? desc->bus_num : ext->index, desc->port_path,
+                     desc->is_gamepad);
+        }
     }
 
     return dst;
@@ -336,32 +348,40 @@ static void remove_pending_irps(DEVICE_OBJECT *device)
     }
 }
 
-static void make_unique_serial(struct device_extension *device)
-{
-    struct device_extension *ext;
-
-    LIST_FOR_EACH_ENTRY(ext, &device_list, struct device_extension, entry)
-        if (!wcscmp(device->desc.serialnumber, ext->desc.serialnumber)) break;
-    if (&ext->entry == &device_list && *device->desc.serialnumber) return;
-
-    swprintf(device->desc.serialnumber, ARRAY_SIZE(device->desc.serialnumber), L"%04x%08x%04x%04x",
-             device->index, device->desc.input, device->desc.pid, device->desc.vid);
-}
-
 static void make_unique_container_id(struct device_extension *device)
 {
     struct device_extension *ext;
-    LARGE_INTEGER ticks;
+    struct device_desc *desc = &device->desc;
+    const DWORD sn_len = wcslen(desc->serialnumber);
+    DWORD crc32;
 
     LIST_FOR_EACH_ENTRY(ext, &device_list, struct device_extension, entry)
         if (IsEqualGUID(&device->container_id, &ext->container_id)) break;
     if (&ext->entry == &device_list && !IsEqualGUID(&device->container_id, &GUID_NULL)) return;
 
-    device->container_id.Data1 = MAKELONG(device->desc.vid, device->desc.pid);
-    device->container_id.Data2 = device->index;
-    device->container_id.Data3 = device->desc.input;
-    QueryPerformanceCounter(&ticks);
-    memcpy(device->container_id.Data4, &ticks.QuadPart, sizeof(device->container_id.Data4));
+    device->container_id.Data1 = MAKELONG(desc->vid, desc->pid);
+    device->container_id.Data2 = desc->version;
+    if (sn_len && !device->index)
+    {
+        device->container_id.Data3 = 0;
+        crc32 = RtlComputeCrc32(0, (const BYTE *)desc->serialnumber, sn_len * sizeof(WCHAR));
+        *(UINT64 *)device->container_id.Data4 = crc32;
+    }
+    else if (desc->uid)
+    {
+        device->container_id.Data3 = 0;
+        *(UINT64 *)device->container_id.Data4 = desc->uid;
+    }
+    else if (desc->bus_num || desc->port_path)
+    {
+        device->container_id.Data3 = desc->bus_num;
+        *(UINT64 *)device->container_id.Data4 = desc->port_path;
+    }
+    else
+    {
+        device->container_id.Data3 = desc->input;
+        *(UINT64 *)device->container_id.Data4 = device->index;
+    }
 }
 
 static DEVICE_OBJECT *bus_create_hid_device(struct device_desc *desc, UINT64 unix_device)
@@ -407,10 +427,6 @@ static DEVICE_OBJECT *bus_create_hid_device(struct device_desc *desc, UINT64 uni
 
     InitializeCriticalSectionEx(&ext->cs, 0, RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO);
     ext->cs.DebugInfo->Spare[0] = (DWORD_PTR)(__FILE__ ": cs");
-
-    /* Overcooked! All You Can Eat only adds controllers with unique serial numbers
-     * Prefer keeping serial numbers unique over keeping them consistent across runs */
-    make_unique_serial(ext);
 
     /*
      * Some games use container ID to match the bus device to the HID
@@ -1451,6 +1467,7 @@ static NTSTATUS hid_get_device_string(DEVICE_OBJECT *device, DWORD index, WCHAR 
     case HID_STRING_ID_ISERIALNUMBER:
         len = (wcslen(ext->desc.serialnumber) + 1) * sizeof(WCHAR);
         if (len > buffer_len) return STATUS_BUFFER_TOO_SMALL;
+        else if (len == sizeof(WCHAR)) return STATUS_INVALID_PARAMETER;
         else memcpy(buffer, ext->desc.serialnumber, len);
         return STATUS_SUCCESS;
     }
