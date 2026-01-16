@@ -414,6 +414,215 @@ static void kernel_get_write_watches( void *base, SIZE_T size, void **buffer, UL
         addr = next_addr;
     }
 }
+#elif defined(__APPLE__)
+static BYTE get_host_page_vprot( const void *addr );
+
+static int get_unix_prot( BYTE vprot );
+
+static vm_prot_t get_mach_prot( mach_vm_address_t addr )
+{
+    BYTE vprot;
+    int unix_prot;
+    vm_prot_t mach_prot = VM_PROT_NONE;
+
+    vprot = get_host_page_vprot( (const void *)addr );
+    unix_prot = get_unix_prot( vprot );
+
+    if (unix_prot & PROT_READ) mach_prot |= VM_PROT_READ;
+    if (unix_prot & PROT_WRITE) mach_prot |= VM_PROT_WRITE;
+    if (unix_prot & PROT_EXEC) mach_prot |= VM_PROT_EXECUTE;
+
+    return mach_prot;
+}
+
+static void kernel_writewatch_init(void)
+{
+    use_kernel_writewatch = 1;
+    TRACE( "Using mach write watches.\n" );
+}
+
+static void kernel_writewatch_reset( void *start, SIZE_T len )
+{
+    mach_vm_address_t current_address = (mach_vm_address_t)ROUND_ADDR( start, host_page_mask );
+    SIZE_T end = current_address + ROUND_SIZE( start, len, host_page_mask );
+    kern_return_t kr;
+
+    while (current_address < end)
+    {
+        vm_prot_t mach_prot = get_mach_prot( current_address );
+
+        kr = mach_vm_protect( mach_task_self(), current_address, host_page_size, 0,
+                              mach_prot | VM_PROT_COPY );
+
+        if (kr != KERN_SUCCESS)
+        {
+            ERR( "mach_vm_protect failed on address %p: %d\n", (void *)current_address, kr );
+            break;
+        }
+
+        current_address += host_page_size;
+    }
+}
+
+static void kernel_writewatch_register_range( struct file_view *view, void *base, size_t size )
+{
+    mach_vm_address_t current_address = (mach_vm_address_t)ROUND_ADDR( base, host_page_mask );
+    mach_vm_address_t region_address;
+    mach_vm_size_t region_size;
+    mach_msg_type_number_t info_count;
+    mach_port_t object_name;
+    vm_region_extended_info_data_t info;
+    SIZE_T end = current_address + ROUND_SIZE( base, size, host_page_mask );
+    kern_return_t kr;
+
+    if (!(view->protect & VPROT_WRITEWATCH) || !use_kernel_writewatch) return;
+
+    while (current_address < end)
+    {
+        vm_prot_t mach_prot = get_mach_prot( current_address );
+
+        region_address = current_address;
+        info_count = VM_REGION_EXTENDED_INFO_COUNT;
+        kr = mach_vm_region( mach_task_self(), &region_address, &region_size, VM_REGION_EXTENDED_INFO, 
+                             (vm_region_info_t)&info, &info_count, &object_name );
+
+        if (kr != KERN_SUCCESS)
+        {
+            ERR( "mach_vm_region failed: %d\n", kr );
+            break;
+        }
+
+        if (region_address > current_address) 
+        {
+            ERR( "trying to register unmapped region\n" );
+            break;
+        }
+
+        assert( info.protection == mach_prot );
+
+        /* 
+         * Calling mach_vm_protect with VM_PROT_COPY will create a new shadow object
+         * for the page, so that we can track writes to it. 
+         * If the page is already COW, this still works and increases shadow depth
+         * by one even with already existing identical protection.
+         * We need this per host page, to keep track of the writes when the share
+         * mode changes to/from SM_COW.
+         * This operation can always be done (and was even designed for this),
+         * originally to increase the maximum protection set, but it works well
+         * for our purpose too.
+         * Once the page flips back from SM_COW to another share mode (usually
+         * SM_PRIVATE), XNU might do some funky things like merging regions together
+         * or even worse keep SM_COW after the write and increase shadow depth
+         * and point it to a new shadow object with identical contents (usually
+         * only happens though on native arm64, not on Rosetta).
+         * This can be still be handled correctly, if we were to keep track of
+         * the shadow_depth and pages_shared_now_private per page, but this is 
+         * extra complexity we don't need.
+         * Creating a mach memory entry makes sure the vm_map_entry is backed by
+         * exactly one unique vm_object and avoids the headaches mentioned above
+         * and potential submaps.
+         * This is because mach_make_memory_entry_64() is in essence like the first
+         * step of a mach_vm_remap() operation, which calls into vm_map_remap_extract()
+         * and ensures the above requirement.
+         * The cleanup happens once the last reference to the vm_entry port and the
+         * mapped memory at that address is deallocated.
+         */
+
+        region_size = (mach_vm_size_t)host_page_size;
+        kr = mach_vm_protect( mach_task_self(), current_address, region_size, 0,
+                              mach_prot | VM_PROT_COPY );
+
+        if (kr != KERN_SUCCESS)
+        {
+            ERR( "mach_vm_protect failed: %d\n", kr );
+            break;
+        }
+
+        kr = mach_make_memory_entry_64( mach_task_self(), &region_size, current_address, mach_prot,
+                                        &object_name, MACH_PORT_NULL );
+
+        if (kr != KERN_SUCCESS)
+        {
+            ERR( "mach_make_memory_entry_64 failed: %d\n", kr );
+            current_address += host_page_size;
+            continue;
+        }
+
+        assert( region_size == host_page_size );
+        mach_port_deallocate( mach_task_self(), object_name );
+        current_address += host_page_size;
+    }
+}
+
+static void kernel_get_write_watches( void *base, SIZE_T size, void **buffer, ULONG_PTR *count, BOOL reset )
+{
+    mach_vm_address_t current_address;
+    mach_vm_address_t region_address;
+    mach_vm_size_t region_size;
+    mach_msg_type_number_t info_count;
+    mach_port_t object_name;
+    vm_region_extended_info_data_t info;
+    data_size_t remaining_size;
+    SIZE_T buffer_len = *count;
+    size_t end;
+    kern_return_t kr;
+
+    assert( !(size & page_mask) );
+
+    end = (size_t)((char *)base + size);
+    remaining_size = ROUND_SIZE( base, size, host_page_mask );
+    current_address = (mach_vm_address_t)ROUND_ADDR( base, host_page_mask );
+    *count = 0;
+
+    while (remaining_size && buffer_len)
+    {
+        region_address = current_address;
+        info_count = VM_REGION_EXTENDED_INFO_COUNT;
+        kr = mach_vm_region( mach_task_self(), &region_address, &region_size, VM_REGION_EXTENDED_INFO, 
+                             (vm_region_info_t)&info, &info_count, &object_name );
+
+        if (kr != KERN_SUCCESS)
+        {
+            ERR( "mach_vm_region failed: %d\n", kr );
+            break;
+        }
+
+        if (region_address > min( current_address, (mach_vm_address_t)end )) break;
+
+        if (info.share_mode != SM_COW)
+        {
+            size_t c_addr = max( (size_t)current_address, (size_t)base );
+            size_t region_end = min( (size_t)(region_address + region_size), end );
+
+            while (buffer_len && c_addr < region_end)
+            {
+                buffer[(*count)++] = (void *)c_addr;
+                --buffer_len;
+                c_addr += page_size;
+            }
+        }
+
+        current_address += region_size;
+        remaining_size  -= region_size;
+    }
+
+    if (reset)
+    {
+        ULONG_PTR i;
+        vm_prot_t mach_prot;
+
+        for (i = 0; i < *count; i++)
+        {
+            current_address = (mach_vm_address_t)buffer[i];
+            mach_prot = get_mach_prot( current_address );
+            kr = mach_vm_protect( mach_task_self(), current_address, page_size, 0,
+                                  mach_prot | VM_PROT_COPY );
+
+            if (kr != KERN_SUCCESS)
+                ERR( "mach_vm_protect failed: %d\n", kr );
+        }
+    }
+}
 #else
 static void kernel_writewatch_init(void)
 {
