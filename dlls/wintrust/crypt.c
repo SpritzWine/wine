@@ -947,7 +947,32 @@ CRYPTCATMEMBER * WINAPI CryptCATEnumerateMember(HANDLE hCatalog, CRYPTCATMEMBER 
             FIXME("unhandled object id \"%s\"\n", attr->pszObjId);
     }
 
-    if (!member->sEncodedMemberInfo.cbData || !member->sEncodedIndirectData.cbData)
+    if (!member->pIndirectData && entry->SubjectIdentifier.cbData == 20)
+    {
+        SPC_LINK *link;
+
+        member->sEncodedIndirectData.cbData = 0;
+        member->sEncodedIndirectData.pbData = NULL;
+
+        size = sizeof(SIP_INDIRECT_DATA) + sizeof(SPC_LINK);
+        if (!(member->pIndirectData = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size)))
+        {
+            SetLastError(ERROR_OUTOFMEMORY);
+            goto error;
+        }
+
+        link = (void*)(member->pIndirectData + 1);
+        link->dwLinkChoice = SPC_FILE_LINK_CHOICE;
+        link->pwszFile = (LPWSTR)L"";
+
+        member->pIndirectData->Data.pszObjId = (LPSTR)SPC_CAB_DATA_OBJID;
+        member->pIndirectData->Data.Value.cbData = sizeof(SPC_LINK);
+        member->pIndirectData->Data.Value.pbData = (BYTE*)link;
+        member->pIndirectData->DigestAlgorithm.pszObjId = (LPSTR)szOID_OIWSEC_sha1;
+        member->pIndirectData->Digest = entry->SubjectIdentifier;
+    }
+
+    if (!member->sEncodedMemberInfo.cbData || !member->pIndirectData)
     {
         ERR("Corrupted catalog entry?\n");
         SetLastError(CRYPT_E_ATTRIBUTES_MISSING);
