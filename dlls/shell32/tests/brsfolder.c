@@ -357,8 +357,68 @@ static void test_selection(void)
     CoUninitialize();
 }
 
+static void CALLBACK ok_timer_callback(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+{
+    KillTimer(hwnd, idEvent);
+    SendMessageA(hwnd, WM_COMMAND, IDOK, 0);
+}
+
+static int CALLBACK csidl_pidlroot_callback(HWND hwnd, UINT uMsg, LPARAM lParam, LPARAM lpData)
+{
+    switch (uMsg)
+    {
+    case BFFM_INITIALIZED:
+        SetTimer(hwnd, 0, TIMER_WAIT_MS, ok_timer_callback);
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/*
+ * Demonstrate that setting only the least significant 16 bits of .pidlRoot with
+ * a CSIDL value doesn't crash. A treeview with the corresponding folder
+ * contents is shown. This doesn't work when BIF_NEWDIALOGSTYLE is used.
+ */
+static void test_csidl_pidlroot(void)
+{
+    HRESULT resCoInit;
+    BROWSEINFOW bi = {0};
+    LPITEMIDLIST pidl;
+    const WCHAR title[] = L"test_csidl_pidlroot";
+
+    resCoInit = CoInitialize(NULL);
+    if(!(resCoInit == S_OK || resCoInit == S_FALSE))
+    {
+        skip("COM could not be initialized %lu\n", GetLastError());
+        return;
+    }
+
+    bi.lpszTitle = title;
+    bi.lpfn = csidl_pidlroot_callback;
+
+    bi.pidlRoot = LongToPtr(CSIDL_DRIVES);
+    pidl = SHBrowseForFolderW(&bi);
+    ok(!!pidl, "SHBrowseForFolderW returned NULL pidl\n");
+    CoTaskMemFree(pidl);
+
+    bi.pidlRoot = LongToPtr(CSIDL_DRIVES | 0xff00);
+    pidl = SHBrowseForFolderW(&bi);
+    ok(!!pidl, "SHBrowseForFolderW returned NULL pidl\n");
+    CoTaskMemFree(pidl);
+
+    /* invalid CSIDL folder will not open a window */
+    bi.pidlRoot = LongToPtr(0x000c);
+    pidl = SHBrowseForFolderW(&bi);
+    todo_wine ok(!pidl, "SHBrowseForFolderW returned non-NULL pidl\n");
+    CoTaskMemFree(pidl);
+
+    CoUninitialize();
+}
+
 START_TEST(brsfolder)
 {
     test_click_make_new_folder_button();
     test_selection();
+    test_csidl_pidlroot();
 }

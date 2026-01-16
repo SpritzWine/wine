@@ -188,9 +188,23 @@ static void InitializeTreeView( browse_info *info )
     IEnumIDList * pEnumChildren = NULL;
     HTREEITEM item;
     DWORD flags;
+    LPITEMIDLIST pidlCSIDL = NULL;
     LPCITEMIDLIST root = info->lpBrowseInfo->pidlRoot;
 
     TRACE("%p\n", info );
+
+    /* Some BURIKO engine installers depend on being able to pass CSIDL values
+     * in the pidlRoot member like resource identifiers. The folder is created
+     * if it doesn't exist, and this doesn't work on the new dialog style.
+     */
+    if (!(info->lpBrowseInfo->ulFlags & BIF_NEWDIALOGSTYLE) && IS_INTRESOURCE(root)) {
+        hr = SHGetFolderLocation(NULL, LOWORD(root) | CSIDL_FLAG_CREATE, NULL, 0, &pidlCSIDL);
+        if (FAILED(hr)) {
+            WARN("SHGetFolderLocation failed! hr = %08lx\n", hr);
+            return;
+        }
+        root = pidlCSIDL;
+    }
     
     Shell_GetImageLists(NULL, &hImageList);
 
@@ -212,6 +226,7 @@ static void InitializeTreeView( browse_info *info )
     pidlParent = ILClone(root);
     ILRemoveLastID(pidlParent);
     pidlChild = ILClone(ILFindLastID(root));
+    ILFree(pidlCSIDL);
     
     if (_ILIsDesktop(pidlParent)) {
         hr = SHGetDesktopFolder(&lpsfParent);
