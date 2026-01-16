@@ -436,7 +436,7 @@ static void test__lcreat( void )
     filehandle=_lcreat (slashname, 0); /* illegal name */
     ok( filehandle == HFILE_ERROR, "succeeded\n" );
     err=GetLastError ();
-    ok (err==ERROR_INVALID_NAME || err==ERROR_PATH_NOT_FOUND,
+    ok (err == ERROR_INVALID_NAME || err == ERROR_PATH_NOT_FOUND || err == ERROR_DIRECTORY /* win11 */,
         "creating file \"%s\" failed with error %d\n", slashname, err);
 
     filehandle=_lcreat (filename, 8); /* illegal attribute */

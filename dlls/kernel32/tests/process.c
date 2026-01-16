@@ -2359,7 +2359,7 @@ static void test_SystemInfo(void)
 {
     SYSTEM_INFO si, nsi;
     BOOL is_wow64;
-    USHORT machine, native_machine;
+    USHORT machine, native_machine = 0;
 
     if (!pGetNativeSystemInfo)
     {
@@ -2371,6 +2371,8 @@ static void test_SystemInfo(void)
 
     GetSystemInfo(&si);
     pGetNativeSystemInfo(&nsi);
+    if (pIsWow64Process2) pIsWow64Process2(GetCurrentProcess(), &machine, &native_machine);
+
     if (is_wow64)
     {
         if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
@@ -2378,8 +2380,7 @@ static void test_SystemInfo(void)
             ok(nsi.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64,
                "Expected PROCESSOR_ARCHITECTURE_AMD64, got %d\n",
                nsi.wProcessorArchitecture);
-            if (pIsWow64Process2 && pIsWow64Process2(GetCurrentProcess(), &machine, &native_machine) &&
-                native_machine == IMAGE_FILE_MACHINE_ARM64)
+            if (native_machine == IMAGE_FILE_MACHINE_ARM64)
             {
                 ok(nsi.dwProcessorType == PROCESSOR_INTEL_PENTIUM, "got %ld\n", nsi.dwProcessorType);
                 ok(nsi.wProcessorLevel == 15, "got %d\n", nsi.wProcessorLevel);
@@ -2396,6 +2397,14 @@ static void test_SystemInfo(void)
         ok(si.dwProcessorType == nsi.dwProcessorType,
            "Expected no difference for dwProcessorType, got %ld and %ld\n",
            si.dwProcessorType, nsi.dwProcessorType);
+        if (native_machine == IMAGE_FILE_MACHINE_ARM64)
+        {
+            todo_wine {
+            ok(nsi.dwProcessorType == PROCESSOR_AMD_X8664, "got %lu\n", nsi.dwProcessorType);
+            ok(nsi.wProcessorLevel == 21, "got %u\n", nsi.wProcessorLevel);
+            ok(nsi.wProcessorRevision == 1, "got %u\n", nsi.wProcessorRevision);
+            }
+        }
     }
 }
 
