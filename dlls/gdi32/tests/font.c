@@ -1400,7 +1400,7 @@ static void test_GetCharABCWidths(void)
 
 static void test_text_extents(void)
 {
-    static const WCHAR wt[] = L"One\ntwo 3";
+    static const WCHAR wt[] = L"One\r\ntwo 3\nfour";
     LPINT extents;
     INT i, len, fit1, fit2, extents2[3];
     LOGFONTA lf;
@@ -1463,11 +1463,16 @@ static void test_text_extents(void)
     ok(extents[len-1] == sz1.cx, "GetTextExtentExPointW extents and size don't match\n");
     ok(0 <= fit1 && fit1 <= len, "GetTextExtentExPointW generated illegal value %d for fit\n", fit1);
     ok(0 < fit1, "GetTextExtentExPointW says we can't even fit one letter in 32767 logical units\n");
+    ok(extents[2] == extents[3], "Carriage return has width: %d != %d\n", extents[2], extents[3]);
+    ok(extents[3] == extents[4], "Line feed has width: %d != %d\n", extents[3], extents[4]);
+    ok(extents[9] == extents[10], "Unix-style newline has width: %d != %d\n", extents[3], extents[4]);
     GetTextExtentExPointW(hdc, wt, len, extents[2], &fit2, NULL, &sz2);
     ok(sz1.cx == sz2.cx && sz1.cy == sz2.cy, "GetTextExtentExPointW returned different sizes for the same string\n");
     ok(fit2 == 3, "GetTextExtentExPointW extents isn't consistent with fit\n");
     GetTextExtentExPointW(hdc, wt, len, extents[2]-1, &fit2, NULL, &sz2);
     ok(fit2 == 2, "GetTextExtentExPointW extents isn't consistent with fit\n");
+    GetTextExtentExPointW(hdc, wt, len, extents[2]+1, &fit2, NULL, &sz2);
+    ok(fit2 == 5, "GetTextExtentExPointW newline doesn't fit in 1-pixel space\n");
     GetTextExtentExPointW(hdc, wt, 2, 0, NULL, extents + 2, &sz2);
     ok(extents[0] == extents[2] && extents[1] == extents[3],
        "GetTextExtentExPointW with lpnFit == NULL returns incorrect results\n");

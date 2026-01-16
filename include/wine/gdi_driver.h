@@ -169,8 +169,8 @@ struct gdi_dc_funcs
     COLORREF (*pGetPixel)(PHYSDEV,INT,INT);
     UINT     (*pGetSystemPaletteEntries)(PHYSDEV,UINT,UINT,LPPALETTEENTRY);
     UINT     (*pGetTextCharsetInfo)(PHYSDEV,LPFONTSIGNATURE,DWORD);
-    BOOL     (*pGetTextExtentExPoint)(PHYSDEV,LPCWSTR,INT,LPINT);
-    BOOL     (*pGetTextExtentExPointI)(PHYSDEV,const WORD*,INT,LPINT);
+    BOOL     (*pGetTextExtentExPoint)(PHYSDEV,LPCWSTR,INT,LPINT,LPINT);
+    BOOL     (*pGetTextExtentExPointI)(PHYSDEV,const WORD*,INT,LPINT,LPINT);
     INT      (*pGetTextFace)(PHYSDEV,INT,LPWSTR);
     BOOL     (*pGetTextMetrics)(PHYSDEV,TEXTMETRICW*);
     BOOL     (*pGradientFill)(PHYSDEV,TRIVERTEX*,ULONG,void*,ULONG,ULONG);

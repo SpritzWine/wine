@@ -292,6 +292,7 @@ struct gdi_font
     struct gdi_font       *base_font;
     void                  *gsub_table;
     void                  *vert_feature;
+    void                  *gdef_table;
     void                  *data_ptr;
     SIZE_T                 data_size;
     FILETIME               writetime;
@@ -303,6 +304,7 @@ struct gdi_font
 
 #define MS_GASP_TAG MS_MAKE_TAG('g', 'a', 's', 'p')
 #define MS_GSUB_TAG MS_MAKE_TAG('G', 'S', 'U', 'B')
+#define MS_GDEF_TAG MS_MAKE_TAG('G', 'D', 'E', 'F')
 #define MS_KERN_TAG MS_MAKE_TAG('k', 'e', 'r', 'n')
 #define MS_TTCF_TAG MS_MAKE_TAG('t', 't', 'c', 'f')
 #define MS_VDMX_TAG MS_MAKE_TAG('V', 'D', 'M', 'X')
