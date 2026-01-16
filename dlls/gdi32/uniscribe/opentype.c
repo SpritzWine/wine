@@ -893,6 +893,8 @@ static INT GSUB_apply_SingleSubst(const OT_LookupTable *look, WORD *glyphs, INT 
             if (GSUB_is_glyph_covered((const BYTE*)ssf1+offset, glyphs[glyph_index]) != -1)
             {
                 TRACE("  Glyph 0x%x ->",glyphs[glyph_index]);
+                if (GET_BE_WORD(ssf1->DeltaGlyphID) == 0)
+                    return GSUB_E_NOGLYPH;
                 glyphs[glyph_index] = glyphs[glyph_index] + GET_BE_WORD(ssf1->DeltaGlyphID);
                 TRACE(" 0x%x\n",glyphs[glyph_index]);
                 return glyph_index + write_dir;
