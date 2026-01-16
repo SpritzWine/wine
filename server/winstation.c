@@ -136,7 +136,7 @@ static const struct object_ops desktop_ops =
 
 /* create a winstation object */
 static struct winstation *create_winstation( struct object *root, const struct unicode_str *name,
-                                             unsigned int attr, unsigned int flags )
+                                             unsigned int attr, unsigned int flags, unsigned int session_id )
 {
     struct winstation *winstation;
 
@@ -152,6 +152,7 @@ static struct winstation *create_winstation( struct object *root, const struct u
             winstation->monitors = NULL;
             winstation->monitor_count = 0;
             winstation->monitor_serial = 1;
+            winstation->session_id = session_id;
             list_add_tail( &winstation_list, &winstation->entry );
             list_init( &winstation->desktops );
             if (!(winstation->desktop_names = create_namespace( 7 )))
@@ -500,12 +501,13 @@ void set_process_default_desktop( struct process *process, struct desktop *deskt
 void connect_process_winstation( struct process *process, struct unicode_str *desktop_path,
                                  struct thread *parent_thread, struct process *parent_process )
 {
-    struct unicode_str desktop_name = *desktop_path, winstation_name = {0};
+    struct unicode_str desktop_name = *desktop_path, winstation_name = {0}, root_name = {0}, full_winstation_name = {0};
     const int attributes = OBJ_CASE_INSENSITIVE | OBJ_OPENIF;
     struct winstation *winstation = NULL;
     struct desktop *desktop = NULL;
     const WCHAR *wch, *end;
     obj_handle_t handle;
+    char ascii_root[50]; /* len of root path + len(str(2**32)) + 4 (to be safe) */
 
     for (wch = desktop_name.str, end = wch + desktop_name.len / sizeof(WCHAR); wch != end; wch++)
     {
@@ -524,9 +526,20 @@ void connect_process_winstation( struct process *process, struct unicode_str *de
     {
         winstation = (struct winstation *)get_handle_obj( process, handle, 0, &winstation_ops );
     }
-    else if (winstation_name.len && (winstation = open_named_object( NULL, &winstation_ops, &winstation_name, attributes )))
+    else if (winstation_name.len)
     {
-        handle = alloc_handle( process, winstation, STANDARD_RIGHTS_REQUIRED | WINSTA_ALL_ACCESS, 0 );
+        snprintf(ascii_root, sizeof(ascii_root), "\\Sessions\\%u\\Windows\\WindowStations\\", process->session_id);
+        ascii_to_unicode_str(ascii_root, &root_name);
+
+        full_winstation_name.len = root_name.len + winstation_name.len;
+        full_winstation_name.str = malloc(full_winstation_name.len + 2);
+        memcpy((void*)full_winstation_name.str, root_name.str, root_name.len);
+        memcpy((void*)(full_winstation_name.str + root_name.len / sizeof(WCHAR)), winstation_name.str, winstation_name.len);
+
+        if((winstation = open_named_object( NULL, &winstation_ops, &full_winstation_name, attributes )))
+        {
+            handle = alloc_handle( process, winstation, STANDARD_RIGHTS_REQUIRED | WINSTA_ALL_ACCESS, 0 );
+        }
     }
     else if (parent_process->winstation)
     {
@@ -562,6 +575,7 @@ void connect_process_winstation( struct process *process, struct unicode_str *de
         handle = duplicate_handle( parent_process, handle, process, 0, 0, DUPLICATE_SAME_ACCESS );
     }
     if (handle) set_process_default_desktop( process, desktop, handle );
+
 
 done:
     if (desktop) release_object( desktop );
@@ -613,7 +627,7 @@ DECL_HANDLER(create_winstation)
     reply->handle = 0;
     if (req->rootdir && !(root = get_directory_obj( current->process, req->rootdir ))) return;
 
-    if ((winstation = create_winstation( root, &name, req->attributes, req->flags )))
+    if ((winstation = create_winstation( root, &name, req->attributes, req->flags, current->process->session_id )))
     {
         reply->handle = alloc_handle( current->process, winstation, req->access, req->attributes );
         release_object( winstation );
@@ -987,6 +1001,7 @@ DECL_HANDLER(enum_winstation)
             unsigned int access = WINSTA_ENUMERATE;
             if (!(name = winstation->obj.name)) continue;
             if (!check_object_access( NULL, &winstation->obj, &access )) continue;
+            if (current->process->session_id != winstation->session_id) continue;
             reply->count++;
             reply->total += name->len + sizeof(WCHAR);
             if (reply->total <= size)

@@ -519,6 +519,11 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
     ULONG nt_flags = 0;
     USHORT machine = 0;
     NTSTATUS status;
+    DWORD dwSessionId = 0;
+    DWORD dwReturnLength;
+    STARTUPINFOW local_startup_info;
+    BOOL success;
+
 
     /* Process the AppName and/or CmdLine to get module name and path */
 
@@ -541,6 +546,26 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
         app_name = name;
     }
 
+    /* Fixup startupinfo->lpDesktop if needed */
+
+    memcpy(&local_startup_info, startup_info, sizeof(STARTUPINFOW));
+    if(token != NULL)
+    {
+        success = GetTokenInformation(token, TokenSessionId, &dwSessionId, sizeof(dwSessionId), &dwReturnLength);
+
+        TRACE("success = %u, dwSessionId = %lu\n", success, dwSessionId);
+
+
+        if (success && dwSessionId != 0)
+        {
+            /* the created process should be attached to an interactive session.
+             * So we override the winstation for this process. */
+            FIXME( "Child process will be started with default desktop\n");
+
+            local_startup_info.lpDesktop = (WCHAR*)L"winsta0\\default";
+        }
+    }
+
     /* Warn if unsupported features are used */
 
     if (flags & (IDLE_PRIORITY_CLASS | HIGH_PRIORITY_CLASS | REALTIME_PRIORITY_CLASS |
@@ -560,7 +585,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
     info->hThread = info->hProcess = 0;
     info->dwProcessId = info->dwThreadId = 0;
 
-    if (!(params = create_process_params( app_name, tidy_cmdline, cur_dir, env, flags, startup_info )))
+    if (!(params = create_process_params( app_name, tidy_cmdline, cur_dir, env, flags, &local_startup_info )))
     {
         status = STATUS_NO_MEMORY;
         goto done;

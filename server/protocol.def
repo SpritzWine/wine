@@ -3550,6 +3550,11 @@ enum caret_state
     VARARG(acl,acl);            /* default dacl to set */
 @END
 
+@REQ(set_token_session_id)
+    obj_handle_t handle;        /* handle to the token */
+    unsigned int session_id;    /* session_id the token should become */
+@END
+
 @REQ(set_security_object)
     obj_handle_t    handle;       /* handle to the object */
     unsigned int    security_info; /* which parts of security descriptor to set */

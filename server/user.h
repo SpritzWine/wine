@@ -49,6 +49,7 @@ struct winstation
     unsigned int       monitor_count;      /* number of monitors */
     struct monitor_info *monitors;         /* window station monitors */
     unsigned __int64   monitor_serial;     /* winstation monitor update counter */
+    unsigned int       session_id;         /* session id this winstation belongs to */
 };
 
 struct key_repeat

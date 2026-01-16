@@ -918,7 +918,7 @@ static DWORD service_start_process(struct service_entry *service_entry, struct p
     BOOL is_wow64 = FALSE;
     HANDLE token;
     WCHAR *path;
-    DWORD err;
+    DWORD err, service_session_id = 0;
     BOOL r;
 
     service_lock(service_entry);
@@ -1028,7 +1028,10 @@ found:
         si.lpDesktop = (WCHAR *)L"__wineservice_winstation\\Default";
     }
 
-    if (!environment && OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_DUPLICATE, &token))
+    r = DuplicateHandle(GetCurrentProcess(), GetCurrentProcessToken(),
+                    GetCurrentProcess(), &token, 0, FALSE, DUPLICATE_SAME_ACCESS);
+    TRACE("DuplicateHandle %u %lu\n", r, GetLastError());
+    if (!environment && r )
     {
         WCHAR val[16];
         CreateEnvironmentBlock(&environment, token, FALSE);
@@ -1040,7 +1043,6 @@ found:
             RtlInitUnicodeString( &value, val );
             RtlSetEnvironmentVariable( (WCHAR **)&environment, &name, &value );
         }
-        CloseHandle(token);
     }
 
     service_entry->status.dwCurrentState = SERVICE_START_PENDING;
@@ -1053,8 +1055,19 @@ found:
     process->use_count++;
     service_unlock(service_entry);
 
-    r = CreateProcessW(NULL, path, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS, environment, NULL, &si, &pi);
+    r = SetTokenInformation(token, TokenSessionId, &service_session_id, sizeof(service_session_id));
+
+    if(!r)
+    {
+        err = GetLastError();
+        process_terminate(process);
+        release_process(process);
+        return err;
+    }
+
+    r = CreateProcessAsUserW(token, NULL, path, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS, environment, NULL, &si, &pi);
     free(path);
+    CloseHandle(token);
     if (!r)
     {
         err = GetLastError();

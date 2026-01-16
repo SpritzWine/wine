@@ -351,6 +351,7 @@ BOOL WINAPI WTSEnumerateSessionsW(HANDLE server, DWORD reserved, DWORD version,
     static const WCHAR session_name[] = L"Console";
 
     FIXME("%p 0x%08lx 0x%08lx %p %p semi-stub.\n", server, reserved, version, session_info, count);
+    FIXME("Always returning default session id / name\n");
 
     if (!session_info || !count) return FALSE;
 
@@ -359,11 +360,7 @@ BOOL WINAPI WTSEnumerateSessionsW(HANDLE server, DWORD reserved, DWORD version,
         SetLastError(ERROR_OUTOFMEMORY);
         return FALSE;
     }
-    if (!ProcessIdToSessionId( GetCurrentProcessId(), &(*session_info)->SessionId))
-    {
-        WTSFreeMemory(*session_info);
-        return FALSE;
-    }
+    (*session_info)->SessionId = 1 /* default_session_id, server/process.h */;
     *count = 1;
     (*session_info)->State = WTSActive;
     (*session_info)->pWinStationName = (WCHAR *)((char *)*session_info + sizeof(**session_info));
@@ -653,9 +650,13 @@ BOOL WINAPI WTSQueryUserToken(ULONG session_id, PHANDLE token)
         return FALSE;
     }
 
-    return DuplicateHandle(GetCurrentProcess(), GetCurrentProcessToken(),
+    if(!DuplicateHandle(GetCurrentProcess(), GetCurrentProcessToken(),
                            GetCurrentProcess(), token,
-                           0, FALSE, DUPLICATE_SAME_ACCESS);
+                           0, FALSE, DUPLICATE_SAME_ACCESS))
+        return FALSE;
+
+
+    return SetTokenInformation(*token, TokenSessionId, &session_id, sizeof(ULONG));
 }
 
 /************************************************************
