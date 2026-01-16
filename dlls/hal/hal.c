@@ -179,6 +179,13 @@ ULONG WINAPI HalGetBusDataByOffset(BUS_DATA_TYPE BusDataType, ULONG BusNumber, U
     return 0;
 }
 
+ULONG WINAPI HalSetBusDataByOffset(BUS_DATA_TYPE BusDataType, ULONG BusNumber, ULONG SlotNumber, PVOID Buffer, ULONG Offset, ULONG Length)
+{
+    FIXME("(%u %lu %lu %p %lu %lu) stub!\n", BusDataType, BusNumber, SlotNumber, Buffer, Offset, Length);
+    /* Claim that there is no such bus */
+    return 0;
+}
+
 BOOLEAN WINAPI HalTranslateBusAddress(INTERFACE_TYPE InterfaceType, ULONG BusNumber, PHYSICAL_ADDRESS BusAddress,
 		                              PULONG AddressSpace, PPHYSICAL_ADDRESS TranslatedAddress)
 {

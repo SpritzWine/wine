@@ -49,7 +49,7 @@
 @ stub HalRequestIpi
 @ stub HalReturnToFirmware
 @ stub HalSetBusData
-@ stub HalSetBusDataByOffset
+@ stdcall HalSetBusDataByOffset(long long long ptr long long)
 @ stub HalSetDisplayParameters
 @ stub HalSetEnvironmentVariable
 @ stub HalSetProfileInterval
