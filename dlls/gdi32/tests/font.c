@@ -22,6 +22,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 
 #include "windef.h"
 #include "winbase.h"
@@ -7892,6 +7893,99 @@ static void test_font_weight(void)
     ok(bret, "got error %ld\n", GetLastError());
 }
 
+static void test_rotated_metrics(void)
+{
+    static const WCHAR str[] = L"Hello World!";
+    static const struct
+    {
+        float angle_d;
+        POINT pt;
+        LONG tmHeight, tmAscent, tmDescent;
+        SIZE ext;
+    } test[] =
+    {
+        { 0.0f, {100,100}, 21,17,4, {88,21} },
+        { 45.0f, {141,0}, 23,18,6, {89,23} },
+        { 90.0f, {100,-100}, 21,17,4, {89,21} },
+        { 180.0f, {-100,-100}, 21,17,4, {89,21} }
+    };
+    float angle_r;
+    HDC hdc;
+    LOGFONTW lf;
+    HFONT hfont;
+    XFORM xform;
+    TEXTMETRICW tm;
+    POINT pt;
+    SIZE sz;
+    int i, off;
+
+    hdc = CreateCompatibleDC(0);
+
+    memset(&lf, 0, sizeof(lf));
+    wcscpy(lf.lfFaceName, L"Tahoma");
+    lf.lfHeight = 20;
+    hfont = CreateFontIndirectW(&lf);
+
+    SetGraphicsMode(hdc, GM_ADVANCED);
+    SetMapMode(hdc, MM_TEXT);
+
+    hfont = SelectObject(hdc, hfont);
+
+    pt.x = 100;
+    pt.y = 100;
+    DPtoLP(hdc, &pt, 1);
+    ok(pt.x == 100, "got %ld\n", pt.x);
+    ok(pt.y == 100, "got %ld\n", pt.y);
+
+    GetTextMetricsW(hdc, &tm);
+    ok(match_off_by_n(tm.tmHeight, 20, 1), "got %ld\n", tm.tmHeight);
+    ok(match_off_by_n(tm.tmAscent, 17, 1), "got %ld\n", tm.tmAscent);
+    ok(match_off_by_n(tm.tmDescent, 3, 0), "got %ld\n", tm.tmDescent);
+
+    GetTextExtentPoint32W(hdc, str, wcslen(str), &sz);
+    ok(match_off_by_n(sz.cx, 88, 5), "got %ld\n", sz.cx);
+    ok(match_off_by_n(sz.cy, 20, 1), "got %ld\n", sz.cy);
+
+    for (i = 0; i < ARRAY_SIZE(test); i++)
+    {
+        winetest_push_context("%d", i);
+
+        angle_r = test[i].angle_d * 3.141592f / 180.0f;
+
+        xform.eM11 = cosf(angle_r);
+        xform.eM12 = sinf(angle_r);
+        xform.eM21 = -xform.eM12;
+        xform.eM22 = xform.eM11;
+        xform.eDx = 0.0f;
+        xform.eDy = 0.0f;
+        SetWorldTransform(hdc, &xform);
+
+        pt.x = 100;
+        pt.y = 100;
+        DPtoLP(hdc, &pt, 1);
+        ok(match_off_by_n(pt.x, test[i].pt.x, 1), "got pt.x %ld\n", pt.x);
+        ok(match_off_by_n(pt.y, test[i].pt.y, 1), "got pt.y %ld\n", pt.y);
+
+        GetTextMetricsW(hdc, &tm);
+        /* Windows produces noticeable diff for angles 45.0 and 135.0 */
+        off = test[i].angle_d == 45.0f ? 4 : 2;
+        ok(match_off_by_n(tm.tmHeight, test[i].tmHeight, off), "got %ld\n", tm.tmHeight);
+        ok(match_off_by_n(tm.tmAscent, test[i].tmAscent, 2), "got %ld\n", tm.tmAscent);
+        ok(match_off_by_n(tm.tmDescent, test[i].tmDescent, 2), "got %ld\n", tm.tmDescent);
+
+        GetTextExtentPoint32W(hdc, str, wcslen(str), &sz);
+        ok(match_off_by_n(sz.cx, test[i].ext.cx, 5), "got %ld\n", sz.cx);
+        ok(match_off_by_n(sz.cy, test[i].ext.cy, off), "got %ld\n", sz.cy);
+
+        winetest_pop_context();
+    }
+
+    hfont = SelectObject(hdc, hfont);
+    DeleteObject(hfont);
+
+    DeleteDC(hdc);
+}
+
 START_TEST(font)
 {
     static const char *test_names[] =
@@ -7913,6 +8007,7 @@ START_TEST(font)
         return;
     }
 
+    test_rotated_metrics();
     test_stock_fonts();
     test_logfont();
     test_bitmap_font();

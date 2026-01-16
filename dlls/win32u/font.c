@@ -224,52 +224,38 @@ static inline int facename_compare( const WCHAR *str1, const WCHAR *str2, SIZE_T
 
   /* Device -> World size conversion */
 
-/* Performs a device to world transformation on the specified width (which
- * is in integer format).
- */
-static inline INT INTERNAL_XDSTOWS(DC *dc, INT width)
-{
-    double floatWidth;
-
-    /* Perform operation with floating point */
-    floatWidth = (double)width * dc->xformVport2World.eM11;
-    /* Round to integers */
-    return GDI_ROUND(floatWidth);
-}
-
-/* Performs a device to world transformation on the specified size (which
- * is in integer format).
- */
-static inline INT INTERNAL_YDSTOWS(DC *dc, INT height)
-{
-    double floatHeight;
-
-    /* Perform operation with floating point */
-    floatHeight = (double)height * dc->xformVport2World.eM22;
-    /* Round to integers */
-    return GDI_ROUND(floatHeight);
-}
-
 /* scale width and height but don't mirror them */
 
 static inline INT width_to_LP( DC *dc, INT width )
 {
-    return GDI_ROUND( (double)width * fabs( dc->xformVport2World.eM11 ));
+    float scale_x;
+
+    scale_x = hypotf( dc->xformWorld2Vport.eM11, dc->xformWorld2Vport.eM12 );
+    return GDI_ROUND( (float)width / scale_x );
 }
 
 static inline INT height_to_LP( DC *dc, INT height )
 {
-    return GDI_ROUND( (double)height * fabs( dc->xformVport2World.eM22 ));
+    float scale_y;
+
+    scale_y = hypotf( dc->xformWorld2Vport.eM21, dc->xformWorld2Vport.eM22 );
+    return GDI_ROUND( (float)height / scale_y );
 }
 
-static inline INT INTERNAL_YWSTODS(DC *dc, INT height)
+static inline INT width_to_DP(DC *dc, INT width)
 {
-    POINT pt[2];
-    pt[0].x = pt[0].y = 0;
-    pt[1].x = 0;
-    pt[1].y = height;
-    lp_to_dp(dc, pt, 2);
-    return pt[1].y - pt[0].y;
+    float scale_x;
+
+    scale_x = hypotf( dc->xformWorld2Vport.eM11, dc->xformWorld2Vport.eM12 );
+    return GDI_ROUND( (float)width * scale_x );
+}
+
+static inline INT height_to_DP(DC *dc, INT height)
+{
+    float scale_y;
+
+    scale_y = hypotf( dc->xformWorld2Vport.eM21, dc->xformWorld2Vport.eM22 );
+    return GDI_ROUND( (float)height * scale_y );
 }
 
 static INT FONT_GetObjectW( HGDIOBJ handle, INT count, LPVOID buffer );
@@ -4120,8 +4106,8 @@ static void scale_outline_font_metrics( const struct gdi_font *font, OUTLINETEXT
     else
         scale_x = font->scale_y;
 
-    scale_x *= fabs(font->matrix.eM11);
-    scale_y = font->scale_y * fabs(font->matrix.eM22);
+    scale_x *= hypotf(font->matrix.eM11, font->matrix.eM12);
+    scale_y = font->scale_y * hypotf(font->matrix.eM21, font->matrix.eM22);
 
 /* Windows scales these values as signed integers even if they are unsigned */
 #define SCALE_X(x) (x) = GDI_ROUND((int)(x) * (scale_x))
@@ -4335,8 +4321,8 @@ static void scale_font_metrics( struct gdi_font *font, TEXTMETRICW *tm )
     else
         scale_x = font->scale_y;
 
-    scale_x *= fabs(font->matrix.eM11);
-    scale_y = font->scale_y * fabs(font->matrix.eM22);
+    scale_x *= hypotf(font->matrix.eM11, font->matrix.eM12);
+    scale_y = font->scale_y * hypotf(font->matrix.eM21, font->matrix.eM22);
 
 #define SCALE_X(x) (x) = GDI_ROUND((x) * scale_x)
 #define SCALE_Y(y) (y) = GDI_ROUND((y) * scale_y)
@@ -5264,7 +5250,7 @@ BOOL WINAPI NtGdiGetTextExtentExW( HDC hdc, const WCHAR *str, INT count, INT max
         {
             for (i = 0; i < count; i++)
             {
-                unsigned int dx = abs( INTERNAL_XDSTOWS( dc, pos[i] )) +
+                unsigned int dx = abs( width_to_LP( dc, pos[i] )) +
                     (i + 1) * dc->attr->char_extra;
                 if (nfit && dx > (unsigned int)max_ext) break;
 		if (dxs) dxs[i] = dx;
@@ -5272,8 +5258,8 @@ BOOL WINAPI NtGdiGetTextExtentExW( HDC hdc, const WCHAR *str, INT count, INT max
             if (nfit) *nfit = i;
         }
 
-        size->cx = abs( INTERNAL_XDSTOWS( dc, size->cx )) + count * dc->attr->char_extra;
-        size->cy = abs( INTERNAL_YDSTOWS( dc, size->cy ));
+        size->cx = abs( width_to_LP( dc, size->cx )) + count * dc->attr->char_extra;
+        size->cy = abs( height_to_LP( dc, size->cy ));
     }
 
     if (pos != buffer && pos != dxs) free( pos );
@@ -5377,16 +5363,16 @@ UINT WINAPI NtGdiGetOutlineTextMetricsInternalW( HDC hdc, UINT cbData,
         output->otmTextMetrics.tmOverhang         = width_to_LP( dc, output->otmTextMetrics.tmOverhang );
         output->otmAscent                = height_to_LP( dc, output->otmAscent);
         output->otmDescent               = height_to_LP( dc, output->otmDescent);
-        output->otmLineGap               = INTERNAL_YDSTOWS(dc, output->otmLineGap);
-        output->otmsCapEmHeight          = INTERNAL_YDSTOWS(dc, output->otmsCapEmHeight);
-        output->otmsXHeight              = INTERNAL_YDSTOWS(dc, output->otmsXHeight);
+        output->otmLineGap               = height_to_LP(dc, output->otmLineGap);
+        output->otmsCapEmHeight          = height_to_LP(dc, output->otmsCapEmHeight);
+        output->otmsXHeight              = height_to_LP(dc, output->otmsXHeight);
         output->otmrcFontBox.top         = height_to_LP( dc, output->otmrcFontBox.top);
         output->otmrcFontBox.bottom      = height_to_LP( dc, output->otmrcFontBox.bottom);
         output->otmrcFontBox.left        = width_to_LP( dc, output->otmrcFontBox.left);
         output->otmrcFontBox.right       = width_to_LP( dc, output->otmrcFontBox.right);
         output->otmMacAscent             = height_to_LP( dc, output->otmMacAscent);
         output->otmMacDescent            = height_to_LP( dc, output->otmMacDescent);
-        output->otmMacLineGap            = INTERNAL_YDSTOWS(dc, output->otmMacLineGap);
+        output->otmMacLineGap            = height_to_LP(dc, output->otmMacLineGap);
         output->otmptSubscriptSize.x     = width_to_LP( dc, output->otmptSubscriptSize.x);
         output->otmptSubscriptSize.y     = height_to_LP( dc, output->otmptSubscriptSize.y);
         output->otmptSubscriptOffset.x   = width_to_LP( dc, output->otmptSubscriptOffset.x);
@@ -5395,7 +5381,7 @@ UINT WINAPI NtGdiGetOutlineTextMetricsInternalW( HDC hdc, UINT cbData,
         output->otmptSuperscriptSize.y   = height_to_LP( dc, output->otmptSuperscriptSize.y);
         output->otmptSuperscriptOffset.x = width_to_LP( dc, output->otmptSuperscriptOffset.x);
         output->otmptSuperscriptOffset.y = height_to_LP( dc, output->otmptSuperscriptOffset.y);
-        output->otmsStrikeoutSize        = INTERNAL_YDSTOWS(dc, output->otmsStrikeoutSize);
+        output->otmsStrikeoutSize        = height_to_LP(dc, output->otmsStrikeoutSize);
         output->otmsStrikeoutPosition    = height_to_LP( dc, output->otmsStrikeoutPosition);
         output->otmsUnderscoreSize       = height_to_LP( dc, output->otmsUnderscoreSize);
         output->otmsUnderscorePosition   = height_to_LP( dc, output->otmsUnderscorePosition);
@@ -5757,7 +5743,7 @@ BOOL nulldrv_ExtTextOut( PHYSDEV dev, INT x, INT y, UINT flags, const RECT *rect
  */
 static inline int get_line_width( DC *dc, int metric_size )
 {
-    int width = abs( INTERNAL_YWSTODS( dc, metric_size ));
+    int width = abs( width_to_DP( dc, metric_size ));
     if (width == 0) width = 1;
     if (metric_size < 0) width = -width;
     return width;
@@ -5886,12 +5872,6 @@ BOOL WINAPI NtGdiExtTextOutW( HDC hdc, INT x, INT y, UINT flags, const RECT *lpr
         goto done;
     }
 
-    pt.x = x;
-    pt.y = y;
-    lp_to_dp(dc, &pt, 1);
-    x = pt.x;
-    y = pt.y;
-
     char_extra = dc->attr->char_extra;
     if (char_extra && lpDx && NtGdiGetDeviceCaps( hdc, TECHNOLOGY ) == DT_RASPRINTER)
         char_extra = 0; /* Printer drivers don't add char_extra if lpDx is supplied */
@@ -5988,8 +5968,6 @@ BOOL WINAPI NtGdiExtTextOutW( HDC hdc, INT x, INT y, UINT flags, const RECT *lpr
         width = desired[1];
     }
 
-    tm.tmAscent = abs(INTERNAL_YWSTODS(dc, tm.tmAscent));
-    tm.tmDescent = abs(INTERNAL_YWSTODS(dc, tm.tmDescent));
     switch( align & (TA_LEFT | TA_RIGHT | TA_CENTER) )
     {
     case TA_LEFT:
@@ -6051,11 +6029,18 @@ BOOL WINAPI NtGdiExtTextOutW( HDC hdc, INT x, INT y, UINT flags, const RECT *lpr
                 text_box.bottom = y + tm.tmDescent;
 
                 if (flags & ETO_CLIPPED) intersect_rect( &text_box, &text_box, &rc );
+                lp_to_dp(dc, (POINT *)&text_box, 2);
                 if (!IsRectEmpty( &text_box ))
                     physdev->funcs->pExtTextOut( physdev, 0, 0, ETO_OPAQUE, &text_box, NULL, 0, NULL );
             }
         }
     }
+
+    pt.x = x;
+    pt.y = y;
+    lp_to_dp(dc, &pt, 1);
+    x = pt.x;
+    y = pt.y;
 
     ret = physdev->funcs->pExtTextOut( physdev, x, y, (flags & ~ETO_OPAQUE), &rc,
                                        str, count, (INT*)deltas );
@@ -6086,10 +6071,10 @@ done:
         {
             otm = malloc( size );
             NtGdiGetOutlineTextMetricsInternalW( hdc, size, otm, 0 );
-            underlinePos = abs( INTERNAL_YWSTODS( dc, otm->otmsUnderscorePosition ));
+            underlinePos = abs( height_to_DP( dc, otm->otmsUnderscorePosition ));
             if (otm->otmsUnderscorePosition < 0) underlinePos = -underlinePos;
             underlineWidth = get_line_width( dc, otm->otmsUnderscoreSize );
-            strikeoutPos = abs( INTERNAL_YWSTODS( dc, otm->otmsStrikeoutPosition ));
+            strikeoutPos = abs( height_to_DP( dc, otm->otmsStrikeoutPosition ));
             if (otm->otmsStrikeoutPosition < 0) strikeoutPos = -strikeoutPos;
             strikeoutWidth = get_line_width( dc, otm->otmsStrikeoutSize );
             free( otm );
