@@ -106,7 +106,7 @@ static void option_callback( int optc, char *optarg )
 /* command-line option parsing */
 /* partly based on the GLibc getopt() implementation */
 
-static struct long_option
+static const struct long_option
 {
     const char *name;
     int has_arg;
