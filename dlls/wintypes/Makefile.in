@@ -1,6 +1,6 @@
 MODULE    = wintypes.dll
 IMPORTLIB = wintypes
-IMPORTS   = combase
+IMPORTS   = combase rpcrt4
 
 SOURCES = \
 	buffer.c \
@@ -9,4 +9,8 @@ SOURCES = \
 	map.c \
 	propertyset.c \
 	storage.c \
-	wintypes_private.idl
+	wintypes_private.idl \
+	wintypes_proxy.idl
+
+dlldata_EXTRADEFS = -DPROXY_DELEGATION -DREGISTER_PROXY_DLL \
+	-DPROXY_CLSID_IS="{0x11659A23,0x5884,0x4D1B,{0x9C,0xF6,0x67,0xD6,0xF4,0xF9,0x0B,0x36}}"

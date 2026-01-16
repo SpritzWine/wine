@@ -1775,12 +1775,6 @@ static struct property_value_statics property_value_statics =
     1
 };
 
-HRESULT WINAPI DllGetClassObject(REFCLSID clsid, REFIID riid, void **out)
-{
-    FIXME("clsid %s, riid %s, out %p stub!\n", debugstr_guid(clsid), debugstr_guid(riid), out);
-    return CLASS_E_CLASSNOTAVAILABLE;
-}
-
 HRESULT WINAPI DllGetActivationFactory(HSTRING classid, IActivationFactory **factory)
 {
     const WCHAR *buffer = WindowsGetStringRawBuffer(classid, NULL);

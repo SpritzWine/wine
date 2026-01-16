@@ -594,6 +594,7 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
   int first_func = 1;
   int needs_stub_thunks = 0;
   int needs_inline_stubs = need_inline_stubs( iface ) || need_delegation( iface );
+  const char *name = type_get_name( iface, NAME_C, false );
 
   STATEMENTS_FOR_EACH_FUNC(stmt, type_iface_get_stmts(iface)) {
     var_t *func = stmt->u.var;
@@ -632,7 +633,7 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
 
   count = count_methods(iface);
 
-  print_proxy( "static const unsigned short %s_FormatStringOffsetTable[] =\n", iface->name );
+  print_proxy( "static const unsigned short %s_FormatStringOffsetTable[] =\n", name );
   print_proxy( "{\n" );
   indent++;
   write_proxy_procformatstring_offsets( iface, 0 );
@@ -642,12 +643,12 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
   /* proxy info */
   if (interpreted_mode)
   {
-      print_proxy( "static const MIDL_STUBLESS_PROXY_INFO %s_ProxyInfo =\n", iface->name );
+      print_proxy( "static const MIDL_STUBLESS_PROXY_INFO %s_ProxyInfo =\n", name );
       print_proxy( "{\n" );
       indent++;
       print_proxy( "&Object_StubDesc,\n" );
       print_proxy( "__MIDL_ProcFormatString.Format,\n" );
-      print_proxy( "&%s_FormatStringOffsetTable[-3],\n", iface->name );
+      print_proxy( "&%s_FormatStringOffsetTable[-3],\n", name );
       print_proxy( "0,\n" );
       print_proxy( "0,\n" );
       print_proxy( "0\n" );
@@ -658,13 +659,13 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
   /* proxy vtable */
   print_proxy( "static %sCINTERFACE_PROXY_VTABLE(%d) _%sProxyVtbl =\n",
                (interpreted_mode || need_delegation_indirect(iface)) ? "" : "const ",
-               count, iface->name);
+               count, name);
   print_proxy( "{\n");
   indent++;
   print_proxy( "{\n");
   indent++;
-  if (interpreted_mode) print_proxy( "&%s_ProxyInfo,\n", iface->name );
-  print_proxy( "&IID_%s,\n", iface->name);
+  if (interpreted_mode) print_proxy( "&%s_ProxyInfo,\n", name );
+  print_proxy( "&IID_%s,\n", name);
   indent--;
   print_proxy( "},\n");
   print_proxy( "{\n");
@@ -678,7 +679,7 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
   /* stub thunk table */
   if (needs_stub_thunks)
   {
-      print_proxy( "static const STUB_THUNK %s_StubThunkTable[] =\n", iface->name);
+      print_proxy( "static const STUB_THUNK %s_StubThunkTable[] =\n", name);
       print_proxy( "{\n");
       indent++;
       write_thunk_methods( iface, 0 );
@@ -687,15 +688,15 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
   }
 
   /* server info */
-  print_proxy( "static const MIDL_SERVER_INFO %s_ServerInfo =\n", iface->name );
+  print_proxy( "static const MIDL_SERVER_INFO %s_ServerInfo =\n", name );
   print_proxy( "{\n" );
   indent++;
   print_proxy( "&Object_StubDesc,\n" );
   print_proxy( "0,\n" );
   print_proxy( "__MIDL_ProcFormatString.Format,\n" );
-  print_proxy( "&%s_FormatStringOffsetTable[-3],\n", iface->name );
+  print_proxy( "&%s_FormatStringOffsetTable[-3],\n", name );
   if (needs_stub_thunks)
-      print_proxy( "&%s_StubThunkTable[-3],\n", iface->name );
+      print_proxy( "&%s_StubThunkTable[-3],\n", name );
   else
       print_proxy( "0,\n" );
   print_proxy( "0,\n" );
@@ -707,7 +708,7 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
   /* stub vtable */
   if (needs_inline_stubs)
   {
-      print_proxy( "static const PRPC_STUB_FUNCTION %s_table[] =\n", iface->name);
+      print_proxy( "static const PRPC_STUB_FUNCTION %s_table[] =\n", name);
       print_proxy( "{\n");
       indent++;
       write_stub_methods(iface, FALSE);
@@ -716,15 +717,15 @@ static void write_proxy(type_t *iface, unsigned int *proc_offset)
       fprintf(proxy, "};\n\n");
   }
   print_proxy( "static %sCInterfaceStubVtbl _%sStubVtbl =\n",
-               need_delegation_indirect(iface) ? "" : "const ", iface->name);
+               need_delegation_indirect(iface) ? "" : "const ", name);
   print_proxy( "{\n");
   indent++;
   print_proxy( "{\n");
   indent++;
-  print_proxy( "&IID_%s,\n", iface->name);
-  print_proxy( "&%s_ServerInfo,\n", iface->name );
+  print_proxy( "&IID_%s,\n", name);
+  print_proxy( "&%s_ServerInfo,\n", name );
   print_proxy( "%d,\n", count);
-  if (needs_inline_stubs) print_proxy( "&%s_table[-3]\n", iface->name );
+  if (needs_inline_stubs) print_proxy( "&%s_table[-3]\n", name );
   else print_proxy( "0\n" );
   indent--;
   print_proxy( "},\n");
@@ -945,7 +946,7 @@ static void write_proxy_routines(const statement_list_t *stmts)
   fprintf(proxy, "static const CInterfaceProxyVtbl* const _%s_ProxyVtblList[] =\n", file_id);
   fprintf(proxy, "{\n");
   for (i = 0; i < count; i++)
-      fprintf(proxy, "    (const CInterfaceProxyVtbl*)&_%sProxyVtbl,\n", interfaces[i]->name);
+      fprintf(proxy, "    (const CInterfaceProxyVtbl*)&_%sProxyVtbl,\n", type_get_name(interfaces[i], NAME_C, false));
   fprintf(proxy, "    0\n");
   fprintf(proxy, "};\n");
   fprintf(proxy, "\n");
@@ -953,7 +954,7 @@ static void write_proxy_routines(const statement_list_t *stmts)
   fprintf(proxy, "static const CInterfaceStubVtbl* const _%s_StubVtblList[] =\n", file_id);
   fprintf(proxy, "{\n");
   for (i = 0; i < count; i++)
-      fprintf(proxy, "    &_%sStubVtbl,\n", interfaces[i]->name);
+      fprintf(proxy, "    &_%sStubVtbl,\n", type_get_name(interfaces[i], NAME_C, false));
   fprintf(proxy, "    0\n");
   fprintf(proxy, "};\n");
   fprintf(proxy, "\n");
@@ -961,7 +962,7 @@ static void write_proxy_routines(const statement_list_t *stmts)
   fprintf(proxy, "static PCInterfaceName const _%s_InterfaceNamesList[] =\n", file_id);
   fprintf(proxy, "{\n");
   for (i = 0; i < count; i++)
-      fprintf(proxy, "    \"%s\",\n", interfaces[i]->name);
+      fprintf(proxy, "    \"%s\",\n", type_get_name(interfaces[i], NAME_C, false));
   fprintf(proxy, "    0\n");
   fprintf(proxy, "};\n");
   fprintf(proxy, "\n");
@@ -976,7 +977,8 @@ static void write_proxy_routines(const statement_list_t *stmts)
       for (i = 0; i < count; i++)
       {
           if (get_delegation_indirect(interfaces[i], &delegate_to))
-              fprintf( proxy, "    &IID_%s,  /* %s */\n", delegate_to->name, interfaces[i]->name );
+              fprintf( proxy, "    &IID_%s,  /* %s */\n", type_get_name( delegate_to, NAME_C, false ),
+                       interfaces[i]->name );
           else
               fprintf( proxy, "    0,\n" );
       }

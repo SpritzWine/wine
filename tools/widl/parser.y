@@ -102,6 +102,7 @@ static struct namespace global_namespace = {
 static struct namespace *current_namespace = &global_namespace;
 static struct namespace *parameters_namespace = NULL;
 static statement_list_t *parameterized_type_stmts = NULL;
+static statement_list_t *imp_parameterized_type_stmts = NULL;
 
 static typelib_t *current_typelib;
 
@@ -405,7 +406,9 @@ decl_block: tDECLARE '{' decl_statements '}' { $$ = $3; }
 imp_decl_statements
 	: %empty				{ $$ = NULL; }
 	| imp_decl_statements tINTERFACE qualified_type '<' parameterized_type_args '>' ';'
-						{ $$ = append_statement($1, make_statement_reference( @$, type_parameterized_type_specialize_declare($3, $5) )); }
+						{ imp_parameterized_type_stmts = append_statement( imp_parameterized_type_stmts, make_statement_parameterized_type(@$, $3, $5) );
+                                                  $$ = append_statement($1, make_statement_reference( @$, type_parameterized_type_specialize_declare($3, $5) ));
+                                                }
 	;
 
 imp_decl_block
@@ -2897,6 +2900,21 @@ static void check_async_uuid(type_t *iface)
 static statement_list_t *append_parameterized_type_stmts(statement_list_t *stmts)
 {
     statement_t *stmt, *next;
+
+    if (imp_parameterized_type_stmts)
+        LIST_FOR_EACH_ENTRY(stmt, imp_parameterized_type_stmts, statement_t, entry)
+        {
+            switch(stmt->type)
+            {
+            case STMT_TYPE:
+                stmt->u.type = type_parameterized_type_specialize_define(stmt->u.type);
+                stmt->is_defined = 1;
+                break;
+            default:
+                assert(0);
+                break;
+            }
+        }
 
     if (stmts && parameterized_type_stmts) LIST_FOR_EACH_ENTRY_SAFE(stmt, next, parameterized_type_stmts, statement_t, entry)
     {

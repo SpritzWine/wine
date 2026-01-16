@@ -1534,11 +1534,20 @@ static void type_parameterized_delegate_specialize(type_t *tmpl, type_t *delegat
 
 type_t *type_parameterized_type_specialize_declare(type_t *type, typeref_list_t *params)
 {
+    char *name = format_parameterized_type_name(type, params);
     type_t *tmpl = type->details.parameterized.type;
-    type_t *new_type = duptype(tmpl, 0);
+    type_t *new_type;
 
+    /* If this specialization has already been registered/declared, reuse it. */
+    if ((new_type = find_type(name, type->namespace, 0)))
+    {
+        free(name);
+        return new_type;
+    }
+
+    new_type = duptype(tmpl, 0);
     new_type->namespace = type->namespace;
-    new_type->name = format_parameterized_type_name(type, params);
+    new_type->name = name;
     reg_type(new_type, new_type->name, new_type->namespace, 0);
     new_type->c_name = format_parameterized_type_c_name(type, params, "", "_C");
     new_type->short_name = format_parameterized_type_short_name(type, params, "");

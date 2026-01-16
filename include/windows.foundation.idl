@@ -142,7 +142,6 @@ namespace Windows.Foundation {
         interface Windows.Foundation.AsyncOperationCompletedHandler<HSTRING>;
         interface Windows.Foundation.AsyncOperationCompletedHandler<IInspectable *>;
         interface Windows.Foundation.AsyncOperationCompletedHandler<boolean>;
-        interface Windows.Foundation.AsyncOperationCompletedHandler<HSTRING>;
         interface Windows.Foundation.AsyncOperationCompletedHandler<UINT32>;
         interface Windows.Foundation.AsyncOperationCompletedHandler<Windows.Foundation.Uri *>;
         interface Windows.Foundation.AsyncOperationProgressHandler<UINT32, UINT32>;
