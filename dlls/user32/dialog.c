@@ -432,6 +432,12 @@ static LPCSTR DIALOG_ParseTemplate32( LPCSTR template, DLG_TEMPLATE * result )
     return (LPCSTR)(((UINT_PTR)p + 3) & ~3);
 }
 
+static int CALLBACK is_font_installed_proc( const LOGFONTW *lf, const TEXTMETRICW *tm,
+                                            DWORD type, LPARAM lParam)
+{
+    return 0; /* found */
+}
+
 
 /***********************************************************************
  *           DIALOG_CreateIndirect
@@ -491,10 +497,23 @@ static HWND DIALOG_CreateIndirect( HINSTANCE hInst, LPCVOID dlgTemplate,
             /* We convert the size to pixels and then make it -ve.  This works
              * for both +ve and -ve template.pointSize */
             int pixels = MulDiv(template.pointSize, GetDeviceCaps(dc , LOGPIXELSY), 72);
-            hUserFont = CreateFontW( -pixels, 0, 0, 0, template.weight,
-                                              template.italic, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
-                                              PROOF_QUALITY, FF_DONTCARE,
-                                              template.faceName );
+
+            /* Use SYSTEM_FONT instead if the given font is not installed.
+             * We also check the pixel size to avoid the problem of using
+             * the bitmap font when the specified system font, such as MS
+             * UI Gothic, is not available */
+            if (abs(pixels) < GetSystemMetrics(SM_CYCAPTION) * 2 /* wine specific */ ||
+                !EnumFontFamiliesW(dc, template.faceName, is_font_installed_proc, 0))
+            {
+                hUserFont = CreateFontW( -pixels, 0, 0, 0, template.weight,
+                                         template.italic, FALSE, FALSE, DEFAULT_CHARSET,
+                                         0, 0, PROOF_QUALITY, FF_DONTCARE,
+                                         template.faceName );
+            }
+            else
+            {
+                hUserFont = GetStockObject( SYSTEM_FONT );
+            }
         }
 
         if (hUserFont)
@@ -639,7 +658,8 @@ static HWND DIALOG_CreateIndirect( HINSTANCE hInst, LPCVOID dlgTemplate,
 
     if (!hwnd)
     {
-        if (hUserFont) DeleteObject( hUserFont );
+        if (hUserFont && hUserFont != GetStockObject( SYSTEM_FONT ))
+            DeleteObject( hUserFont );
         if (hMenu) NtUserDestroyMenu( hMenu );
         if (disabled_owner) NtUserEnableWindow( disabled_owner, TRUE );
         return 0;

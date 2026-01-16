@@ -2518,6 +2518,56 @@ static void test_create_controls(void)
     DestroyWindow(control);
 }
 
+static void test_unknown_font_name(void)
+{
+    HWND hDlg;
+    RECT rcDefault, rcUnknown;
+    struct {
+        DLGTEMPLATE tmplate;
+        WORD menu,class,title,pointSize;
+        WCHAR faceName[LF_FACESIZE];
+    } temp;
+    HFONT hFont;
+    const short width = 120, height = 80;
+
+    /* Create a dialog box with the default font */
+    memset(&temp, 0, sizeof(temp));
+    temp.tmplate.style = DS_CENTER;
+    temp.tmplate.cx = width;
+    temp.tmplate.cy = height;
+
+    hDlg = CreateDialogIndirectParamW(g_hinst, (LPCDLGTEMPLATEW)&temp, NULL, NULL, 0);
+    ok(hDlg != 0, "Failed to create test dialog.\n");
+
+    GetClientRect(hDlg, &rcDefault);
+
+    hFont = (HFONT) SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    ok(!hFont, "got %p\n", hFont);
+
+    DestroyWindow(hDlg);
+
+    /* Create a dialog box with an unknown font name */
+    memset(&temp, 0, sizeof(temp));
+    temp.tmplate.style = DS_SETFONT | DS_CENTER;
+    temp.tmplate.cx = width;
+    temp.tmplate.cy = height;
+    temp.pointSize = 1234; /* will be ignored */
+    wcscpy(temp.faceName, L"Nonexistent font");
+
+    hDlg = CreateDialogIndirectParamW(g_hinst, (LPCDLGTEMPLATEW)&temp, NULL, NULL, 0);
+    ok(hDlg != 0, "Failed to create test dialog.\n");
+
+    GetClientRect(hDlg, &rcUnknown);
+
+    hFont = (HFONT) SendMessageW(hDlg, WM_GETFONT, 0, 0);
+    ok(hFont == GetStockObject(SYSTEM_FONT), "got %p\n", hFont);
+
+    DestroyWindow(hDlg);
+
+    /* Are they the same window size? */
+    ok(!memcmp(&rcDefault, &rcUnknown, sizeof(RECT)), "got %s, expected %s\n", wine_dbgstr_rect(&rcUnknown), wine_dbgstr_rect(&rcDefault));
+}
+
 START_TEST(dialog)
 {
     char **argv;
@@ -2551,4 +2601,5 @@ START_TEST(dialog)
     test_timer_message();
     test_MessageBox(argv);
     test_capture_release();
+    test_unknown_font_name();
 }

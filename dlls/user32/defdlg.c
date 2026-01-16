@@ -208,7 +208,8 @@ static LRESULT DEFDLG_Proc( HWND hwnd, UINT msg, WPARAM wParam,
         case WM_NCDESTROY:
             if (dlgInfo)
             {
-                if (dlgInfo->hUserFont) DeleteObject( dlgInfo->hUserFont );
+                if (dlgInfo->hUserFont && dlgInfo->hUserFont != GetStockObject( SYSTEM_FONT ))
+                    DeleteObject( dlgInfo->hUserFont );
                 if (dlgInfo->hMenu) NtUserDestroyMenu( dlgInfo->hMenu );
                 HeapFree( GetProcessHeap(), 0, dlgInfo );
 
