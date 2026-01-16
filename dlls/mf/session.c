@@ -3875,10 +3875,9 @@ static void transform_node_deliver_samples(struct media_session *session, struct
             IMFMediaEvent_Release(event);
         }
 
-        while (stream->requests && drained)
+        if (drained)
         {
             session_deliver_sample_to_node(session, down_node, input, NULL);
-            stream->requests--;
         }
     }
 
@@ -3913,20 +3912,20 @@ static void session_deliver_sample_to_node(struct media_session *session, struct
     switch (topo_node->type)
     {
         case MF_TOPOLOGY_OUTPUT_NODE:
-            if (topo_node->u.sink.requests)
+            if (!sample)
             {
-                if (sample)
-                {
-                    if (FAILED(hr = IMFStreamSink_ProcessSample(topo_node->object.sink_stream, sample)))
-                    {
-                        WARN("Stream sink failed to process sample, hr %#lx.\n", hr);
-                        IMFMediaEventQueue_QueueEventParamVar(session->event_queue, MEError, &GUID_NULL, hr, NULL);
-                    }
-                }
-                else if (FAILED(hr = IMFStreamSink_PlaceMarker(topo_node->object.sink_stream, MFSTREAMSINK_MARKER_ENDOFSEGMENT,
+                if (FAILED(hr = IMFStreamSink_PlaceMarker(topo_node->object.sink_stream, MFSTREAMSINK_MARKER_ENDOFSEGMENT,
                         NULL, NULL)))
                 {
                     WARN("Failed to place sink marker, hr %#lx.\n", hr);
+                }
+            }
+            else if (topo_node->u.sink.requests)
+            {
+                if (FAILED(hr = IMFStreamSink_ProcessSample(topo_node->object.sink_stream, sample)))
+                {
+                    WARN("Stream sink failed to process sample, hr %#lx.\n", hr);
+                    IMFMediaEventQueue_QueueEventParamVar(session->event_queue, MEError, &GUID_NULL, hr, NULL);
                 }
                 topo_node->u.sink.requests--;
             }

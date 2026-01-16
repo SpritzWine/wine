@@ -136,6 +136,21 @@ static void check_service_interface_(unsigned int line, void *iface_ptr, REFGUID
         IUnknown_Release(unk);
 }
 
+#define check_sample_delivery(a) check_sample_delivery_(__LINE__, a)
+static void check_sample_delivery_(unsigned int line, HANDLE event)
+{
+    HRESULT hr;
+    UINT i;
+
+    WaitForSingleObject(event, 0);
+    /* Get five samples since Wine's mf session implementation sends four requests initially. */
+    for (i = 0; i < 5; ++i)
+    {
+        hr = WaitForSingleObject(event, 200);
+        ok_(__FILE__, line)(hr == WAIT_OBJECT_0, "%u: Unexpected hr %#lx.\n", i, hr);
+    }
+}
+
 static HWND create_window(void)
 {
     RECT r = {0, 0, 640, 480};
@@ -3206,6 +3221,12 @@ static HRESULT WINAPI test_grabber_callback_OnProcessSample(IMFSampleGrabberSink
 
     if (!grabber->ready_event)
         return E_NOTIMPL;
+
+    if (!grabber->done_event)
+    {
+        SetEvent(grabber->ready_event);
+        return S_OK;
+    }
 
     sample = create_sample(buffer, sample_size);
     hr = IMFSample_SetSampleFlags(sample, sample_flags);
@@ -7006,6 +7027,8 @@ static void test_media_session_Start(void)
     }
 
     grabber_callback = impl_from_IMFSampleGrabberSinkCallback(create_test_grabber_callback());
+    grabber_callback->ready_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    ok(!!grabber_callback->ready_event, "CreateEventW failed, error %lu\n", GetLastError());
     hr = MFCreateMediaType(&output_type);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     init_media_type(output_type, video_rgb32_desc, -1);
@@ -7043,6 +7066,7 @@ static void test_media_session_Start(void)
     hr = IMFPresentationClock_GetTime(presentation_clock, &time);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok(llabs(time - 10000000) <= allowed_error, "Unexpected time %I64d.\n", time);
+    check_sample_delivery(grabber_callback->ready_event);
 
     /* Seek to beyond duration */
     propvar.vt = VT_I8;
@@ -7073,6 +7097,7 @@ static void test_media_session_Start(void)
     hr = IMFPresentationClock_GetTime(presentation_clock, &time);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok(llabs(time) <= allowed_error, "Unexpected time %I64d.\n", time);
+    check_sample_delivery(grabber_callback->ready_event);
 
     /* Seek to 1s while in paused state */
     hr = IMFMediaSession_Pause(session);
@@ -7097,6 +7122,28 @@ static void test_media_session_Start(void)
     hr = IMFPresentationClock_GetTime(presentation_clock, &time);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok(time > old_time, "Unexpected time %I64d.\n", time);
+
+    check_sample_delivery(grabber_callback->ready_event);
+
+    /* Pause followed by immediate restart at current time.
+     * Planet of the Apes: Last Frontier does this in a cutscene. */
+    propvar.vt = VT_I8;
+    propvar.hVal.QuadPart = 0;
+    hr = IMFMediaSession_Start(session, &GUID_NULL, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFMediaSession_Pause(session);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = wait_media_event(session, callback, MESessionPaused, 1000, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = IMFPresentationClock_GetTime(presentation_clock, &time);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    propvar.vt = VT_I8;
+    propvar.hVal.QuadPart = time;
+    hr = IMFMediaSession_Start(session, &GUID_NULL, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    hr = wait_media_event(session, callback, MESessionStarted, 1000, &propvar);
+    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+    check_sample_delivery(grabber_callback->ready_event);
 
     hr = IMFMediaSession_Stop(session);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
@@ -7140,6 +7187,8 @@ static void test_media_session_Start(void)
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok((caps & MFMEDIASOURCE_CAN_SEEK) == 0, "Got unexpected caps %#lx.\n", caps);
     grabber_callback = impl_from_IMFSampleGrabberSinkCallback(create_test_grabber_callback());
+    grabber_callback->ready_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    ok(!!grabber_callback->ready_event, "CreateEventW failed, error %lu\n", GetLastError());
     hr = MFCreateMediaType(&output_type);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     init_media_type(output_type, video_rgb32_desc, -1);
@@ -7170,6 +7219,8 @@ static void test_media_session_Start(void)
     hr = IMFMediaSession_GetSessionCapabilities(session, &caps);
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
     ok((caps & MFSESSIONCAP_SEEK) == 0, "Got unexpected caps %#lx\n", caps);
+
+    check_sample_delivery(grabber_callback->ready_event);
 
     /* Seek to 1s */
     propvar.vt = VT_I8;
@@ -7263,6 +7314,9 @@ static void test_media_session_Start(void)
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
         hr = IMFMediaSession_Close(session);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        /* Wait for close to avoid the occasional assertion when MFShutdown() is called in Wine.
+         * Waiting for MESessionClosed would be correct, but Windows doesn't send it here. */
+        Sleep(10);
         hr = IMFMediaSession_Shutdown(session);
         ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
         hr = IMFMediaSource_Shutdown(source);
