@@ -496,7 +496,9 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
         RegSetValueExW(key, L"DeviceState", 0, REG_DWORD, (const BYTE*)&state, sizeof(DWORD));
         if (!RegCreateKeyExW(key, L"Properties", 0, NULL, 0, KEY_WRITE|KEY_READ|KEY_WOW64_64KEY, NULL, &keyprop, NULL))
         {
+            const WCHAR *type = L"Other Device";
             PROPVARIANT pv;
+            DWORD len;
 
             pv.vt = VT_LPWSTR;
             pv.pwszVal = cur->drv_id;
@@ -515,9 +517,22 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
                 PropVariantClear(&pv2);
             }
 
-            MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_FriendlyName, &pv);
             MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_DeviceInterface_FriendlyName, &pv);
+
+            if (flow == eCapture)
+                type = L"Microphone";
+            else if (flow == eRender)
+                type = L"Speakers";
+
+            pv.pwszVal = (LPWSTR)type;
             MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_DeviceDesc, &pv);
+
+            len = (wcslen(type) + wcslen(cur->drv_id) + wcslen(L" ()") + 1) * sizeof(WCHAR);
+            pv.vt = VT_LPWSTR;
+            pv.pwszVal = CoTaskMemAlloc(len);
+            swprintf(pv.pwszVal, len, L"%ls (%ls)", type, cur->drv_id);
+            MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_FriendlyName, &pv);
+            CoTaskMemFree(pv.pwszVal);
 
             pv.pwszVal = guidstr;
             MMDevice_SetPropValue(id, flow, &deviceinterface_key, &pv);
