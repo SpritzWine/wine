@@ -492,10 +492,14 @@ BOOLEAN WINAPI KeSetTimerEx( KTIMER *timer, LARGE_INTEGER duetime, LONG period, 
 
     EnterCriticalSection( &sync_cs );
 
-    if ((ret = timer->Header.Inserted))
-        KeCancelTimer(timer);
-
+    ret = timer->Header.Inserted;
     timer->Header.Inserted = TRUE;
+    timer->Header.SignalState = FALSE;
+    if (timer->Header.WaitListHead.Blink && !*((ULONG_PTR *)&timer->Header.WaitListHead.Flink))
+    {
+        CloseHandle(timer->Header.WaitListHead.Blink);
+        timer->Header.WaitListHead.Blink = NULL;
+    }
 
     if (!timer->TimerListEntry.Blink)
         timer->TimerListEntry.Blink = (void *)CreateThreadpoolTimer(ke_timer_complete_proc, timer, NULL);

@@ -597,6 +597,14 @@ static void WINAPI test_sync_dpc(KDPC *dpc, void *context, void *system_argument
     c->called = TRUE;
 }
 
+static void WINAPI test_sync_dpc_2(KDPC *dpc, void *context, void *system_argument1, void *system_argument2)
+{
+    KTIMER *timer = context;
+    LARGE_INTEGER timeout = {.QuadPart = -20 * 10000};
+
+    KeSetTimerEx(timer, timeout, 0, dpc);
+}
+
 static void test_sync(void)
 {
     static const ULONG wine_tag = 0x454e4957; /* WINE */
@@ -610,7 +618,7 @@ static void test_sync(void)
     void *objs[2];
     KTIMER timer;
     NTSTATUS ret;
-    KDPC dpc;
+    KDPC dpc, dpc_2;
     int i;
 
     KeInitializeEvent(&manual_event, NotificationEvent, FALSE);
@@ -943,6 +951,17 @@ static void test_sync(void)
 
     ret = wait_single(&timer, -40 * 10000);
     ok(ret == WAIT_TIMEOUT, "got %#lx\n", ret);
+
+    KeCancelTimer(&timer);
+    /* Test re-setting timer in dpc */
+    KeInitializeDpc(&dpc_2, test_sync_dpc_2, &timer);
+    KeSetTimerEx(&timer, timeout, 0, &dpc_2);
+    ret = wait_single(&timer, -40 * 10000);
+    ok(ret == 0, "got %#lx\n", ret);
+    ret = wait_single(&timer, -40 * 10000);
+    ok(ret == 0, "got %#lx\n", ret);
+    ret = wait_single(&timer, -40 * 10000);
+    ok(ret == 0, "got %#lx\n", ret);
 
     KeCancelTimer(&timer);
     /* Test reinitializing timer. */
