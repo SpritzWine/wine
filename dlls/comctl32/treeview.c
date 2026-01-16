@@ -3407,11 +3407,16 @@ TREEVIEW_Collapse(TREEVIEW_INFO *infoPtr, TREEVIEW_ITEM *item,
     if (!TREEVIEW_HasChildren(infoPtr, item))
 	return FALSE;
 
-    if (bUser && TREEVIEW_SendExpanding(infoPtr, item, action))
-        return TRUE;
-
+    /* 
+     * the child items may not actually exist, they could be virtual.
+     * Just use item->firstChild to check for physical children,
+     * before TREEVIEW_SendExpanding may change it.
+    */
     if (item->firstChild == NULL)
 	return FALSE;
+
+    if (bUser && TREEVIEW_SendExpanding(infoPtr, item, action))
+        return TRUE;
 
     wasExpanded = (item->state & TVIS_EXPANDED) != 0;
     item->state &= ~TVIS_EXPANDED;
