@@ -9741,8 +9741,52 @@ static void test_debuggee_segments(void)
 {
     void (CDECL *func)(void) = code_mem;
 
+    if (GetEnvironmentVariableA("AVOID_FS_GS_WRITE", NULL, 0))
+    {
+        skip("Processes modifying fs/gs registers are crashing, skipping test.\n");
+        return;
+    }
+
     memcpy( code_mem, except_code_segments, sizeof(except_code_segments));
     func();
+}
+#endif
+
+#if defined(__x86_64__)
+static void fs_gs_write(void)
+{
+    __asm__(
+        "mov %fs,%eax; "
+        "mov %eax,%fs; "
+        "mov %gs,%eax; "
+        "mov %eax,%gs"
+    );
+    trace("Wrote to fs and gs registers.\n");
+}
+
+static void fs_gs_write_check(void)
+{
+    char **argv;
+    char cmdline[MAX_PATH];
+    STARTUPINFOA si = {.cb = sizeof(si)};
+    PROCESS_INFORMATION pi;
+    DWORD ret;
+
+    if (!winetest_platform_is_wine)
+        return;
+
+    winetest_get_mainargs(&argv);
+    sprintf(cmdline, "%s exception fs_gs_write", argv[0]);
+    ret = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    ok(ret, "Failed to create target process.\n");
+
+    WaitForSingleObject(pi.hProcess, 30000);
+    ok(GetExitCodeProcess(pi.hProcess, &ret), "GetExitCodeProcess failed.\n");
+    if (ret)
+        SetEnvironmentVariableA("AVOID_FS_GS_WRITE", "1");
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
 }
 #endif
 
@@ -12366,6 +12410,14 @@ START_TEST(exception)
         return;
     }
 
+#if defined(__x86_64__)
+    if (my_argc >= 3 && !strcmp(my_argv[2], "fs_gs_write"))
+    {
+        fs_gs_write();
+        return;
+    }
+#endif
+
     code_mem = VirtualAlloc(NULL, 65536, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     if(!code_mem) {
         trace("VirtualAlloc failed\n");
@@ -12624,6 +12676,9 @@ START_TEST(exception)
     test_KiUserApcDispatcher();
     test_KiUserCallbackDispatcher();
     test_rtlraiseexception();
+#if defined(__x86_64__)
+    fs_gs_write_check();
+#endif
     test_debugger(DBG_EXCEPTION_HANDLED, FALSE);
     test_debugger(DBG_CONTINUE, FALSE);
     test_debugger(DBG_EXCEPTION_HANDLED, TRUE);
