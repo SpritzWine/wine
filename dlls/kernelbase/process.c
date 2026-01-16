@@ -87,10 +87,20 @@ static WCHAR *get_file_name( WCHAR *cmdline, WCHAR *buffer, DWORD buflen )
 
     if (cmdline[0] == '"' && (p = wcschr( cmdline + 1, '"' )))
     {
-        int len = p - cmdline - 1;
+        int len;
+        /* trim spaces in quotes */
+        const WCHAR* start = cmdline + 1;
+        const WCHAR* end = p - 1;
+        while (*end == ' ' && end > start) end--;
+        if (end < start)
+        {
+            SetLastError( ERROR_INVALID_PARAMETER );
+            return ret;
+        }
+        len = end - start + 1;
         /* extract the quoted portion as file name */
         if (!(name = RtlAllocateHeap( GetProcessHeap(), 0, (len + 1) * sizeof(WCHAR) ))) return NULL;
-        memcpy( name, cmdline + 1, len * sizeof(WCHAR) );
+        memcpy( name, start, len * sizeof(WCHAR) );
         name[len] = 0;
 
         if (!find_exe_file( name, buffer, buflen )) goto done;
