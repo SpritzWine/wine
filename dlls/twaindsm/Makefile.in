@@ -1,6 +1,6 @@
 MODULE    = twaindsm.dll
 IMPORTLIB = twaindsm
-IMPORTS   = user32
+IMPORTS   = user32 kernelbase
 
 SOURCES = \
 	dsm_ctrl.c \

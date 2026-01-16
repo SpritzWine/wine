@@ -26,6 +26,7 @@
 #include "windef.h"
 #include "winbase.h"
 #include "winuser.h"
+#include "winreg.h"
 #include "twain.h"
 #include "twain_i.h"
 #include "resource.h"
@@ -230,6 +231,161 @@ static const TW_ENTRYPOINT _entrypoints = {
  .DSM_MemUnlock = _DSM_MemUnlock
 };
 
+
+/* Registry key to store the twain default data source to */
+#ifdef WIN64
+#  define TWAINDSM_REG_LOC "Software\\Wine\\twaindsm64\\Default Source"
+#else
+#  define TWAINDSM_REG_LOC "Software\\Wine\\twaindsm32\\Default Source"
+#endif
+
+/** @brief Find the default data source.
+ *
+ *  If the data source stored in the registry is in the
+ *  list of available data sources, return it.
+ *  Otherwise return the first data source autodetected.
+ *
+ *  @param pOrigin     Application Identity
+ *  @param pDest       OUT: Data Source identity retrieved.
+ *  @return TWRC_SUCCESS on success
+ */
+static TW_UINT16
+twain_get_default_ds(pTW_IDENTITY pOrigin, pTW_IDENTITY pDest)
+{
+    TW_UINT16 twRC = TWRC_FAILURE;
+    HKEY hKey;
+
+    twain_autodetect();
+
+    if (RegOpenKeyExA(HKEY_CURRENT_USER,
+                      TWAINDSM_REG_LOC,
+                      0,
+                      KEY_READ,
+                      &hKey) == ERROR_SUCCESS )
+    {
+        TW_IDENTITY read;
+
+        DWORD dwType;
+        DWORD dwSizeManufacturer = sizeof(read.Manufacturer);
+        DWORD dwSizeProductFamily= sizeof(read.ProductFamily);
+        DWORD dwSizeProductName = sizeof(read.ProductName);
+
+        if (RegQueryValueExA(hKey,
+                             "Manufacturer",
+                             NULL,
+                             &dwType,
+                             (LPBYTE)read.Manufacturer,
+                             &dwSizeManufacturer) == ERROR_SUCCESS &&
+            dwType == REG_SZ &&
+            RegQueryValueExA(hKey,
+                            "ProductFamily",
+                             NULL,
+                             &dwType,
+                             (LPBYTE)read.ProductFamily,
+                             &dwSizeProductFamily) == ERROR_SUCCESS &&
+            dwType == REG_SZ &&
+            RegQueryValueExA(hKey,
+                             "ProductName",
+                             NULL,
+                             &dwType,
+                             (LPBYTE)read.ProductName,
+                             &dwSizeProductName) == ERROR_SUCCESS &&
+            dwType == REG_SZ)
+        {
+            /* Scan the list of available data sources if the one from
+             * the registry is among them */
+            for (int i=0; i<nrdevices && twRC == TWRC_FAILURE; i++)
+            {
+                if (!strcmp(devices[i].identity.Manufacturer, read.Manufacturer) &&
+                    !strcmp(devices[i].identity.ProductFamily, read.ProductFamily) &&
+                    !strcmp(devices[i].identity.ProductName, read.ProductName) )
+                {
+                    /* Found a match */
+                    *pDest = devices[i].identity;
+                    twRC = TWRC_SUCCESS;
+                }
+            }
+        }
+
+        // Close the registry key handle.
+        RegCloseKey(hKey);
+    }
+
+    if (twRC == TWRC_FAILURE &&
+        nrdevices)
+    {
+        /* No adequate default stored, return the first match available */
+        *pDest = devices[0].identity;
+        twRC = TWRC_SUCCESS;
+    }
+    else
+    {
+        DSM_twCC = TWCC_NODS;
+    }
+    return twRC;
+}
+
+
+
+
+/** @brief Save the seleted default data source to the registry
+ *
+ *  @param pSource     Data source Identity
+ */
+static void
+twain_save_default_ds(const TW_IDENTITY *pSource)
+{
+    HKEY hKey;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER,
+                        TWAINDSM_REG_LOC,
+                        0,
+                        NULL,
+                        0,
+                        KEY_WRITE,
+                        NULL,
+                        &hKey,
+                        NULL) == ERROR_SUCCESS)
+    {
+        if (RegSetValueExA(hKey,
+                           "Manufacturer",
+                           0,
+                           REG_SZ,
+                           (LPBYTE)pSource->Manufacturer,
+                           strlen(pSource->Manufacturer)+1) == ERROR_SUCCESS &&
+            RegSetValueExA(hKey,
+                           "ProductFamily",
+                           0,
+                           REG_SZ,
+                           (LPBYTE)pSource->ProductFamily,
+                           strlen(pSource->ProductFamily)+1) == ERROR_SUCCESS &&
+            RegSetValueExA(hKey,
+                           "ProductName",
+                           0,
+                           REG_SZ,
+                           (LPBYTE)pSource->ProductName,
+                           strlen(pSource->ProductName)+1) == ERROR_SUCCESS)
+        {
+            TRACE("Saved new default data source (%s, %s, %s)\n",
+                  pSource->Manufacturer, pSource->ProductFamily, pSource->ProductName);
+        }
+        else
+        {
+            ERR("Failed to save new default data source\n");
+        }
+
+        // Close the registry key handle.
+        RegCloseKey(hKey);
+    }
+    else
+    {
+        ERR("Failed to create registry key for default data source\n");
+    }
+}
+
+
+
+
+
 /* DG_CONTROL/DAT_NULL/MSG_CLOSEDSREQ|MSG_DEVICEEVENT|MSG_XFERREADY */
 TW_UINT16 TWAIN_ControlNull (pTW_IDENTITY pOrigin, pTW_IDENTITY pDest, activeDS *pSource, TW_UINT16 MSG, TW_MEMREF pData)
 {
@@ -387,13 +543,7 @@ TW_UINT16 TWAIN_IdentityGetDefault (pTW_IDENTITY pOrigin, TW_MEMREF pData)
 	pTW_IDENTITY pSourceIdentity = (pTW_IDENTITY) pData;
 
 	TRACE("DG_CONTROL/DAT_IDENTITY/MSG_GETDEFAULT\n");
-	DSM_twCC = TWCC_NODS;
-	twain_autodetect();
-	if (!nrdevices)
-		return TWRC_FAILURE;
-	*pSourceIdentity = devices[0].identity;
-	DSM_twCC = TWCC_SUCCESS;
-	return TWRC_SUCCESS;
+    return twain_get_default_ds(pOrigin, pSourceIdentity);
 }
 
 /* DG_CONTROL/DAT_IDENTITY/MSG_GETFIRST */
@@ -449,6 +599,10 @@ TW_UINT16 TWAIN_OpenDS (pTW_IDENTITY pOrigin, TW_MEMREF pData)
 		return TWRC_FAILURE;
 	}
 
+	if (!pIdentity->ProductName[0]) {
+		twain_get_default_ds(pOrigin, pIdentity);
+	}
+
 	if (pIdentity->ProductName[0] != '\0') {
 		/* Make sure the source to be opened exists in the device list */
 		for (i = 0; i<nrdevices; i++)
@@ -457,6 +611,8 @@ TW_UINT16 TWAIN_OpenDS (pTW_IDENTITY pOrigin, TW_MEMREF pData)
 		if (i == nrdevices)
 			i = 0;
 	} /* else use the first device */
+
+	*pIdentity = devices[i].identity;
 
 	/* the source is found in the device list */
 	newSource = HeapAlloc (GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof (activeDS));
@@ -482,13 +638,6 @@ TW_UINT16 TWAIN_OpenDS (pTW_IDENTITY pOrigin, TW_MEMREF pData)
 	}
 	/* Assign id for the opened data source */
 	pIdentity->Id = DSM_sourceId ++;
-	/* Get the Identity of the new DS, so we know the SupportedGroups */
-	if (TWRC_SUCCESS != newSource->dsEntry (NULL, DG_CONTROL, DAT_IDENTITY, MSG_GET, pIdentity)) {
-		DSM_twCC = TWCC_OPERATIONERROR;
-		HeapFree(GetProcessHeap(), 0, newSource);
-		DSM_sourceId--;
-		return TWRC_FAILURE;
-	}
 	/* Tell the source our entry points */
 	if (pIdentity->SupportedGroups & DF_DS2) {
 		/* This makes sure that the DS knows the current address of our DSM_Entry
@@ -535,6 +684,7 @@ static INT_PTR CALLBACK userselect_dlgproc (HWND hwnd, UINT msg, WPARAM wparam, 
         int i;
         HWND sourcelist;
         BOOL any_devices = FALSE;
+        int selected_index = 0;
 
         SetWindowLongPtrW(hwnd, DWLP_USER, (LONG_PTR)data);
 
@@ -551,14 +701,17 @@ static INT_PTR CALLBACK userselect_dlgproc (HWND hwnd, UINT msg, WPARAM wparam, 
             index = SendMessageA(sourcelist, LB_ADDSTRING, 0, (LPARAM)id->ProductName);
             SendMessageW(sourcelist, LB_SETITEMDATA, (WPARAM)index, (LPARAM)i);
             any_devices = TRUE;
+
+            if (!strcmp(data->result->ProductName, id->ProductName))
+                selected_index = index;
         }
 
         if (any_devices)
         {
             EnableWindow(GetDlgItem(hwnd, IDOK), TRUE);
 
-            /* FIXME: Select the supplied product name or default source. */
-            SendMessageW(sourcelist, LB_SETCURSEL, 0, 0);
+            /* Select the supplied product name or default source. */
+            SendMessageW(sourcelist, LB_SETCURSEL, selected_index, 0);
         }
 
         return TRUE;
@@ -590,7 +743,8 @@ static INT_PTR CALLBACK userselect_dlgproc (HWND hwnd, UINT msg, WPARAM wparam, 
 
             *data->result = devices[index].identity;
 
-            /* FIXME: Save this as the default source */
+            /* Save this as the default source */
+            twain_save_default_ds(&devices[index].identity);
 
             EndDialog(hwnd, 1);
             return TRUE;
@@ -609,7 +763,7 @@ TW_UINT16 TWAIN_UserSelect (pTW_IDENTITY pOrigin, TW_MEMREF pData)
     TRACE("DG_CONTROL/DAT_IDENTITY/MSG_USERSELECT SupportedGroups=0x%lx ProductName=%s\n",
         pOrigin->SupportedGroups, wine_dbgstr_a(param.result->ProductName));
 
-    twain_autodetect();
+    twain_get_default_ds(pOrigin, (TW_IDENTITY *) pData);
 
     if (!IsWindow(parent))
         parent = NULL;
