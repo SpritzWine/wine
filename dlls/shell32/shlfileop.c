@@ -1695,6 +1695,7 @@ enum copy_engine_opcode
 {
     COPY_ENGINE_MOVE,
     COPY_ENGINE_REMOVE_DIRECTORY_SILENT,
+    COPY_ENGINE_NEW_ITEM_DIRECTORY,
 };
 
 #define TSF_UNKNOWN_MEGRE_FLAG 0x1000
@@ -2039,6 +2040,57 @@ static HRESULT perform_file_operations(struct file_operation *operation)
                     IShellItem_Release(p.new_item);
                 break;
             }
+
+            case COPY_ENGINE_NEW_ITEM_DIRECTORY:
+            {
+                WCHAR *folder_path;
+                WCHAR name_path[MAX_PATH];
+                size_t name_len;
+                DWORD attrb;
+
+                /* Native crashes with a NULL IShellItem *, so do we */
+                IShellItem_GetDisplayName(op->folder, SIGDN_FILESYSPATH, &folder_path);
+                attrb = GetFileAttributesW(folder_path);
+                if(attrb == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND)
+                {
+                    if (!CreateDirectoryW(folder_path, NULL))
+                        return HRESULT_FROM_WIN32(GetLastError());
+                }
+                if(IsAttribFile(attrb))
+                {
+                    return E_FAIL;
+                }
+
+                name_len = wcslen(op->name);
+                if (name_len == 0 || name_len + 1 >= 256)
+                    return E_UNEXPECTED;
+
+                if (!PathCombineW(name_path, folder_path, op->name))
+                    return HRESULT_FROM_WIN32(GetLastError());
+
+                attrb = GetFileAttributesW(name_path);
+                if(attrb == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND)
+                {
+                    if (!CreateDirectoryW(name_path, NULL))
+                        return HRESULT_FROM_WIN32(GetLastError());
+                }
+                else if (attrb == FILE_ATTRIBUTE_DIRECTORY)
+                {
+                    unsigned int n = 2;
+                    WCHAR name_path_n[MAX_PATH];
+                    do {
+                        swprintf(name_path_n, ARRAY_SIZE(name_path_n), L"%s (%u)", name_path, n);
+                        attrb = GetFileAttributesW(name_path_n);
+                        ++n;
+                    } while (attrb == FILE_ATTRIBUTE_DIRECTORY);
+
+                    if (!CreateDirectoryW(name_path_n, NULL))
+                        return HRESULT_FROM_WIN32(GetLastError());
+                }
+
+                CoTaskMemFree(folder_path);
+                break;
+            }
         }
         set_file_operation_progress(operation, list_count(&operation->ops), operation->progress_sofar + 1);
         TRACE("op %d, hr %#lx.\n", op->opcode, hr);
@@ -2261,13 +2313,34 @@ static HRESULT WINAPI file_operation_DeleteItems(IFileOperation *iface, IUnknown
     return E_NOTIMPL;
 }
 
-static HRESULT WINAPI file_operation_NewItem(IFileOperation *iface, IShellItem *folder, DWORD attributes,
-        LPCWSTR name, LPCWSTR template, IFileOperationProgressSink *sink)
+static HRESULT WINAPI file_operation_NewItem(IFileOperation *iface, IShellItem *folder,
+        DWORD attributes, LPCWSTR name, LPCWSTR template, IFileOperationProgressSink *sink)
 {
-    FIXME("(%p, %p, %lx, %s, %s, %p): stub.\n", iface, folder, attributes,
-          debugstr_w(name), debugstr_w(template), sink);
+    size_t name_len;
 
-    return E_NOTIMPL;
+    TRACE("(%p, %p, %lx, %s, %s, %p).\n", iface, folder, attributes,
+        debugstr_w(name), debugstr_w(template), sink);
+
+    /* Native crashes with a NULL name, so do we */
+    name_len = wcslen(name);
+
+    if (attributes == FILE_ATTRIBUTE_DIRECTORY)
+    {
+        add_operation(impl_from_IFileOperation(iface),
+            COPY_ENGINE_NEW_ITEM_DIRECTORY, NULL, folder, name, NULL, 0, NULL);
+    }
+    else
+    {
+        FIXME("Unsupported attributes %#lx.\n", attributes);
+        return E_NOTIMPL;
+    }
+
+    if (name_len == 0)
+        return E_INVALIDARG;
+    else if (name_len + 1 >= 256)
+        return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
+
+    return S_OK;
 }
 
 static HRESULT WINAPI file_operation_PerformOperations(IFileOperation *iface)

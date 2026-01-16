@@ -96,6 +96,17 @@ static BOOL file_existsW(LPCWSTR name)
   return GetFileAttributesW(name) != INVALID_FILE_ATTRIBUTES;
 }
 
+static BOOL dir_existsW(const WCHAR *name)
+{
+    DWORD attr;
+    BOOL dir;
+
+    attr = GetFileAttributesW(name);
+    dir = ((attr & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY);
+
+    return ((attr != INVALID_FILE_ATTRIBUTES) && dir);
+}
+
 static BOOL file_has_content(const CHAR *name, const CHAR *content)
 {
     CHAR buf[MAX_PATH];
@@ -3059,6 +3070,158 @@ static void test_file_operation(void)
     refcount = IFileOperationProgressSink_Release(progress);
     ok(!refcount, "got %ld.\n", refcount);
     refcount = IFileOperationProgressSink_Release(progress2);
+    ok(!refcount, "got %ld.\n", refcount);
+
+    /* IFileOperation_NewItem tests */
+
+    hr = CoCreateInstance(&CLSID_FileOperation, NULL, CLSCTX_INPROC_SERVER, &IID_IFileOperation, (void **)&operation);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = SHCreateItemFromParsingName(dirpath, NULL, &IID_IShellItem, (void**)&folder);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+
+    /* NewItem then PerformOperations, NewItem then PerformOperations */
+    hr = IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_PerformOperations(operation);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    PathCombineW(path, dirpath, L"test_dir");
+    ok(dir_existsW(path), "directory should exist.\n");
+
+    hr = IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_PerformOperations(operation);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    PathCombineW(path, dirpath, L"test_dir (2)");
+    ok(dir_existsW(path), "directory should exist.\n");
+
+    /* NewItem, NewItem, then PerformOperations */
+    hr = IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_PerformOperations(operation);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    PathCombineW(path, dirpath, L"test_dir (3)");
+    ok(dir_existsW(path), "directory should exist.\n");
+    PathCombineW(path, dirpath, L"test_dir (4)");
+    ok(dir_existsW(path), "directory should exist.\n");
+
+    /* In-between dir suffix */
+    IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir (7)", NULL, NULL);
+    IFileOperation_PerformOperations(operation);
+    IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    IFileOperation_PerformOperations(operation);
+    PathCombineW(path, dirpath, L"test_dir (5)");
+    ok(dir_existsW(path), "directory should exist.\n");
+    PathCombineW(path, dirpath, L"test_dir (6)");
+    ok(dir_existsW(path), "directory should exist.\n");
+    PathCombineW(path, dirpath, L"test_dir (7)");
+    ok(dir_existsW(path), "directory should exist.\n");
+
+    /* Intermediate folder deletion but creation through its IShellItem * */
+    PathCombineW(path, dirpath, L"test_dir");
+    hr = SHCreateItemFromParsingName(path, NULL, &IID_IShellItem, (void**)&item);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    RemoveDirectoryW(path);
+
+    hr = IFileOperation_NewItem(operation, item, FILE_ATTRIBUTE_DIRECTORY, L"nested_test_dir", NULL, NULL);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_PerformOperations(operation);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    ok(dir_existsW(path), "directory should exist.\n");
+    PathCombineW(path, dirpath, L"test_dir\\nested_test_dir");
+    ok(dir_existsW(path), "directory should exist.\n");
+
+    /* Native NewItem passes with a NULL IShellIem pointer, but then PerformOperations crashes */
+    if (0)
+    {
+        hr = IFileOperation_NewItem(operation, NULL, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+        todo_wine ok(hr == S_OK, "got %#lx.\n", hr);
+        IFileOperation_PerformOperations(operation);
+    }
+
+    /* Valid but bogus (not a dir) IShellItem * */
+    PathCombineW(tmpfile, dirpath, L"testfile");
+    createTestFileW(tmpfile);
+    hr = SHCreateItemFromParsingName(tmpfile, NULL, &IID_IShellItem, (void**)&item2);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_NewItem(operation, item2, FILE_ATTRIBUTE_DIRECTORY, L"nested_test_dir", NULL, NULL);
+    ok(hr == S_OK, "got %#lx.\n", hr);
+    hr = IFileOperation_PerformOperations(operation);
+    ok(hr == E_FAIL, "got %#lx.\n", hr);
+
+    /* Bad IShellItem pointer Crashes native NewItem */
+    if (0)
+    {
+        folder = (IShellItem *)&cookie;
+            IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"test_dir", NULL, NULL);
+    }
+
+    /* Empty name for the new item */
+    hr = IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, L"", NULL, NULL);
+    ok(hr == S_OK /* Windows 7 */ || hr == E_INVALIDARG, "got %#lx.\n", hr);
+    if (hr == E_INVALIDARG)
+    {
+        /* Crashes w7 */
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == E_UNEXPECTED, "got %#lx.\n", hr);
+    }
+    else if (hr == S_OK)
+    {
+        /* Because in this case we skip the Release() called by PerformOperations */
+        IShellItem_Release(item);
+    }
+
+    /* NULL name crashes native */
+    if (0)
+    {
+        IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY, NULL, NULL, NULL);
+    }
+
+    /* The breaking point for the name length is >= 256 wide chars  */
+    hr = IFileOperation_NewItem(operation, folder, FILE_ATTRIBUTE_DIRECTORY,
+        L"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        L"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        L"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        L"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        NULL, NULL);
+    ok(hr == S_OK /* Windows 8.1, 10 v1507 */ ||
+        hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER) /* 7, newer 10, 11 */, "got %#lx.\n", hr);
+    if (hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER))
+    {
+        hr = IFileOperation_PerformOperations(operation);
+        ok(hr == E_UNEXPECTED, "got %#lx.\n", hr);
+    }
+
+    PathCombineW(path, dirpath, L"test_dir");
+    remove_directory(path);
+    PathCombineW(path, dirpath, L"test_dir (2)");
+    remove_directory(path);
+    PathCombineW(path, dirpath, L"test_dir (3)");
+    remove_directory(path);
+    PathCombineW(path, dirpath, L"test_dir (4)");
+    remove_directory(path);
+    PathCombineW(path, dirpath, L"test_dir (5)");
+    remove_directory(path);
+    PathCombineW(path, dirpath, L"test_dir (6)");
+    remove_directory(path);
+    PathCombineW(path, dirpath, L"test_dir (7)");
+    remove_directory(path);
+    ok(DeleteFileW(tmpfile), "expected testfile to exist\n");
+
+    IFileOperation_Release(operation);
+
+    refcount = IShellItem_Release(folder);
+    ok(!refcount, "got %ld.\n", refcount);
+
+    if (item)
+    {
+        refcount = IShellItem_Release(item);
+        ok(!refcount, "got %ld.\n", refcount);
+    }
+
+    refcount = IShellItem_Release(item2);
     ok(!refcount, "got %ld.\n", refcount);
 }
 
