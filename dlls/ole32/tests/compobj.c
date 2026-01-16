@@ -526,15 +526,11 @@ static void test_CLSIDFromProgID(void)
     ok(!ret, "Failed to create a test key.\n");
 
     hr = CLSIDFromProgID(L"MyApp.DocumentTest", &clsid);
-    todo_wine
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromProgID(L"MyApp.DocumentTest.1", &clsid);
-    todo_wine
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromProgID(L"MyApp.DocumentTest.2", &clsid);
@@ -552,15 +548,11 @@ static void test_CLSIDFromProgID(void)
     ok(IsEqualCLSID(&clsid, &CLSID_NULL), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromString(L"MyApp.DocumentTest", &clsid);
-    todo_wine
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromString(L"MyApp.DocumentTest.1", &clsid);
-    todo_wine
     ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     ok(IsEqualCLSID(&clsid, &CLSID_non_existent), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     hr = CLSIDFromString(L"MyApp.DocumentTest.2", &clsid);
@@ -569,15 +561,12 @@ static void test_CLSIDFromProgID(void)
 
     clsid = CLSID_StdFont;
     hr = CLSIDFromString(L"MyApp.DocumentTest.3", &clsid);
-    todo_wine
     ok(hr == REGDB_E_INVALIDVALUE, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     ok(IsEqualCLSID(&clsid, &CLSID_StdFont), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     clsid = CLSID_StdFont;
     hr = CLSIDFromString(L"MyApp.DocumentTest.5", &clsid);
     ok(hr == CO_E_CLASSSTRING, "Unexpected hr %#lx.\n", hr);
-    todo_wine
     ok(IsEqualCLSID(&clsid, &CLSID_StdFont), "Unexpected clsid %s.\n", wine_dbgstr_guid(&clsid));
 
     RegDeleteTreeW(HKEY_CLASSES_ROOT, L"MyApp.DocumentTest");

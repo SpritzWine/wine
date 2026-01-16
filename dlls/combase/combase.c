@@ -1391,8 +1391,11 @@ static BOOL guid_from_string(LPCWSTR s, GUID *id)
 
     if (!s || s[0] != '{')
     {
-        memset(id, 0, sizeof(*id));
-        if (!s) return TRUE;
+        if (!s)
+        {
+            memset(id, 0, sizeof(*id));
+            return TRUE;
+        }
         return FALSE;
     }
 
@@ -1441,35 +1444,92 @@ static BOOL guid_from_string(LPCWSTR s, GUID *id)
     return FALSE;
 }
 
-static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid)
+struct visited_node
 {
-    WCHAR buf2[CHARS_IN_GUID];
-    LONG buf2len = sizeof(buf2);
-    HKEY xhkey;
-    WCHAR *buf;
+    LPCOLESTR progid;
+    struct visited_node *next;
+};
 
-    memset(clsid, 0, sizeof(*clsid));
-    buf = malloc((lstrlenW(progid) + 8) * sizeof(WCHAR));
-    if (!buf) return E_OUTOFMEMORY;
+static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid, BOOL forceassign)
+{
+    HRESULT ret = CO_E_CLASSSTRING;
+    HKEY xhkey = NULL;
+    WCHAR szclsid[256] = {0};
+    LONG cbclsid = sizeof(szclsid);
+    static struct visited_node *visitedhead = NULL;
+    struct visited_node *cur = NULL, *p = NULL;
+    BOOL hitloop = FALSE;
 
-    lstrcpyW(buf, progid);
-    lstrcatW(buf, L"\\CLSID");
-    if (open_classes_key(HKEY_CLASSES_ROOT, buf, MAXIMUM_ALLOWED, &xhkey))
+    if (progid == NULL)
     {
-        free(buf);
-        WARN("couldn't open key for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
+        *clsid = CLSID_NULL;
+        return E_INVALIDARG;
     }
-    free(buf);
 
-    if (RegQueryValueW(xhkey, NULL, buf2, &buf2len))
+    if (*progid == 0)
+        return CO_E_CLASSSTRING;
+
+    for (p = visitedhead; p; p = p->next)
     {
+        if (lstrcmpiW(progid, p->progid) == 0)
+        {
+            hitloop = TRUE;
+            break;
+        }
+    }
+
+    if (hitloop)
+        return forceassign ? CO_E_CLASSSTRING : REGDB_E_INVALIDVALUE;
+
+    cur = (struct visited_node *)LocalAlloc(LMEM_FIXED, sizeof(struct visited_node));
+    if (!cur)
+        return E_OUTOFMEMORY;
+
+    cur->progid = progid;
+    cur->next = visitedhead;
+    visitedhead = cur;
+
+    if (SUCCEEDED(open_classes_key(HKEY_CLASSES_ROOT, progid, MAXIMUM_ALLOWED, &xhkey)))
+    {
+        if (RegQueryValueW(xhkey, L"CLSID", szclsid, &cbclsid) != ERROR_SUCCESS)
+        {
+            LONG cbcurver = 0;
+            if (RegQueryValueW(xhkey, L"CurVer", NULL, &cbcurver) == ERROR_SUCCESS)
+            {
+                if (cbcurver > 0)
+                {
+                    WCHAR *szcurver = (WCHAR *)LocalAlloc(LMEM_FIXED, cbcurver);
+                    if (szcurver && RegQueryValueW(xhkey, L"CurVer", szcurver, &cbcurver) == ERROR_SUCCESS)
+                    {
+                        if (cbcurver >= sizeof(WCHAR))
+                            szcurver[(cbcurver / sizeof(WCHAR)) - 1] = 0;
+
+                        if (szcurver[0] != 0 && lstrcmpiW(szcurver, progid) != 0)
+                        {
+                            RegCloseKey(xhkey);
+                            ret = clsid_from_string_reg(szcurver, clsid, forceassign);
+                            LocalFree(szcurver);
+                            goto cleanup;
+                        }
+                    }
+                    if (szcurver) LocalFree(szcurver);
+                }
+            }
+        }
+        else
+            ret = guid_from_string(szclsid, clsid) ? S_OK : REGDB_E_INVALIDVALUE;
+    }
+
+cleanup:
+    if (xhkey)
         RegCloseKey(xhkey);
-        WARN("couldn't query clsid value for ProgID %s\n", debugstr_w(progid));
-        return CO_E_CLASSSTRING;
-    }
-    RegCloseKey(xhkey);
-    return guid_from_string(buf2, clsid) ? S_OK : CO_E_CLASSSTRING;
+
+    if (visitedhead == cur)
+        visitedhead = cur->next;
+
+    LocalFree(cur);
+
+    return ret;
 }
 
 /******************************************************************************
@@ -1478,6 +1538,7 @@ static HRESULT clsid_from_string_reg(LPCOLESTR progid, CLSID *clsid)
 HRESULT WINAPI DECLSPEC_HOTPATCH CLSIDFromProgID(LPCOLESTR progid, CLSID *clsid)
 {
     ACTCTX_SECTION_KEYED_DATA data;
+    HRESULT hr;
 
     if (!progid || !clsid)
         return E_INVALIDARG;
@@ -1492,7 +1553,11 @@ HRESULT WINAPI DECLSPEC_HOTPATCH CLSIDFromProgID(LPCOLESTR progid, CLSID *clsid)
         return S_OK;
     }
 
-    return clsid_from_string_reg(progid, clsid);
+    hr = clsid_from_string_reg(progid, clsid, TRUE);
+    if (FAILED(hr))
+        *clsid = GUID_NULL;
+
+    return hr;
 }
 
 /******************************************************************************
@@ -1516,13 +1581,43 @@ HRESULT WINAPI CLSIDFromString(LPCOLESTR str, LPCLSID clsid)
     if (!clsid)
         return E_INVALIDARG;
 
+    if (str == NULL)
+    {
+        *clsid = GUID_NULL;
+        return S_OK;
+    }
+
+    if (*str == 0)
+	    return CO_E_CLASSSTRING;
+
     if (guid_from_string(str, clsid))
         return S_OK;
 
     /* It appears a ProgID is also valid */
-    hr = clsid_from_string_reg(str, &tmp_id);
+    hr = clsid_from_string_reg(str, &tmp_id, FALSE);
     if (SUCCEEDED(hr))
+    {
         *clsid = tmp_id;
+        return hr;
+    }
+
+    /* Validate the content of str: only allow letters, digits, and '.'
+       If any other character is found, reset clsid to GUID_NULL and return CO_E_CLASSSTRING */
+    if(str[0] != '{')
+    {
+        for (size_t i = 0; str[i]; i++)
+        {
+            WCHAR c = str[i];
+            if (!((c >= L'0' && c <= L'9') ||
+                  (c >= L'a' && c <= L'z') ||
+                  (c >= L'A' && c <= L'Z') ||
+                  (c == L'.')))
+            {
+                *clsid = GUID_NULL;
+                return CO_E_CLASSSTRING;
+            }
+        }
+    }
 
     return hr;
 }
