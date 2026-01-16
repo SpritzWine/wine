@@ -48,7 +48,7 @@ const char *winetest_platform;
 int winetest_platform_is_wine;
 int winetest_debug;
 int winetest_report_success;
-int winetest_color = 0;
+int winetest_color = 1;
 int winetest_time = 0;
 int winetest_start_time, winetest_last_time;
 
