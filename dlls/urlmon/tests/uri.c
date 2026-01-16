@@ -8050,6 +8050,7 @@ static const uri_parse_test uri_parse_tests[] = {
     {"zip://google.com/test<|>",0,PARSE_CANONICALIZE,0,"zip://google.com/test<|>",S_OK,FALSE},
     {"http://google.com/test<|>",0,PARSE_CANONICALIZE,0,"http://google.com/test%3C%7C%3E",S_OK,FALSE},
     {"http://google.com/%30%23%3F",0,PARSE_CANONICALIZE,URL_UNESCAPE,"http://google.com/0#?",S_OK,FALSE},
+    {"http://google.com/%30%23%3F/..",0,PARSE_CANONICALIZE,URL_UNESCAPE,"http://google.com/",S_OK,FALSE},
     {"test <|>",Uri_CREATE_ALLOW_RELATIVE,PARSE_CANONICALIZE,URL_ESCAPE_UNSAFE,"test %3C%7C%3E",S_OK,FALSE},
     {"test <|>",Uri_CREATE_ALLOW_RELATIVE,PARSE_CANONICALIZE,URL_ESCAPE_SPACES_ONLY,"test%20<|>",S_OK,FALSE},
     {"test%20<|>",Uri_CREATE_ALLOW_RELATIVE,PARSE_CANONICALIZE,URL_UNESCAPE|URL_ESCAPE_UNSAFE,"test%20%3C%7C%3E",S_OK,FALSE},
@@ -11517,8 +11518,20 @@ static void test_CoInternetParseIUri(void) {
         hr = pCreateUri(uriW, test.uri_flags, 0, &uri);
         ok(SUCCEEDED(hr), "Error: CreateUri returned 0x%08lx on uri_parse_tests[%ld].\n", hr, i);
         if(SUCCEEDED(hr)) {
-            WCHAR result[INTERNET_MAX_URL_LENGTH+1];
+            WCHAR result[INTERNET_MAX_URL_LENGTH+1], short_result[1];
             DWORD result_len = -1;
+
+            if (!test.expected && lstrlenA(test.property) > 1) {
+                /* test result_len calculation with insufficient buffer. */
+                hr = pCoInternetParseIUri(uri, test.action, test.flags, short_result, 1, &result_len, 0);
+                ok(hr == STRSAFE_E_INSUFFICIENT_BUFFER || broken(!hr && test.action == PARSE_CANONICALIZE),
+                    "Error: CoInternetParseIUri returned 0x%08lx, expected 0x%08lx on uri_parse_tests[%ld].\n",
+                    hr, STRSAFE_E_INSUFFICIENT_BUFFER, i);
+                ok(lstrlenA(test.property) == result_len || (test.property2 && lstrlenA(test.property2) == result_len) ||
+                    broken(test.action == PARSE_CANONICALIZE && result_len == 0),
+                    "Error: Expected %d, but got %ld instead on uri_parse_tests[%ld] - %s.\n",
+                    lstrlenA(test.property), result_len, i, wine_dbgstr_w(uriW));
+            }
 
             hr = pCoInternetParseIUri(uri, test.action, test.flags, result, INTERNET_MAX_URL_LENGTH+1, &result_len, 0);
             todo_wine_if(test.todo)

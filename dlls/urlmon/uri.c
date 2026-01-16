@@ -6502,9 +6502,10 @@ static HRESULT parse_canonicalize(const Uri *uri, DWORD flags, LPWSTR output,
                                   DWORD output_len, DWORD *result_len)
 {
     const WCHAR *ptr = NULL;
-    WCHAR *path = NULL;
+    WCHAR *write = output;
     const WCHAR **pptr;
-    DWORD len = 0;
+    DWORD len = 0, write_len = output_len;
+    int path_start = -1;
     BOOL reduce_path;
 
     /* URL_UNESCAPE only has effect if none of the URL_ESCAPE flags are set. */
@@ -6529,25 +6530,42 @@ static HRESULT parse_canonicalize(const Uri *uri, DWORD flags, LPWSTR output,
         /* Keep track of the path if we need to remove dot segments from
          * it later.
          */
-        if(reduce_path && !path && ptr == uri->canon_uri+uri->path_start)
-            path = output+len;
+        if(reduce_path && path_start < 0 && ptr == uri->canon_uri+uri->path_start)
+            path_start = len;
 
         /* Check if it's time to reduce the path. */
         if(reduce_path && ptr == uri->canon_uri+uri->path_start+uri->path_len) {
-            DWORD current_path_len = (output+len) - path;
-            DWORD new_path_len = remove_dot_segments(path, current_path_len);
+            DWORD current_path_len = len-path_start;
+            DWORD new_path_len = remove_dot_segments(write+path_start, current_path_len);
 
             /* Update the current length. */
             len -= (current_path_len-new_path_len);
             reduce_path = FALSE;
         }
 
+        if (len+3 >= write_len) {
+            /* we might write up to 3 chars in one iteration, make sure we expand at least that much */
+            write_len = write_len + max(write_len, len+3-write_len);
+            if (write == output) {
+                write = malloc(write_len * sizeof(*write));
+                if (!write)
+                    return E_OUTOFMEMORY;
+                memcpy(write, output, len * sizeof(*write));
+            } else {
+                void *alloc = realloc(write, write_len * sizeof(*write));
+                if (!alloc) {
+                    free(write);
+                    return E_OUTOFMEMORY;
+                }
+                write = alloc;
+            }
+        }
+
         if(*ptr == '%') {
             const WCHAR decoded = decode_pct_val(ptr);
             if(decoded) {
                 if(allow_unescape && (flags & URL_UNESCAPE)) {
-                    if(len < output_len)
-                        output[len] = decoded;
+                    write[len] = decoded;
                     len++;
                     ptr += 2;
                     do_default_action = FALSE;
@@ -6556,31 +6574,27 @@ static HRESULT parse_canonicalize(const Uri *uri, DWORD flags, LPWSTR output,
 
             /* See if %'s needed to encoded. */
             if(do_default_action && (flags & URL_ESCAPE_PERCENT)) {
-                if(len + 3 < output_len)
-                    pct_encode_val(*ptr, output+len);
+                pct_encode_val(*ptr, write+len);
                 len += 3;
                 do_default_action = FALSE;
             }
         } else if(*ptr == ' ') {
             if((flags & URL_ESCAPE_SPACES_ONLY) &&
                !(flags & URL_ESCAPE_UNSAFE)) {
-                if(len + 3 < output_len)
-                    pct_encode_val(*ptr, output+len);
+                pct_encode_val(*ptr, write+len);
                 len += 3;
                 do_default_action = FALSE;
             }
         } else if(is_ascii(*ptr) && !is_reserved(*ptr) && !is_unreserved(*ptr)) {
             if(flags & URL_ESCAPE_UNSAFE) {
-                if(len + 3 < output_len)
-                    pct_encode_val(*ptr, output+len);
+                pct_encode_val(*ptr, write+len);
                 len += 3;
                 do_default_action = FALSE;
             }
         }
 
         if(do_default_action) {
-            if(len < output_len)
-                output[len] = *ptr;
+            write[len] = *ptr;
             len++;
         }
     }
@@ -6588,14 +6602,18 @@ static HRESULT parse_canonicalize(const Uri *uri, DWORD flags, LPWSTR output,
     /* Sometimes the path is the very last component of the IUri, so
      * see if the dot segments need to be reduced now.
      */
-    if(reduce_path && path) {
-        DWORD current_path_len = (output+len) - path;
-        DWORD new_path_len = remove_dot_segments(path, current_path_len);
+    if(reduce_path && path_start >= 0) {
+        DWORD current_path_len = len-path_start;
+        DWORD new_path_len = remove_dot_segments(write+path_start, current_path_len);
 
         /* Update the current length. */
         len -= (current_path_len-new_path_len);
     }
 
+    if (write != output) {
+        memcpy(output, write, output_len * sizeof(*output));
+        free(write);
+    }
     if(len < output_len)
         output[len] = 0;
     else
