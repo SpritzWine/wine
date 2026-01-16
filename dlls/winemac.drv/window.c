@@ -56,7 +56,7 @@ static BOOL set_window_pos(HWND hwnd, HWND after, INT x, INT y, INT cx, INT cy, 
 }
 
 
-static struct macdrv_window_features get_window_features_for_style(DWORD style, DWORD ex_style, BOOL shaped)
+static struct macdrv_window_features get_window_features_for_style(struct macdrv_win_data *data, DWORD style, DWORD ex_style, BOOL shaped)
 {
     struct macdrv_window_features wf = {0};
 
@@ -67,11 +67,16 @@ static struct macdrv_window_features get_window_features_for_style(DWORD style, 
         wf.shadow = TRUE;
         if (!shaped)
         {
-            wf.title_bar = TRUE;
-            if (style & WS_SYSMENU) wf.close_button = TRUE;
-            if (style & WS_MINIMIZEBOX) wf.minimize_button = TRUE;
-            if (style & WS_MAXIMIZEBOX) wf.maximize_button = TRUE;
-            if (ex_style & WS_EX_TOOLWINDOW) wf.utility = TRUE;
+            if (data && ((data->rects.client.top - data->rects.window.top) < NtUserGetSystemMetrics(SM_CYCAPTION)))
+                wf.title_bar = FALSE;
+            else
+            {
+                wf.title_bar = TRUE;
+                if (style & WS_SYSMENU) wf.close_button = TRUE;
+                if (style & WS_MINIMIZEBOX) wf.minimize_button = TRUE;
+                if (style & WS_MAXIMIZEBOX) wf.maximize_button = TRUE;
+                if (ex_style & WS_EX_TOOLWINDOW) wf.utility = TRUE;
+            }
         }
     }
     if (style & WS_THICKFRAME)
@@ -95,7 +100,7 @@ static struct macdrv_window_features get_cocoa_window_features(struct macdrv_win
     if (ex_style & WS_EX_NOACTIVATE) wf.prevents_app_activation = TRUE;
     if (EqualRect(&data->rects.window, &data->rects.visible)) return wf;
 
-    return get_window_features_for_style(style, ex_style, data->shaped);
+    return get_window_features_for_style(data, style, ex_style, data->shaped);
 }
 
 
@@ -1562,7 +1567,11 @@ BOOL macdrv_WindowPosChanging(HWND hwnd, UINT swp_flags, BOOL shaped, const stru
  */
 BOOL macdrv_GetWindowStyleMasks(HWND hwnd, UINT style, UINT ex_style, UINT *style_mask, UINT *ex_style_mask)
 {
-    struct macdrv_window_features wf = get_window_features_for_style(style, ex_style, FALSE);
+    struct macdrv_win_data *data = get_win_data(hwnd);
+    struct macdrv_window_features wf;
+
+    wf = get_window_features_for_style(data, style, ex_style, FALSE);
+    release_win_data(data);
 
     *style_mask = ex_style = 0;
     if (wf.title_bar)
