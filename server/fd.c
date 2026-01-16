@@ -1974,6 +1974,17 @@ struct fd *open_fd( struct fd *root, const char *name, struct unicode_str nt_nam
     }
     else rw_mode = O_RDONLY;
 
+    if (options & FILE_NO_INTERMEDIATE_BUFFERING)
+    {
+#if defined(O_DIRECT) /* O_DIRECT is not available on OSX */
+        flags |= O_DIRECT;
+#endif
+        /* FILE_NO_INTERMEDIATE_BUFFERING implies FILE_WRITE_THROUGH according
+        to NtCreateFile() documentation */
+        options |= FILE_WRITE_THROUGH;
+    }
+    if (options & FILE_WRITE_THROUGH) flags |= O_SYNC;
+
     if ((fd->unix_fd = open( name, rw_mode | (flags & ~O_TRUNC), *mode )) == -1)
     {
         /* if we tried to open a directory for write access, retry read-only */
