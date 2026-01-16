@@ -63,6 +63,7 @@
 #include "error.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(environ);
+WINE_DECLARE_DEBUG_CHANNEL(unixcon);
 
 PEB *peb = NULL;
 WOW_PEB *wow_peb = NULL;
@@ -2150,16 +2151,20 @@ void *create_startup_info( const UNICODE_STRING *nt_image, ULONG process_flags,
 
     info->debug_flags   = params->DebugFlags;
     info->console_flags = params->ConsoleFlags;
-    if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI)
+    if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || TRACE_ON( unixcon ))
         info->console   = wine_server_obj_handle( params->ConsoleHandle );
     if ((process_flags & PROCESS_CREATE_FLAGS_INHERIT_HANDLES) ||
-        (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI && !(params->dwFlags & STARTF_USESTDHANDLES)))
+        (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI && !(params->dwFlags & STARTF_USESTDHANDLES))
+        || TRACE_ON( unixcon ))
     {
-        if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || !is_console_handle( params->hStdInput ))
+        if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || !is_console_handle( params->hStdInput )
+            || TRACE_ON( unixcon ))
             info->hstdin    = wine_server_obj_handle( params->hStdInput );
-        if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || !is_console_handle( params->hStdOutput ))
+        if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || !is_console_handle( params->hStdOutput )
+            || TRACE_ON( unixcon ))
             info->hstdout   = wine_server_obj_handle( params->hStdOutput );
-        if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || !is_console_handle( params->hStdError ))
+        if (pe_info->subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI || !is_console_handle( params->hStdError )
+            || TRACE_ON( unixcon ))
             info->hstderr   = wine_server_obj_handle( params->hStdError );
     }
     info->x             = params->dwX;
