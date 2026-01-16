@@ -2725,7 +2725,7 @@ static void shader_generate_glsl_declarations(const struct wined3d_context_gl *c
     if (reg_maps->temporary_count)
     {
         for (i = 0; i < reg_maps->temporary_count; ++i)
-            shader_addline(buffer, "vec4 R%u;\n", i);
+            shader_addline(buffer, "vec4 R%u = vec4(0.0, 0.0, 0.0, 0.0);\n", i);
     }
     else if (version->major < 4)
     {
@@ -8211,6 +8211,13 @@ static GLuint shader_glsl_generate_vertex_shader(const struct wined3d_context_gl
             shader_addline(buffer, "vs_in[%u] = vs_in%u;\n", e->register_idx, e->register_idx);
         }
     }
+    if (shader->limits->packed_output)
+    {
+        for (i = 0; i < shader->limits->packed_output; ++i)
+        {
+            shader_addline(buffer, "vs_out[%u] = vec4(0.0, 0.0, 0.0, 0.0);\n", i);
+        }
+    }
 
     if (FAILED(shader_generate_code(shader, buffer, reg_maps, &priv_ctx, NULL, NULL)))
         return 0;
@@ -8544,6 +8551,10 @@ static GLuint shader_glsl_generate_geometry_shader(const struct wined3d_context_
     }
 
     shader_addline(buffer, "void main()\n{\n");
+    for (i = 0; i < shader->limits->packed_output; ++i)
+    {
+        shader_addline(buffer, "gs_out[%u] = vec4(0.0, 0.0, 0.0, 0.0);\n", i);
+    }
     if (shader->function)
     {
         if (FAILED(shader_generate_code(shader, buffer, reg_maps, &priv_ctx, NULL, NULL)))
