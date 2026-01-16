@@ -120,6 +120,7 @@ static const WCHAR servicesW[] = {'\\','R','e','g','i','s','t','r','y',
 struct wine_device
 {
     DEVICE_OBJECT device_obj;
+    WCHAR *instance_id;
     DEVICE_RELATIONS *children;
     HKEY dyn_data_key;
 };

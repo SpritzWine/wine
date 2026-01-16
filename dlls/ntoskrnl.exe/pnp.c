@@ -384,15 +384,26 @@ static void enumerate_new_device( DEVICE_OBJECT *device, HDEVINFO set )
     static const WCHAR infpathW[] = {'I','n','f','P','a','t','h',0};
 
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
-    WCHAR device_instance_id[MAX_DEVICE_ID_LEN];
+    WCHAR *device_instance_id, *id;
     DEVICE_CAPABILITIES caps;
     BOOL need_driver = TRUE;
     NTSTATUS status;
     HKEY key;
-    WCHAR *id;
+
+    device_instance_id = HeapAlloc( GetProcessHeap(), 0, MAX_DEVICE_ID_LEN * sizeof(WCHAR) );
+    if (!device_instance_id)
+    {
+        ERR("Failed to allocate memory for device instance ID\n");
+        return;
+    }
 
     if (get_device_instance_id( device, device_instance_id ))
+    {
+        HeapFree( GetProcessHeap(), 0, device_instance_id );
         return;
+    }
+
+    CONTAINING_RECORD(device, struct wine_device, device_obj)->instance_id = device_instance_id;
 
     if (!SetupDiCreateDeviceInfoW( set, device_instance_id, &GUID_NULL, NULL, NULL, 0, &sp_device )
             && !SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device ))
@@ -591,20 +602,17 @@ NTSTATUS WINAPI IoGetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY
                                          LCID lcid, ULONG flags, ULONG size, void *data,
                                          ULONG *required_size, DEVPROPTYPE *property_type )
 {
+    struct wine_device *wine_device = CONTAINING_RECORD(device, struct wine_device, device_obj);
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
-    WCHAR device_instance_id[MAX_DEVICE_ID_LEN];
     HDEVINFO set;
-    NTSTATUS status;
 
     TRACE( "device %p, property_key %s, lcid %#lx, flags %#lx, size %lu, data %p, required_size %p, property_type %p\n",
            device, debugstr_propkey( property_key ), lcid, flags, size, data, required_size,
            property_type );
 
+    if (!wine_device->instance_id) return STATUS_INVALID_DEVICE_REQUEST;
     if (lcid == LOCALE_SYSTEM_DEFAULT || lcid == LOCALE_USER_DEFAULT) return STATUS_INVALID_PARAMETER;
     if (lcid != LOCALE_NEUTRAL) FIXME( "Only LOCALE_NEUTRAL is supported\n" );
-
-    status = get_device_instance_id( device, device_instance_id );
-    if (status != STATUS_SUCCESS) return status;
 
     set = SetupDiCreateDeviceInfoList( &GUID_NULL, NULL );
     if (set == INVALID_HANDLE_VALUE)
@@ -613,7 +621,7 @@ NTSTATUS WINAPI IoGetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY
         return GetLastError();
     }
 
-    if (!SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device ))
+    if (!SetupDiOpenDeviceInfoW( set, wine_device->instance_id, NULL, 0, &sp_device ))
     {
         ERR( "Failed to open device, error %#lx.\n", GetLastError() );
         SetupDiDestroyDeviceInfoList( set );
@@ -639,38 +647,31 @@ NTSTATUS WINAPI IoGetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY
 NTSTATUS WINAPI IoGetDeviceProperty( DEVICE_OBJECT *device, DEVICE_REGISTRY_PROPERTY property,
                                      ULONG length, void *buffer, ULONG *needed )
 {
+    struct wine_device *wine_device = CONTAINING_RECORD(device, struct wine_device, device_obj);
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
-    WCHAR device_instance_id[MAX_DEVICE_ID_LEN];
     DWORD sp_property = -1;
-    NTSTATUS status;
+    NTSTATUS status = STATUS_SUCCESS;
     HDEVINFO set;
 
     TRACE("device %p, property %u, length %lu, buffer %p, needed %p.\n",
             device, property, length, buffer, needed);
 
+    if (!wine_device->instance_id) return STATUS_INVALID_DEVICE_REQUEST;
+
     switch (property)
     {
         case DevicePropertyEnumeratorName:
         {
-            WCHAR *id, *ptr;
+            const WCHAR *id = wine_device->instance_id;
+            const WCHAR *ptr = wcschr( id, '\\' );
+            size_t len = ptr ? ptr - id : wcslen(id);
 
-            status = get_device_id( device, BusQueryDeviceID, &id );
-            if (status != STATUS_SUCCESS)
-            {
-                ERR("Failed to get instance ID, status %#lx.\n", status);
-                break;
-            }
-
-            ptr = wcschr( id, '\\' );
-            if (ptr) *ptr = 0;
-
-            *needed = sizeof(WCHAR) * (lstrlenW(id) + 1);
+            *needed = sizeof(WCHAR) * (len + 1);
             if (length >= *needed)
-                memcpy( buffer, id, *needed );
+                wcsncpy_s( buffer, len + 1, id, len );
             else
                 status = STATUS_BUFFER_TOO_SMALL;
 
-            ExFreePool( id );
             return status;
         }
         case DevicePropertyPhysicalDeviceObjectName:
@@ -758,16 +759,13 @@ NTSTATUS WINAPI IoGetDeviceProperty( DEVICE_OBJECT *device, DEVICE_REGISTRY_PROP
             return STATUS_NOT_IMPLEMENTED;
     }
 
-    if ((status = get_device_instance_id( device, device_instance_id )))
-        return status;
-
     if ((set = SetupDiCreateDeviceInfoList( &GUID_NULL, NULL )) == INVALID_HANDLE_VALUE)
     {
         ERR("Failed to create device list, error %#lx.\n", GetLastError());
         return GetLastError();
     }
 
-    if (!SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device))
+    if (!SetupDiOpenDeviceInfoW( set, wine_device->instance_id, NULL, 0, &sp_device ))
     {
         ERR("Failed to open device, error %#lx.\n", GetLastError());
         SetupDiDestroyDeviceInfoList( set );
@@ -1083,9 +1081,8 @@ NTSTATUS WINAPI IoSetDeviceInterfaceState( UNICODE_STRING *name, BOOLEAN enable 
 NTSTATUS WINAPI IoSetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY *property_key, LCID lcid,
                                          ULONG flags, DEVPROPTYPE type, ULONG size, void *data )
 {
+    struct wine_device *wine_device = CONTAINING_RECORD(device, struct wine_device, device_obj);
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
-    WCHAR device_instance_id[MAX_DEVICE_ID_LEN];
-    NTSTATUS status;
     HDEVINFO set;
 
     TRACE( "device %p, property_key %s, lcid %#lx, flags %#lx, type %#lx, size %lu, data %p.\n",
@@ -1093,9 +1090,8 @@ NTSTATUS WINAPI IoSetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY
 
     /* flags is always treated as PLUGPLAY_PROPERTY_PERSISTENT starting with Win 8 / 2012 */
 
+    if (!wine_device->instance_id) return STATUS_INVALID_DEVICE_REQUEST;
     if (lcid != LOCALE_NEUTRAL) FIXME( "only LOCALE_NEUTRAL is supported\n" );
-
-    if ((status = get_device_instance_id( device, device_instance_id ))) return status;
 
     if ((set = SetupDiCreateDeviceInfoList( &GUID_NULL, NULL )) == INVALID_HANDLE_VALUE)
     {
@@ -1103,7 +1099,7 @@ NTSTATUS WINAPI IoSetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY
         return GetLastError();
     }
 
-    if (!SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device ))
+    if (!SetupDiOpenDeviceInfoW( set, wine_device->instance_id, NULL, 0, &sp_device ))
     {
         ERR( "Failed to open device, error %#lx.\n", GetLastError() );
         SetupDiDestroyDeviceInfoList( set );
@@ -1128,9 +1124,9 @@ NTSTATUS WINAPI IoSetDevicePropertyData( DEVICE_OBJECT *device, const DEVPROPKEY
 NTSTATUS WINAPI IoRegisterDeviceInterface(DEVICE_OBJECT *device, const GUID *class_guid,
         UNICODE_STRING *refstr, UNICODE_STRING *symbolic_link)
 {
+    struct wine_device *wine_device = CONTAINING_RECORD(device, struct wine_device, device_obj);
     SP_DEVICE_INTERFACE_DATA sp_iface = {sizeof(sp_iface)};
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
-    WCHAR device_instance_id[MAX_DEVICE_ID_LEN];
     NTSTATUS status = STATUS_SUCCESS;
     UNICODE_STRING device_path;
     struct device_interface *iface;
@@ -1141,16 +1137,15 @@ NTSTATUS WINAPI IoRegisterDeviceInterface(DEVICE_OBJECT *device, const GUID *cla
     TRACE("device %p, class_guid %s, refstr %s, symbolic_link %p.\n",
             device, debugstr_guid(class_guid), debugstr_us(refstr), symbolic_link);
 
-    if ((status = get_device_instance_id( device, device_instance_id )))
-        return status;
+    if (!wine_device->instance_id) return STATUS_INVALID_DEVICE_REQUEST;
 
     set = SetupDiGetClassDevsW( class_guid, NULL, NULL, DIGCF_DEVICEINTERFACE );
     if (set == INVALID_HANDLE_VALUE) return STATUS_UNSUCCESSFUL;
 
-    if (!SetupDiCreateDeviceInfoW( set, device_instance_id, class_guid, NULL, NULL, 0, &sp_device )
-            && !SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device ))
+    if (!SetupDiCreateDeviceInfoW( set, wine_device->instance_id, class_guid, NULL, NULL, 0, &sp_device )
+            && !SetupDiOpenDeviceInfoW( set, wine_device->instance_id, NULL, 0, &sp_device ))
     {
-        ERR("Failed to create device %s, error %#lx.\n", debugstr_w(device_instance_id), GetLastError());
+        ERR("Failed to create device %s, error %#lx.\n", debugstr_w(wine_device->instance_id), GetLastError());
         return GetLastError();
     }
 
@@ -1159,7 +1154,7 @@ NTSTATUS WINAPI IoRegisterDeviceInterface(DEVICE_OBJECT *device, const GUID *cla
 
     /* setupapi mangles the case; construct the interface path manually. */
 
-    device_path.Length = (4 + wcslen( device_instance_id ) + 1 + 38) * sizeof(WCHAR);
+    device_path.Length = (4 + wcslen( wine_device->instance_id ) + 1 + 38) * sizeof(WCHAR);
     if (refstr)
         device_path.Length += sizeof(WCHAR) + refstr->Length;
     device_path.MaximumLength = device_path.Length + sizeof(WCHAR);
@@ -1167,7 +1162,7 @@ NTSTATUS WINAPI IoRegisterDeviceInterface(DEVICE_OBJECT *device, const GUID *cla
     device_path.Buffer = RtlAllocateHeap( GetProcessHeap(), 0, device_path.MaximumLength );
     swprintf( device_path.Buffer, device_path.MaximumLength / sizeof(WCHAR),
             L"\\??\\%s#{%08lx-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}",
-            device_instance_id, class_guid->Data1, class_guid->Data2, class_guid->Data3,
+            wine_device->instance_id, class_guid->Data1, class_guid->Data2, class_guid->Data3,
             class_guid->Data4[0], class_guid->Data4[1], class_guid->Data4[2], class_guid->Data4[3],
             class_guid->Data4[4], class_guid->Data4[5], class_guid->Data4[6], class_guid->Data4[7] );
     for (p = device_path.Buffer + 4; *p; p++)
@@ -1268,22 +1263,17 @@ NTSTATUS WINAPI IoReportTargetDeviceChangeAsynchronous( DEVICE_OBJECT *device, v
  */
 NTSTATUS WINAPI IoOpenDeviceRegistryKey( DEVICE_OBJECT *device, ULONG type, ACCESS_MASK access, HANDLE *key )
 {
+    struct wine_device *wine_device = CONTAINING_RECORD(device, struct wine_device, device_obj);
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
-    WCHAR device_instance_id[MAX_DEVICE_ID_LEN];
-    NTSTATUS status;
     HDEVINFO set;
 
     TRACE("device %p, type %#lx, access %#lx, key %p.\n", device, type, access, key);
 
-    if ((status = get_device_instance_id( device, device_instance_id )))
-    {
-        ERR("Failed to get device instance ID, error %#lx.\n", status);
-        return status;
-    }
+    if (!wine_device->instance_id) return STATUS_INVALID_PARAMETER;
 
     set = SetupDiCreateDeviceInfoList( &GUID_NULL, NULL );
 
-    SetupDiOpenDeviceInfoW( set, device_instance_id, NULL, 0, &sp_device );
+    SetupDiOpenDeviceInfoW( set, wine_device->instance_id, NULL, 0, &sp_device );
 
     *key = SetupDiOpenDevRegKey( set, &sp_device, DICS_FLAG_GLOBAL, 0, type, access );
     SetupDiDestroyDeviceInfoList( set );
@@ -1333,10 +1323,14 @@ static DRIVER_OBJECT *pnp_manager;
 
 struct root_pnp_device
 {
-    WCHAR id[MAX_DEVICE_ID_LEN];
     struct list entry;
     DEVICE_OBJECT *device;
 };
+
+static WCHAR *get_root_pnp_device_id( const struct root_pnp_device *device )
+{
+    return CONTAINING_RECORD(device->device, struct wine_device, device_obj)->instance_id;
+}
 
 static struct root_pnp_device *find_root_pnp_device( struct wine_driver *driver, const WCHAR *id )
 {
@@ -1344,7 +1338,7 @@ static struct root_pnp_device *find_root_pnp_device( struct wine_driver *driver,
 
     LIST_FOR_EACH_ENTRY( device, &driver->root_pnp_devices, struct root_pnp_device, entry )
     {
-        if (!wcsicmp( id, device->id ))
+        if (!wcsicmp( id, get_root_pnp_device_id( device ) ))
             return device;
     }
 
@@ -1379,6 +1373,7 @@ static NTSTATUS WINAPI pnp_manager_device_pnp( DEVICE_OBJECT *device, IRP *irp )
     case IRP_MN_QUERY_ID:
     {
         BUS_QUERY_ID_TYPE type = stack->Parameters.QueryId.IdType;
+        WCHAR *root_device_id = get_root_pnp_device_id( root_device );
         WCHAR *id, *p;
 
         TRACE("Received IRP_MN_QUERY_ID, type %#x.\n", type);
@@ -1386,11 +1381,11 @@ static NTSTATUS WINAPI pnp_manager_device_pnp( DEVICE_OBJECT *device, IRP *irp )
         switch (type)
         {
         case BusQueryDeviceID:
-            p = wcsrchr( root_device->id, '\\' );
-            if ((id = ExAllocatePool( NonPagedPool, (p - root_device->id + 1) * sizeof(WCHAR) )))
+            p = wcsrchr( root_device_id, '\\' );
+            if ((id = ExAllocatePool( NonPagedPool, (p - root_device_id + 1) * sizeof(WCHAR) )))
             {
-                memcpy( id, root_device->id, (p - root_device->id) * sizeof(WCHAR) );
-                id[p - root_device->id] = 0;
+                memcpy( id, root_device_id, (p - root_device_id) * sizeof(WCHAR) );
+                id[p - root_device_id] = 0;
                 irp->IoStatus.Information = (ULONG_PTR)id;
                 irp->IoStatus.Status = STATUS_SUCCESS;
             }
@@ -1401,7 +1396,7 @@ static NTSTATUS WINAPI pnp_manager_device_pnp( DEVICE_OBJECT *device, IRP *irp )
             }
             break;
         case BusQueryInstanceID:
-            p = wcsrchr( root_device->id, '\\' );
+            p = wcsrchr( root_device_id, '\\' );
             if ((id = ExAllocatePool( NonPagedPool, (wcslen( p + 1 ) + 1) * sizeof(WCHAR) )))
             {
                 wcscpy( id, p + 1 );
@@ -1502,7 +1497,8 @@ void CDECL wine_enumerate_root_devices( const WCHAR *driver_name )
 {
     static const WCHAR driverW[] = {'\\','D','r','i','v','e','r','\\',0};
     static const WCHAR rootW[] = {'R','O','O','T',0};
-    WCHAR buffer[MAX_SERVICE_NAME + ARRAY_SIZE(driverW)], id[MAX_DEVICE_ID_LEN];
+    static const SIZE_T id_size = MAX_DEVICE_ID_LEN * sizeof(WCHAR);
+    WCHAR buffer[MAX_SERVICE_NAME + ARRAY_SIZE(driverW)];
     SP_DEVINFO_DATA sp_device = {sizeof(sp_device)};
     struct list new_list = LIST_INIT(new_list);
     struct root_pnp_device *pnp_device, *next;
@@ -1511,6 +1507,7 @@ void CDECL wine_enumerate_root_devices( const WCHAR *driver_name )
     NTSTATUS status;
     unsigned int i;
     HDEVINFO set;
+    WCHAR *id = NULL;
 
     TRACE("Searching for new root-enumerated devices for driver %s.\n", debugstr_w(driver_name));
 
@@ -1532,7 +1529,17 @@ void CDECL wine_enumerate_root_devices( const WCHAR *driver_name )
             continue;
         }
 
-        SetupDiGetDeviceInstanceIdW( set, &sp_device, id, ARRAY_SIZE(id), NULL );
+        if (!id)
+        {
+            id = HeapAlloc( GetProcessHeap(), 0, id_size );
+            if (!id)
+            {
+                ERR("Failed to allocate memory for device instance ID\n");
+                break;
+            }
+        }
+
+        SetupDiGetDeviceInstanceIdW( set, &sp_device, id, id_size, NULL );
 
         if ((pnp_device = find_root_pnp_device( driver, id )))
         {
@@ -1551,17 +1558,21 @@ void CDECL wine_enumerate_root_devices( const WCHAR *driver_name )
             continue;
         }
 
+        CONTAINING_RECORD(device, struct wine_device, device_obj)->instance_id = id;
+        id = NULL;
+
         pnp_device = device->DeviceExtension;
-        wcscpy( pnp_device->id, id );
         pnp_device->device = device;
         list_add_tail( &new_list, &pnp_device->entry );
 
         start_device( device, set, &sp_device );
     }
 
+    HeapFree( GetProcessHeap(), 0, id );
+
     LIST_FOR_EACH_ENTRY_SAFE( pnp_device, next, &driver->root_pnp_devices, struct root_pnp_device, entry )
     {
-        TRACE("Removing device %s.\n", debugstr_w(pnp_device->id));
+        TRACE("Removing device %s.\n", debugstr_w( get_root_pnp_device_id( pnp_device ) ));
         remove_device( pnp_device->device );
     }
 

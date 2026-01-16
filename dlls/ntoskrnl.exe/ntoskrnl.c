@@ -1725,6 +1725,7 @@ void WINAPI IoDeleteDevice( DEVICE_OBJECT *device )
                 ObDereferenceObject( children->Objects[i] );
             ExFreePool( children );
         }
+        HeapFree( GetProcessHeap(), 0, wine_device->instance_id );
         ObDereferenceObject( device );
     }
 }
