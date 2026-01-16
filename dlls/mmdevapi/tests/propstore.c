@@ -37,6 +37,8 @@ static BOOL (WINAPI *pIsWow64Process)(HANDLE, BOOL *);
 static const WCHAR software_renderW[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Render";
 
+static const WCHAR software_captureW[] =
+    L"Software\\Microsoft\\Windows\\CurrentVersion\\MMDevices\\Audio\\Capture";
 
 static void test_propertystore(IPropertyStore *store)
 {
@@ -216,6 +218,49 @@ static void test_setvalue_on_wow64(IPropertyStore *store)
        "Wrong error when opening mmdevices Render key: %lu\n", ret);
 }
 
+static void test_registry_values(IPropertyStore *store, EDataFlow data_flow)
+{
+    const WCHAR *root, *friendly_name = L"{A45C254E-DF1C-4EFD-8020-67D146A850E0},14";
+    HKEY root_key, props_key, dev_key;
+    PROPVARIANT pv, pv2;
+    WCHAR value[128];
+    LSTATUS status;
+    DWORD size;
+    HRESULT hr;
+
+    root = data_flow ? software_captureW : software_renderW;
+
+    pv.vt = VT_EMPTY;
+    hr = IPropertyStore_GetValue(store, &PKEY_AudioEndpoint_GUID, &pv);
+    ok(hr == S_OK, "IPropertyStore_GetValue failed with %#lx\n", hr);
+
+    status = RegOpenKeyExW(HKEY_LOCAL_MACHINE, root, 0, KEY_READ | KEY_WOW64_64KEY, &root_key);
+    ok(!status, "RegOpenKeyExW failed with status %lu\n", status);
+
+    status = RegOpenKeyExW(root_key, pv.pwszVal, 0, KEY_READ | KEY_WOW64_64KEY, &dev_key);
+    ok(!status, "RegOpenKeyExW failed with status %lu\n", status);
+
+    status = RegOpenKeyExW(dev_key, L"Properties", 0, KEY_READ | KEY_WOW64_64KEY, &props_key);
+    ok(!status, "RegOpenKeyExW failed with status %lu\n", status);
+
+    pv2.vt = VT_EMPTY;
+    hr = IPropertyStore_GetValue(store, (const PROPERTYKEY*)&DEVPKEY_Device_FriendlyName, &pv2);
+    ok(hr == S_OK, "IPropertyStore_GetValue failed with %#lx\n", hr);
+    ok(pv2.vt == VT_LPWSTR && pv2.pwszVal, "DeviceInterface_FriendlyName returned incorrect type %#x\n", pv2.vt);
+
+    /* DEVPKEY_Device_FriendlyName does not exist in the registry. */
+    size = ARRAY_SIZE(value);
+    status = RegQueryValueExW(props_key, friendly_name, NULL, NULL, (BYTE *)&value, &size);
+    todo_wine ok(status == ERROR_FILE_NOT_FOUND, "RegQueryValueExW returned unexpected value %lu\n", status);
+
+    PropVariantClear(&pv2);
+    PropVariantClear(&pv);
+
+    RegCloseKey(props_key);
+    RegCloseKey(dev_key);
+    RegCloseKey(root_key);
+}
+
 START_TEST(propstore)
 {
     HRESULT hr;
@@ -235,13 +280,15 @@ START_TEST(propstore)
     hr = CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_INPROC_SERVER, &IID_IMMDeviceEnumerator, (void**)&mme);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
 
-    hr = IMMDeviceEnumerator_EnumAudioEndpoints(mme, eRender, DEVICE_STATE_ACTIVE, &collection);
+    hr = IMMDeviceEnumerator_EnumAudioEndpoints(mme, eAll, DEVICE_STATE_ACTIVE, &collection);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
     hr = IMMDeviceCollection_GetCount(collection, &count);
     ok(hr == S_OK, "Got hr %#lx.\n", hr);
 
     for (i = 0; i < count; ++i)
     {
+        IMMEndpoint *endpoint;
+        EDataFlow data_flow;
         IMMDevice *dev;
 
         hr = IMMDeviceCollection_Item(collection, i, &dev);
@@ -265,12 +312,19 @@ START_TEST(propstore)
             hr = IMMDevice_OpenPropertyStore(dev, STGM_READ, &store);
         ok(hr == S_OK, "Opening valid store returned %08lx\n", hr);
 
+        hr = IMMDevice_QueryInterface(dev, &IID_IMMEndpoint, (void **)&endpoint);
+        ok(hr == S_OK, "IMMDevice_QueryInterface returned %#lx\n", hr);
+        hr = IMMEndpoint_GetDataFlow(endpoint, &data_flow);
+        ok(hr == S_OK, "IMMEndpoint_GetDataFlow returned %#lx\n", hr);
+
         test_propertystore(store);
         test_deviceinterface(store);
         test_getat(store);
+        test_registry_values(store, data_flow);
         if (is_wow64)
             test_setvalue_on_wow64(store);
 
+        IMMEndpoint_Release(endpoint);
         IPropertyStore_Release(store);
         IMMDevice_Release(dev);
     }
