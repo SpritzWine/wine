@@ -38,6 +38,8 @@
 #define SXS_GUID_INFORMATION_CLR_FLAG_IS_SURROGATE  0x00000001
 #define SXS_GUID_INFORMATION_CLR_FLAG_IS_CLASS      0x00000002
 
+DEFINE_GUID(CLSID_TestLibClass,    0x12345678, 0x1234, 0x5678, 0x12, 0x34, 0x11, 0x11, 0x22, 0x22, 0x33, 0x33);
+
 typedef struct _SXS_GUID_INFORMATION_CLR
 {
     DWORD cbSize;
@@ -147,6 +149,18 @@ static void run_test(void)
     ret = SxsLookupClrGuid(SXS_LOOKUP_CLR_GUID_FIND_ANY, (GUID *)&CLSID_SurrogateTest, NULL, NULL, 0, &buffer_size);
     ok(!ret, "Unexpected return value %d.\n", ret);
     ok(GetLastError() == ERROR_INSUFFICIENT_BUFFER, "Got %ld\n", GetLastError());
+
+    info = malloc(buffer_size);
+    SetLastError(0xdeadbeef);
+    ret = SxsLookupClrGuid(SXS_LOOKUP_CLR_GUID_FIND_ANY, (GUID*)&CLSID_TestLibClass, NULL, info, buffer_size, &buffer_size);
+    ok(ret == TRUE, "Got %d\n", ret);
+    ok(GetLastError() == 0, "Got %ld\n", GetLastError());
+    ok(info->dwFlags == SXS_GUID_INFORMATION_CLR_FLAG_IS_CLASS, "Got %ld\n", info->dwFlags);
+    ok(!lstrcmpW(info->pcwszTypeName, NULL), "Unexpected typename %s.\n", wine_dbgstr_w(info->pcwszTypeName));
+    ok(!lstrcmpW(info->pcwszRuntimeVersion, NULL), "Unexpected runtime version %s.\n",
+           wine_dbgstr_w(info->pcwszRuntimeVersion));
+
+    free(info);
 }
 
 static void prepare_and_run_test(void)
@@ -260,13 +274,13 @@ static void test_SxsLookupClrGuid(void)
 
 START_TEST(sxs)
 {
-    char **argv;
-    int argc = winetest_get_mainargs(&argv);
-    if (argc > 2)
-    {
+    // char **argv;
+    // int argc = winetest_get_mainargs(&argv);
+    // if (argc > 2)
+    // {
         prepare_and_run_test();
         return;
-    }
+    // }
 
     test_SxsLookupClrGuid();
 }

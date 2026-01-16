@@ -6,4 +6,6 @@ SOURCES = \
 	interfaces.idl \
 	name.c \
 	resource.rc \
+	testlib.c \
+	testlib.spec \
 	sxs.c

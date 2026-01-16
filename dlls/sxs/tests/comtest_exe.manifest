@@ -8,4 +8,11 @@
                 type="win32"/>
         </dependentAssembly>
     </dependency>
+    <file name="testlib.dll">
+        <comClass
+            clsid="{12345678-1234-5678-1234-111122223333}"
+            progid="testlib.libClass"
+            threadingModel="Free"
+        />
+    </file>
 </assembly>
