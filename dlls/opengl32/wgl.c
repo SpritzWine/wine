@@ -795,6 +795,7 @@ BOOL WINAPI wglChoosePixelFormatARB( HDC hdc, const int *attribs_int, const FLOA
                              ctx.attribs[2 * i + 1] );
 
     /* Some attributes we always want to sort by (values don't matter for sorting) */
+    compare_formats_ctx_set_attrib( &ctx, WGL_DOUBLE_BUFFER_ARB, 0 );
     compare_formats_ctx_set_attrib( &ctx, WGL_ACCELERATION_ARB, 0 );
     compare_formats_ctx_set_attrib( &ctx, WGL_COLOR_BITS_ARB, 0 );
     compare_formats_ctx_set_attrib( &ctx, WGL_ACCUM_BITS_ARB, 0 );
