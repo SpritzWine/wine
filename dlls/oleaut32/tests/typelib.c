@@ -8589,6 +8589,51 @@ static void test_dep( SYSKIND sys )
     winetest_pop_context();
 }
 
+static void test_DeleteTypeInfo(void)
+{
+    static OLECHAR interface1W[] = L"interface1";
+    static OLECHAR interface2W[] = L"interface2";
+    ICreateTypeInfo *createti;
+    ICreateTypeLib2 *createtl;
+    ICreateTypeInfo2 *createti2;
+    WCHAR filenameW[MAX_PATH];
+    ITypeLib *stdole;
+    HRESULT hr;
+
+    hr = LoadTypeLib(L"stdole2.tlb", &stdole);
+    ok(hr == S_OK, "Failed to load stdole2, hr %#lx.\n", hr);
+
+    GetTempFileNameW(L".", L"tlb", 0, filenameW);
+
+    hr = CreateTypeLib2(SYS_WIN32, filenameW, &createtl);
+    ok(hr == S_OK, "Failed to create instance, hr %#lx.\n", hr);
+
+    hr = ICreateTypeLib2_CreateTypeInfo(createtl, interface1W, TKIND_INTERFACE, &createti);
+    ok(hr == S_OK, "Failed to create instance, hr %#lx.\n", hr);
+    hr = ICreateTypeInfo_QueryInterface(createti, &IID_ICreateTypeInfo2, (void **)&createti2);
+    ok(hr == S_OK, "Failed to get interface, hr %#lx.\n", hr);
+    ICreateTypeInfo_Release(createti);
+
+    /* Reference to ICreateTypeInfo still exists */
+    hr = ICreateTypeLib2_DeleteTypeInfo(createtl, interface1W);
+    ok(hr == E_FAIL, "got %08lx\n", hr);
+
+    ICreateTypeInfo2_Release(createti2);
+
+    hr = ICreateTypeLib2_DeleteTypeInfo(createtl, NULL);
+    ok(hr == E_INVALIDARG, "got %08lx\n", hr);
+
+    hr = ICreateTypeLib2_DeleteTypeInfo(createtl, interface2W);
+    ok(hr == TYPE_E_ELEMENTNOTFOUND, "got %08lx\n", hr);
+
+    hr = ICreateTypeLib2_DeleteTypeInfo(createtl, interface1W);
+    ok(hr == S_OK, "got %08lx\n", hr);
+
+    ITypeLib_Release(stdole);
+
+    DeleteFileW(filenameW);
+}
+
 static void test_DeleteImplType(void)
 {
     static OLECHAR interface1W[] = L"interface1";
@@ -8804,6 +8849,7 @@ START_TEST(typelib)
     test_LoadRegTypeLib();
     test_GetLibAttr();
     test_stub();
+    test_DeleteTypeInfo();
     test_DeleteImplType();
     test_DeleteFuncDesc();
 }

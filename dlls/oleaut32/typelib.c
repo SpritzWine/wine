@@ -10329,8 +10329,29 @@ static HRESULT WINAPI ICreateTypeLib2_fnDeleteTypeInfo(ICreateTypeLib2 *iface,
         LPOLESTR name)
 {
     ITypeLibImpl *This = impl_from_ICreateTypeLib2(iface);
-    FIXME("%p %s - stub\n", This, wine_dbgstr_w(name));
-    return E_NOTIMPL;
+    int i;
+    TRACE("%p %s\n", This, wine_dbgstr_w(name));
+
+    if (!name)
+        return E_INVALIDARG;
+
+    for (i = 0; i < This->TypeInfoCount; ++i)
+    {
+        if (!lstrcmpiW(TLB_get_bstr(This->typeinfos[i]->Name), name))
+        {
+            if (This->typeinfos[i]->ref >= 1)
+                return E_FAIL;
+
+            ITypeInfoImpl_Destroy(This->typeinfos[i]);
+            This->TypeInfoCount--;
+            if (i < This->TypeInfoCount)
+                memmove(This->typeinfos + i, This->typeinfos + i + 1, (This->TypeInfoCount - i) *
+                    sizeof(*This->typeinfos));
+            return S_OK;
+        }
+    }
+
+    return TYPE_E_ELEMENTNOTFOUND;
 }
 
 static HRESULT WINAPI ICreateTypeLib2_fnSetCustData(ICreateTypeLib2 *iface,
