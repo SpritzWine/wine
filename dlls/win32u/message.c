@@ -3866,6 +3866,7 @@ NTSTATUS send_hardware_message( HWND hwnd, UINT flags, const INPUT *input, LPARA
         case INPUT_HARDWARE:
             req->input.hw.msg    = input->hi.uMsg;
             req->input.hw.wparam = MAKELONG( input->hi.wParamL, input->hi.wParamH );
+            store_pointer_info( hwnd, input, lparam );
             switch (input->hi.uMsg)
             {
             case WM_INPUT:

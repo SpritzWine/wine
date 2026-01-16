@@ -140,6 +140,9 @@ extern size_t user_message_size( HWND hwnd, UINT message, WPARAM wparam, LPARAM 
 extern void pack_user_message( void *buffer, size_t size, UINT message,
                                WPARAM wparam, LPARAM lparam, BOOL ansi, void **extra_buffer );
 
+/* pointer.c */
+extern void store_pointer_info( HWND hwnd, const INPUT *input, LPARAM lparam );
+
 /* rawinput.c */
 extern BOOL process_rawinput_message( MSG *msg, UINT hw_id, const struct hardware_msg_data *msg_data );
 

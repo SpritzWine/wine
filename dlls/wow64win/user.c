@@ -2854,6 +2854,31 @@ NTSTATUS WINAPI wow64_NtUserGetPointerInfoList( UINT *args )
     return NtUserGetPointerInfoList( id, type, unk0, unk1, size, entry_count, pointer_count, pointer_info );
 }
 
+NTSTATUS WINAPI wow64_NtUserGetPointerType( UINT *args )
+{
+    UINT32 id = get_ulong( &args );
+    POINTER_INPUT_TYPE *type = get_ptr( &args );
+
+    return NtUserGetPointerType( id, type );
+}
+
+NTSTATUS WINAPI wow64_NtUserGetPointerTouchInfo( UINT *args )
+{
+    UINT32 id = get_ulong( &args );
+    POINTER_TOUCH_INFO *info = get_ptr( &args );
+
+    return NtUserGetPointerTouchInfo( id, info );
+}
+
+NTSTATUS WINAPI wow64_NtUserGetPointerFrameTouchInfo( UINT *args )
+{
+    UINT32 id = get_ulong( &args );
+    UINT32 *count = get_ptr( &args );
+    POINTER_TOUCH_INFO *info = get_ptr( &args );
+
+    return NtUserGetPointerFrameTouchInfo( id, count, info );
+}
+
 NTSTATUS WINAPI wow64_NtUserGetPriorityClipboardFormat( UINT *args )
 {
     UINT *list = get_ptr( &args );

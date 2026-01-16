@@ -1744,6 +1744,21 @@ BOOL SYSCALL_API NtUserGetPointerInfoList( UINT32 id, POINTER_INPUT_TYPE type, U
     SYSCALL_FUNC( NtUserGetPointerInfoList );
 }
 
+BOOL SYSCALL_API NtUserGetPointerType( UINT32 id, POINTER_INPUT_TYPE *type )
+{
+    SYSCALL_FUNC( NtUserGetPointerType );
+}
+
+BOOL SYSCALL_API NtUserGetPointerTouchInfo( UINT32 id, POINTER_TOUCH_INFO *info )
+{
+    SYSCALL_FUNC( NtUserGetPointerTouchInfo );
+}
+
+BOOL SYSCALL_API NtUserGetPointerFrameTouchInfo( UINT32 id, UINT32 *count, POINTER_TOUCH_INFO *info )
+{
+    SYSCALL_FUNC( NtUserGetPointerFrameTouchInfo );
+}
+
 INT SYSCALL_API NtUserGetPriorityClipboardFormat( UINT *list, INT count )
 {
     SYSCALL_FUNC( NtUserGetPriorityClipboardFormat );

@@ -7150,6 +7150,10 @@ int get_system_metrics( int index )
     case SM_CXFOCUSBORDER:
     case SM_CYFOCUSBORDER:
         return 1;
+    case SM_DIGITIZER:
+        return NID_INTEGRATED_TOUCH | NID_MULTI_INPUT | NID_READY;
+    case SM_MAXIMUMTOUCHES:
+        return 10;
     case SM_TABLETPC:
     case SM_MEDIACENTER:
         return 0;

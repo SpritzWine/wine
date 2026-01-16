@@ -671,6 +671,15 @@ BOOL WINAPI IsTouchWindow( HWND hwnd, ULONG *flags )
 }
 
 /*****************************************************************************
+ * SkipPointerFrameMessages (USER32.@)
+ */
+BOOL WINAPI SkipPointerFrameMessages( UINT32 id )
+{
+    FIXME( "id %u stub!\n", id );
+    return TRUE;
+}
+
+/*****************************************************************************
  * RegisterTouchWindow (USER32.@)
  */
 BOOL WINAPI RegisterTouchWindow( HWND hwnd, ULONG flags )
@@ -765,11 +774,20 @@ BOOL WINAPI GetPointerPenInfo( UINT32 id, POINTER_PEN_INFO *info )
     return FALSE;
 }
 
+/***********************************************************************
+ * GetPointerTouchInfo (USER32.@)
+ */
 BOOL WINAPI GetPointerTouchInfo( UINT32 id, POINTER_TOUCH_INFO *info )
 {
-    FIXME( "id %u, info %p stub!\n", id, info );
-    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
-    return FALSE;
+    return NtUserGetPointerTouchInfo( id, info );
+}
+
+/***********************************************************************
+ * GetPointerFrameTouchInfo (USER32.@)
+ */
+BOOL WINAPI GetPointerFrameTouchInfo( UINT32 id, UINT32 *count, POINTER_TOUCH_INFO *info )
+{
+    return NtUserGetPointerFrameTouchInfo( id, count, info );
 }
 
 BOOL WINAPI GetRawPointerDeviceData( UINT32 id, UINT32 hist_count, UINT32 prop_count,
@@ -788,6 +806,24 @@ BOOL WINAPI GetPointerTouchInfoHistory( UINT32 id, UINT32 *count, POINTER_TOUCH_
     return FALSE;
 }
 
+BOOL WINAPI GetPointerFrameTouchInfoHistory( UINT32 id, UINT32 *entriesCount, UINT32 *pointerCount, POINTER_TOUCH_INFO *info )
+{
+    FIXME( "id %u, entriesCount %p, pointerCount %p, info %p stub!\n",
+          id, entriesCount, pointerCount, info );
+    if (entriesCount) *entriesCount = 0;
+    if (pointerCount) *pointerCount = 0;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
+
+BOOL WINAPI GetPointerPenInfoHistory( UINT32 id, UINT32 *count, POINTER_PEN_INFO *info )
+{
+    FIXME( "id %u, count %p, info %p stub!\n",
+          id, count, info );
+    if (count) *count = 0;
+    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
+    return FALSE;
+}
 
 /*******************************************************************
  *           GetActiveWindow  (USER32.@)

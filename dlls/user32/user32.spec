@@ -637,9 +637,10 @@
 # @ stub GetPointerFramePenInfo
 # @ stub GetPointerFramePenInfoHistory
 # @ stub GetPointerFrameTimes
-# @ stub GetPointerFrameTouchInfo
-# @ stub GetPointerFrameTouchInfoHistory
+@ stdcall GetPointerFrameTouchInfo(long ptr ptr)
+@ stdcall GetPointerFrameTouchInfoHistory(long ptr ptr ptr)
 @ stdcall GetPointerInfo(long ptr)
+@ stdcall GetPointerPenInfoHistory(long ptr ptr)
 # @ stub GetPointerInfoHistory
 # @ stub GetPointerInputTransform
 @ stdcall GetPointerPenInfo(long ptr)
@@ -1139,7 +1140,7 @@
 @ stdcall ShutdownBlockReasonDestroy(long)
 # @ stub ShutdownBlockReasonQuery
 # @ stub SignalRedirectionStartComplete
-# @ stub SkipPointerFrameMessages
+@ stdcall SkipPointerFrameMessages(long)
 # @ stub SoftModalMessageBox
 # @ stub SoundSentry
 @ stdcall SubtractRect(ptr ptr ptr)

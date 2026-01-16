@@ -512,16 +512,12 @@ LRESULT WINAPI PackTouchHitTestingProximityEvaluation(const TOUCH_HIT_TESTING_IN
  */
 BOOL WINAPI GetPointerType(UINT32 id, POINTER_INPUT_TYPE *type)
 {
-    FIXME("(%d %p): stub\n", id, type);
-
     if(!id || !type)
     {
         SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
     }
-
-    *type = PT_MOUSE;
-    return TRUE;
+    return NtUserGetPointerType( id, type );
 }
 
 BOOL WINAPI GetPointerInfo(UINT32 id, POINTER_INFO *info)
