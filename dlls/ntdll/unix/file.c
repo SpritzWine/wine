@@ -52,6 +52,9 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
+#ifdef __linux__
+# include <linux/fs.h>
+#endif
 #ifdef HAVE_SYS_ATTR_H
 #include <sys/attr.h>
 #endif
@@ -152,6 +155,10 @@ typedef struct
 
 /* Case-insensitivity attribute */
 #define EXT4_CASEFOLD_FL 0x40000000
+
+#ifndef BTRFS_SUPER_MAGIC
+#define BTRFS_SUPER_MAGIC 0x9123683e
+#endif
 
 #ifndef O_DIRECTORY
 # define O_DIRECTORY 0200000 /* must be directory */
@@ -6644,6 +6651,57 @@ static void ignore_server_ioctl_struct_holes( ULONG code, const void *in_buffer,
 #endif
 }
 
+static NTSTATUS duplicate_extents_to_file( HANDLE dst_handle, const void *in_buf, ULONG in_len )
+{
+    const DUPLICATE_EXTENTS_DATA *data = in_buf;
+    NTSTATUS status;
+    int dst_fd = -1, src_fd = -1;
+    int needs_close_dst = 0, needs_close_src = 0;
+
+    if (!data || in_len < sizeof(*data)) return STATUS_BUFFER_TOO_SMALL;
+
+    status = server_get_unix_fd( dst_handle, FILE_WRITE_DATA, &dst_fd, &needs_close_dst, NULL, NULL );
+    if (status) return status;
+    status = server_get_unix_fd( data->FileHandle, FILE_READ_DATA, &src_fd, &needs_close_src, NULL, NULL );
+    if (status) goto done;
+
+#ifdef FICLONERANGE
+    struct file_clone_range r =
+    {
+        .src_fd      = src_fd,
+        .src_offset  = data->SourceFileOffset.QuadPart,
+        .src_length  = data->ByteCount.QuadPart,
+        .dest_offset = data->TargetFileOffset.QuadPart,
+    };
+
+    if (!ioctl( dst_fd, FICLONERANGE, &r )) { status = STATUS_SUCCESS; goto done; }
+    if (!(errno == EOPNOTSUPP || errno == ENOTTY || errno == EXDEV || errno == EINVAL))
+    {
+        status = errno_to_status( errno );
+        goto done;
+    }
+#endif
+
+#ifdef FICLONE
+    if (!data->SourceFileOffset.QuadPart && !data->TargetFileOffset.QuadPart)
+    {
+        if (!ioctl( dst_fd, FICLONE, src_fd )) { status = STATUS_SUCCESS; goto done; }
+        if (!(errno == EOPNOTSUPP || errno == ENOTTY || errno == EXDEV))
+        {
+            status = errno_to_status( errno );
+            goto done;
+        }
+    }
+#endif
+
+    status = STATUS_INVALID_DEVICE_REQUEST;
+
+done:
+    if (needs_close_src && src_fd != -1) close( src_fd );
+    if (needs_close_dst && dst_fd != -1) close( dst_fd );
+    return status;
+}
+
 
 /******************************************************************************
  *              NtFsControlFile   (NTDLL.@)
@@ -6733,6 +6791,11 @@ NTSTATUS WINAPI NtFsControlFile( HANDLE handle, HANDLE event, PIO_APC_ROUTINE ap
         else status = STATUS_BUFFER_TOO_SMALL;
         break;
     }
+
+    case FSCTL_DUPLICATE_EXTENTS_TO_FILE:
+        status = duplicate_extents_to_file( handle, in_buffer, in_size );
+        break;
+
 
     case FSCTL_SET_SPARSE:
         TRACE("FSCTL_SET_SPARSE: Ignoring request\n");
@@ -7407,8 +7470,11 @@ NTSTATUS WINAPI NtQueryVolumeInformationFile( HANDLE handle, IO_STATUS_BLOCK *io
         static const WCHAR udfW[] = {'U','D','F'};
 
         FILE_FS_ATTRIBUTE_INFORMATION *info = buffer;
+        struct statfs stfs;
         struct mountmgr_unix_drive drive;
         enum mountmgr_fs_type fs_type = MOUNTMGR_FS_TYPE_NTFS;
+        BOOL supports_block_refcounting = FALSE;
+        BOOL have_stfs = FALSE;
 
         if (length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION))
         {
@@ -7416,12 +7482,37 @@ NTSTATUS WINAPI NtQueryVolumeInformationFile( HANDLE handle, IO_STATUS_BLOCK *io
             break;
         }
 
+#ifdef HAVE_FSTATFS
+        have_stfs = !fstatfs( fd, &stfs );
+#endif
+
+#if defined(linux) && defined(HAVE_FSTATFS)
+        if (have_stfs && stfs.f_type == BTRFS_SUPER_MAGIC)
+            supports_block_refcounting = TRUE;
+#endif
+
+#ifdef FICLONERANGE
+        if (!supports_block_refcounting)
+        {
+            struct file_clone_range range =
+            {
+                .src_fd = fd,
+                .src_offset = 0,
+                .src_length = 0,
+                .dest_offset = 0,
+            };
+
+            if (!ioctl( fd, FICLONERANGE, &range ))
+                supports_block_refcounting = TRUE;
+            else if (errno != EOPNOTSUPP && errno != ENOTTY)
+                supports_block_refcounting = TRUE;
+        }
+#endif
+
         if (!get_mountmgr_fs_info( handle, fd, &drive, sizeof(drive) )) fs_type = drive.fs_type;
         else
         {
-            struct statfs stfs;
-
-            if (!fstatfs( fd, &stfs ))
+            if (have_stfs)
             {
 #if defined(linux) && defined(HAVE_FSTATFS)
                 switch (stfs.f_type)
@@ -7482,6 +7573,9 @@ NTSTATUS WINAPI NtQueryVolumeInformationFile( HANDLE handle, IO_STATUS_BLOCK *io
             memcpy(info->FileSystemName, ntfsW, info->FileSystemNameLength);
             break;
         }
+
+        if (supports_block_refcounting)
+            info->FileSystemAttributes |= FILE_SUPPORTS_BLOCK_REFCOUNTING;
 
         io->Information = offsetof( FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName ) + info->FileSystemNameLength;
         status = STATUS_SUCCESS;

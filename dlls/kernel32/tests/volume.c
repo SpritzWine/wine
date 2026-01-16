@@ -2014,6 +2014,91 @@ static void test_GetVolumeInformationByHandle(void)
     CloseHandle( file );
 }
 
+static void test_block_refcounting_flag(void)
+{
+    WCHAR tmp_path[MAX_PATH], src_path[MAX_PATH], dst_path[MAX_PATH];
+    HANDLE src = INVALID_HANDLE_VALUE, dst = INVALID_HANDLE_VALUE;
+    DWORD sectors_per_cluster = 0, bytes_per_sector = 0, cluster_size, flags;
+    DWORD written, bytes_returned;
+    DUPLICATE_EXTENTS_DATA dup = {0};
+    char *buffer = NULL;
+    BOOL ret;
+
+    if (!GetTempPathW( ARRAY_SIZE(tmp_path), tmp_path ) || !tmp_path[0])
+    {
+        skip("GetTempPathW failed, skipping block refcounting test.\n");
+        return;
+    }
+
+    if (!GetTempFileNameW( tmp_path, L"cln", 0, src_path ))
+    {
+        skip("GetTempFileNameW failed, skipping block refcounting test.\n");
+        return;
+    }
+
+    if (!GetTempFileNameW( tmp_path, L"cln", 0, dst_path ))
+    {
+        DeleteFileW( src_path );
+        skip("GetTempFileNameW failed, skipping block refcounting test.\n");
+        return;
+    }
+
+    src = CreateFileW( src_path, GENERIC_READ | GENERIC_WRITE,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, NULL );
+    ok(src != INVALID_HANDLE_VALUE, "failed to create source file, err %lu\n", GetLastError());
+    if (src == INVALID_HANDLE_VALUE)
+        goto cleanup;
+
+    dst = CreateFileW( dst_path, GENERIC_READ | GENERIC_WRITE,
+                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, NULL );
+    ok(dst != INVALID_HANDLE_VALUE, "failed to create dest file, err %lu\n", GetLastError());
+    if (dst == INVALID_HANDLE_VALUE)
+        goto cleanup;
+
+    ret = GetDiskFreeSpaceW( tmp_path, &sectors_per_cluster, &bytes_per_sector, NULL, NULL );
+    cluster_size = ret ? sectors_per_cluster * bytes_per_sector : 0;
+    if (!cluster_size) cluster_size = 4096;
+
+    buffer = HeapAlloc( GetProcessHeap(), 0, cluster_size );
+    ok(!!buffer, "failed to allocate %lu bytes\n", cluster_size);
+    if (!buffer)
+        goto cleanup;
+
+    memset( buffer, 0x5a, cluster_size );
+    ret = WriteFile( src, buffer, cluster_size, &written, NULL );
+    ok(ret && written == cluster_size, "WriteFile failed, ret %d written %lu err %lu\n", ret, written, GetLastError());
+    if (!ret)
+        goto cleanup;
+
+    dup.FileHandle = src;
+    dup.SourceFileOffset.QuadPart = 0;
+    dup.TargetFileOffset.QuadPart = 0;
+    dup.ByteCount.QuadPart = cluster_size;
+
+    ret = DeviceIoControl( dst, FSCTL_DUPLICATE_EXTENTS_TO_FILE, &dup, sizeof(dup),
+                           NULL, 0, &bytes_returned, NULL );
+    if (!ret)
+    {
+        skip("duplicate extents not supported on %s, err %lu\n", debugstr_w(tmp_path), GetLastError());
+        goto cleanup;
+    }
+
+    ret = GetVolumeInformationW( tmp_path, NULL, 0, NULL, NULL, &flags, NULL, 0 );
+    ok(ret, "GetVolumeInformationW failed for %s, err %lu\n", debugstr_w(tmp_path), GetLastError());
+    if (ret)
+        ok(flags & FILE_SUPPORTS_BLOCK_REFCOUNTING,
+           "expected FILE_SUPPORTS_BLOCK_REFCOUNTING for %s, got %#lx\n", debugstr_w(tmp_path), flags);
+
+cleanup:
+    if (src != INVALID_HANDLE_VALUE) CloseHandle( src );
+    if (dst != INVALID_HANDLE_VALUE) CloseHandle( dst );
+    DeleteFileW( src_path );
+    DeleteFileW( dst_path );
+    HeapFree( GetProcessHeap(), 0, buffer );
+}
+
 static void test_mountmgr_query_points(void)
 {
     char input_buffer[64];
@@ -2217,6 +2302,7 @@ START_TEST(volume)
     test_cdrom_ioctl();
     test_mounted_folder();
     test_GetVolumeInformationByHandle();
+    test_block_refcounting_flag();
     test_mountmgr_query_points();
     test_GetDiskSpaceInformationA();
 }
