@@ -3374,7 +3374,12 @@ NTSTATUS WINAPI NtQuerySystemInformation( SYSTEM_INFORMATION_CLASS class,
         if (size >= len)
         {
             if (!info) ret = STATUS_ACCESS_VIOLATION;
-            else memcpy( info, sppi, len);
+            else
+            {
+                memcpy( info, sppi, len );
+                if (size != len)
+                    ret = STATUS_INFO_LENGTH_MISMATCH;
+            }
         }
         else ret = STATUS_INFO_LENGTH_MISMATCH;
 
