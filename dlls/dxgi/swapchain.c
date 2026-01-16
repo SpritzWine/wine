@@ -60,6 +60,18 @@ static BOOL dxgi_validate_flip_swap_effect_format(DXGI_FORMAT format)
     }
 }
 
+static BOOL dxgi_has_scroll_present_parameters(const DXGI_PRESENT_PARAMETERS *present_parameters)
+{
+    if (present_parameters->pScrollOffset && present_parameters->pScrollRect)
+    {
+        POINT scroll_offset = *present_parameters->pScrollOffset;
+
+        return (scroll_offset.x || scroll_offset.y) && !IsRectEmpty(present_parameters->pScrollRect);
+    }
+
+    return FALSE;
+}
+
 BOOL dxgi_validate_swapchain_desc(const DXGI_SWAP_CHAIN_DESC1 *desc)
 {
     unsigned int min_buffer_count;
@@ -302,7 +314,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetDevice(IDXGISwapChain4 *ifac
 /* IDXGISwapChain1 methods */
 
 static HRESULT d3d11_swapchain_present(struct d3d11_swapchain *swapchain,
-        unsigned int sync_interval, unsigned int flags)
+        unsigned int sync_interval, unsigned int flags, const DXGI_PRESENT_PARAMETERS *dxgi_parameters)
 {
     HRESULT hr;
 
@@ -323,6 +335,27 @@ static HRESULT d3d11_swapchain_present(struct d3d11_swapchain *swapchain,
         return S_OK;
     }
 
+    if (dxgi_parameters && dxgi_parameters->DirtyRectsCount && dxgi_parameters->pDirtyRects)
+    {
+        FIXME("Ignored %u present dirty rectangles at %p ([0] = %s).\n", dxgi_parameters->DirtyRectsCount, dxgi_parameters->pDirtyRects, wine_dbgstr_rect(&dxgi_parameters->pDirtyRects[0]));
+    }
+
+    if (dxgi_parameters && dxgi_has_scroll_present_parameters(dxgi_parameters))
+    {
+        struct wined3d_swapchain_desc swapchain_desc;
+        enum wined3d_swap_effect swap_effect;
+        wined3d_swapchain_get_desc(swapchain->wined3d_swapchain, &swapchain_desc);
+        swap_effect = swapchain_desc.swap_effect;
+        if (swap_effect != WINED3D_SWAP_EFFECT_FLIP_SEQUENTIAL && swap_effect != WINED3D_SWAP_EFFECT_FLIP_DISCARD)
+        {
+            WARN("Partial presentation scroll (%s + %s) is only allowed on Flip-model swapchains.\n",
+                wine_dbgstr_rect(dxgi_parameters->pScrollRect), wine_dbgstr_point(dxgi_parameters->pScrollOffset));
+            return DXGI_ERROR_INVALID_CALL;
+        }
+
+        FIXME("Ignored present %s scroll of %s rectangle.\n", wine_dbgstr_point(dxgi_parameters->pScrollOffset), wine_dbgstr_rect(dxgi_parameters->pScrollRect));
+    }
+
     if (SUCCEEDED(hr = wined3d_swapchain_present(swapchain->wined3d_swapchain, NULL, NULL, NULL, sync_interval, 0)))
         InterlockedIncrement(&swapchain->present_count);
     return hr;
@@ -334,7 +367,7 @@ static HRESULT STDMETHODCALLTYPE DECLSPEC_HOTPATCH d3d11_swapchain_Present(IDXGI
 
     TRACE("iface %p, sync_interval %u, flags %#x.\n", iface, sync_interval, flags);
 
-    return d3d11_swapchain_present(swapchain, sync_interval, flags);
+    return d3d11_swapchain_present(swapchain, sync_interval, flags, NULL);
 }
 
 static HRESULT STDMETHODCALLTYPE d3d11_swapchain_GetBuffer(IDXGISwapChain4 *iface,
@@ -708,10 +741,7 @@ static HRESULT STDMETHODCALLTYPE d3d11_swapchain_Present1(IDXGISwapChain4 *iface
     TRACE("iface %p, sync_interval %u, flags %#x, present_parameters %p.\n",
             iface, sync_interval, flags, present_parameters);
 
-    if (present_parameters)
-        FIXME("Ignored present parameters %p.\n", present_parameters);
-
-    return d3d11_swapchain_present(swapchain, sync_interval, flags);
+    return d3d11_swapchain_present(swapchain, sync_interval, flags, present_parameters);
 }
 
 static BOOL STDMETHODCALLTYPE d3d11_swapchain_IsTemporaryMonoSupported(IDXGISwapChain4 *iface)
@@ -2783,7 +2813,13 @@ static HRESULT STDMETHODCALLTYPE d3d12_swapchain_Present1(IDXGISwapChain4 *iface
             iface, sync_interval, flags, present_parameters);
 
     if (present_parameters)
-        FIXME("Ignored present parameters %p.\n", present_parameters);
+    {
+        if (present_parameters->DirtyRectsCount && present_parameters->pDirtyRects)
+            FIXME("Ignored %u present dirty rectangles at %p ([0] = %s).\n", present_parameters->DirtyRectsCount, present_parameters->pDirtyRects, wine_dbgstr_rect(&present_parameters->pDirtyRects[0]));
+
+        if (dxgi_has_scroll_present_parameters(present_parameters))
+            FIXME("Ignored present %s scroll of %s rectangle.\n", wine_dbgstr_point(present_parameters->pScrollOffset), wine_dbgstr_rect(present_parameters->pScrollRect));
+    }
 
     return d3d12_swapchain_present(swapchain, sync_interval, flags);
 }

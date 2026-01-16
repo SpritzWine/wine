@@ -8532,6 +8532,757 @@ static void test_subresource_surface(void)
     ok(!refcount, "Device has %lu references left.\n", refcount);
 }
 
+struct resource_readback
+{
+    ID3D11Resource *resource;
+    D3D11_MAPPED_SUBRESOURCE map_desc;
+    ID3D11DeviceContext *immediate_context;
+    unsigned int width, height, depth, sub_resource_idx;
+};
+
+static void init_resource_readback(ID3D11Resource *resource, ID3D11Resource *readback_resource,
+        unsigned int width, unsigned int height, unsigned int depth, unsigned int sub_resource_idx,
+        ID3D11Device *device, struct resource_readback *rb)
+{
+    HRESULT hr;
+
+    rb->resource = readback_resource;
+    rb->width = width;
+    rb->height = height;
+    rb->depth = depth;
+    rb->sub_resource_idx = sub_resource_idx;
+
+    ID3D11Device_GetImmediateContext(device, &rb->immediate_context);
+
+    ID3D11DeviceContext_CopyResource(rb->immediate_context, rb->resource, resource);
+    if (FAILED(hr = ID3D11DeviceContext_Map(rb->immediate_context,
+            rb->resource, sub_resource_idx, D3D11_MAP_READ, 0, &rb->map_desc)))
+    {
+        trace("Failed to map resource, hr %#lx.\n", hr);
+        ID3D11Resource_Release(rb->resource);
+        rb->resource = NULL;
+        ID3D11DeviceContext_Release(rb->immediate_context);
+        rb->immediate_context = NULL;
+    }
+}
+
+static void get_texture_readback(ID3D11Texture2D *texture, unsigned int sub_resource_idx,
+        struct resource_readback *rb)
+{
+    D3D11_TEXTURE2D_DESC texture_desc;
+    ID3D11Resource *rb_texture;
+    unsigned int miplevel;
+    ID3D11Device *device;
+    HRESULT hr;
+
+    memset(rb, 0, sizeof(*rb));
+
+    ID3D11Texture2D_GetDevice(texture, &device);
+
+    ID3D11Texture2D_GetDesc(texture, &texture_desc);
+    texture_desc.Usage = D3D11_USAGE_STAGING;
+    texture_desc.BindFlags = 0;
+    texture_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    texture_desc.MiscFlags = 0;
+    if (FAILED(hr = ID3D11Device_CreateTexture2D(device, &texture_desc, NULL, (ID3D11Texture2D **)&rb_texture)))
+    {
+        trace("Failed to create texture, hr %#lx.\n", hr);
+        ID3D11Device_Release(device);
+        return;
+    }
+
+    miplevel = sub_resource_idx % texture_desc.MipLevels;
+    init_resource_readback((ID3D11Resource *)texture, rb_texture,
+            max(1, texture_desc.Width >> miplevel),
+            max(1, texture_desc.Height >> miplevel),
+            1, sub_resource_idx, device, rb);
+
+    ID3D11Device_Release(device);
+}
+
+static void *get_readback_data(struct resource_readback *rb,
+        unsigned int x, unsigned int y, unsigned int z, unsigned byte_width)
+{
+    return (BYTE *)rb->map_desc.pData + z * rb->map_desc.DepthPitch + y * rb->map_desc.RowPitch + x * byte_width;
+}
+
+static DWORD get_readback_u32(struct resource_readback *rb, unsigned int x, unsigned int y, unsigned int z)
+{
+    return *(DWORD *)get_readback_data(rb, x, y, z, sizeof(DWORD));
+}
+
+static DWORD get_readback_color(struct resource_readback *rb, unsigned int x, unsigned int y, unsigned int z)
+{
+    return get_readback_u32(rb, x, y, z);
+}
+
+static void release_resource_readback(struct resource_readback *rb)
+{
+    ID3D11DeviceContext_Unmap(rb->immediate_context, rb->resource, rb->sub_resource_idx);
+    ID3D11Resource_Release(rb->resource);
+    ID3D11DeviceContext_Release(rb->immediate_context);
+}
+
+static BOOL compare_uint(unsigned int x, unsigned int y, unsigned int max_diff)
+{
+    unsigned int diff = x > y ? x - y : y - x;
+
+    return diff <= max_diff;
+}
+
+static BOOL compare_color(DWORD c1, DWORD c2, BYTE max_diff)
+{
+    return compare_uint(c1 & 0xff, c2 & 0xff, max_diff)
+            && compare_uint((c1 >> 8) & 0xff, (c2 >> 8) & 0xff, max_diff)
+            && compare_uint((c1 >> 16) & 0xff, (c2 >> 16) & 0xff, max_diff)
+            && compare_uint((c1 >> 24) & 0xff, (c2 >> 24) & 0xff, max_diff);
+}
+
+#define check_colors(a, b, c, d, e, f, g) check_colors_(__FILE__, __LINE__, a, b, c, d, e, f, g)
+static void check_colors_(const char* file, int line, ID3D11Texture2D *texture, unsigned int x, unsigned int y, DWORD expected1, DWORD expected2, DWORD expected3, DWORD expected4)
+{
+    struct resource_readback rb;
+    DWORD actual1, actual2, actual3, actual4;
+
+    get_texture_readback(texture, 0, &rb);
+    actual1 = get_readback_color(&rb, x, y, 0);
+    actual2 = get_readback_color(&rb, x + 1, y, 0);
+    actual3 = get_readback_color(&rb, x, y + 1, 0);
+    actual4 = get_readback_color(&rb, x + 1, y + 1, 0);
+    release_resource_readback(&rb);
+
+    ok_(file, line)(compare_color(actual1, expected1, 1), "(x=%u, y=%u) expected color = 0x%08lx, actual color = 0x%08lx.\n", x, y, expected1, actual1);
+    ok_(file, line)(compare_color(actual2, expected2, 1), "(x=%u, y=%u) expected color = 0x%08lx, actual color = 0x%08lx.\n", x + 1, y, expected2, actual2);
+    ok_(file, line)(compare_color(actual3, expected3, 1), "(x=%u, y=%u) expected color = 0x%08lx, actual color = 0x%08lx.\n", x, y + 1, expected3, actual3);
+    ok_(file, line)(compare_color(actual4, expected4, 1), "(x=%u, y=%u) expected color = 0x%08lx, actual color = 0x%08lx.\n", x + 1, y + 1, expected4, actual4);
+}
+
+#define check_color(a, b, c, d) check_color_(__FILE__, __LINE__, a, b, c, d)
+static void check_color_(const char* file, int line, ID3D11Texture2D *texture, unsigned int x, unsigned int y, DWORD expected)
+{
+    check_colors_(file, line, texture, x, y, expected, expected, expected, expected);
+}
+
+struct color_rect
+{
+    RECT rect;
+    DWORD color;
+};
+
+#define check_texture(a, b, c, d) check_texture_(__FILE__, __LINE__, a, b, c, d)
+static void check_texture_(const char *file, int line, ID3D11Texture2D *texture, DWORD background,
+                           UINT rect_count, struct color_rect *rects)
+{
+    struct resource_readback rb;
+    HRGN background_region;
+    DWORD background_region_data_size;
+    RGNDATA *background_region_data = NULL;
+
+    get_texture_readback(texture, 0, &rb);
+
+    background_region = CreateRectRgn(0, 0, rb.width, rb.height);
+    for (UINT i = 0; i < rect_count; ++i)
+    {
+        HRGN current_rect_region;
+        struct color_rect rect = rects[i];
+        if (IsRectEmpty(&rect.rect))
+            continue;
+
+        current_rect_region = CreateRectRgnIndirect(&rect.rect);
+        CombineRgn(background_region, background_region, current_rect_region, RGN_DIFF);
+        DeleteObject(current_rect_region);
+        for (unsigned int x = rect.rect.left; x < (DWORD)rect.rect.right; ++x)
+        {
+            for (unsigned int y = rect.rect.top; y < (DWORD)rect.rect.bottom; ++y)
+            {
+                DWORD actual = get_readback_color(&rb, x, y, 0);
+                DWORD expected = rect.color;
+                if (!compare_color(actual, expected, 1))
+                {
+                    ok_(file, line)(FALSE, "(x=%u, y=%u) rectangle %u expected color = 0x%08lx, actual color = 0x%08lx.\n", i, x, y, expected, actual);
+                    goto skip_rect;
+                }
+            }
+        }
+    skip_rect:;
+    }
+
+    background_region_data_size = GetRegionData(background_region, 0, NULL);
+    background_region_data = (RGNDATA *)malloc(background_region_data_size);
+    if (!background_region_data)
+    {
+        ok_(file, line)(FALSE, "Failed to allocate %lu bytes for background region data\n", background_region_data_size);
+        goto cleanup;
+    }
+
+    GetRegionData(background_region, background_region_data_size, background_region_data);
+
+    for (UINT i = 0; i < background_region_data->rdh.nCount; ++i)
+    {
+        RECT rect = ((const RECT*)background_region_data->Buffer)[i];
+        for (unsigned int x = rect.left; x < (DWORD)rect.right; ++x)
+        {
+            for (unsigned int y = rect.top; y < (DWORD)rect.bottom; ++y)
+            {
+                DWORD actual = get_readback_color(&rb, x, y, 0);
+                DWORD expected = background;
+                if (!compare_color(actual, expected, 1))
+                {
+                    ok_(file, line)(FALSE, "(x=%u, y=%u) background expected color = 0x%08lx, actual color = 0x%08lx.\n", x, y, expected, actual);
+                    goto cleanup;
+                }
+            }
+        }
+    }
+
+    ok_(file, line)(TRUE, "Texture matches\n");
+
+cleanup:
+    free(background_region_data);
+    DeleteObject(background_region);
+    release_resource_readback(&rb);
+}
+
+#define check_full(a, b) check_full_(__FILE__, __LINE__, a, b)
+static void check_full_(const char *file, int line, ID3D11Texture2D *texture, DWORD expected)
+{
+    check_texture_(file, line, texture, expected, 0, NULL);
+}
+
+static DWORD RGB_DWORD(BYTE r, BYTE g, BYTE b)
+{
+    return r | (WORD)g << 8 | (DWORD)b << 16 | 0x80000000u;
+}
+
+struct test_partial_present_common_parameters
+{
+    DXGI_SWAP_EFFECT swap_effect;
+    DXGI_SCALING scaling;
+    UINT buffer_count;
+    UINT swapchain_width;
+    UINT swapchain_height;
+    UINT window_width;
+    UINT window_height;
+};
+
+static BOOL prepare_partial_present(struct test_partial_present_common_parameters *parameters,
+                                    ID3D11Device **device,
+                                    HWND *window,
+                                    IDXGISwapChain1 **swapchain,
+                                    ID3D11DeviceContext **context)
+{
+    static const D3D_FEATURE_LEVEL feature_level[] =
+    {
+        D3D_FEATURE_LEVEL_11_0,
+    };
+    unsigned int feature_level_count = ARRAY_SIZE(feature_level);
+    DXGI_SWAP_CHAIN_DESC1 dxgi_desc;
+    IDXGIDevice *dxgi_device;
+    IDXGIAdapter *adapter;
+    IDXGIFactory2 *factory;
+    RECT rect;
+    HRESULT hr;
+
+    if (!pD3D11CreateDevice)
+    {
+        win_skip("No D3D11 support, skipping partial presentation tests.\n");
+        return FALSE;
+    }
+
+    hr = pD3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 0, feature_level, feature_level_count,
+            D3D11_SDK_VERSION, device, NULL, NULL);
+    if (FAILED(hr))
+        hr = pD3D11CreateDevice(NULL, D3D_DRIVER_TYPE_WARP, NULL, 0, feature_level, feature_level_count,
+                D3D11_SDK_VERSION, device, NULL, NULL);
+    if (FAILED(hr))
+        hr = pD3D11CreateDevice(NULL, D3D_DRIVER_TYPE_REFERENCE, NULL, 0, feature_level, feature_level_count,
+                D3D11_SDK_VERSION, device, NULL, NULL);
+
+    if (FAILED(hr) || !*device)
+    {
+        skip("Failed to create D3D11 device, skipping partial presentation tests.\n");
+        return FALSE;
+    }
+
+    hr = ID3D11Device_QueryInterface(*device, &IID_IDXGIDevice, (void **)&dxgi_device);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDXGIDevice_GetAdapter(dxgi_device, &adapter);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    IDXGIDevice_Release(dxgi_device);
+    hr = IDXGIAdapter_GetParent(adapter, &IID_IDXGIFactory2, (void **)&factory);
+    ok(hr == S_OK || broken(hr == E_NOINTERFACE), "Got unexpected hr %#lx.\n", hr);
+    IDXGIAdapter_Release(adapter);
+    if (!factory)
+    {
+        win_skip("No IDXGIFactory2, skipping partial presentation tests.\n");
+        return FALSE;
+    }
+
+    SetRect(&rect, 0, 0, parameters->window_width, parameters->window_height);
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW | WS_VISIBLE, FALSE);
+    *window = CreateWindowA("static", "dxgi_test", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            0, 0, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, NULL, NULL);
+
+    dxgi_desc.Width = parameters->swapchain_width;
+    dxgi_desc.Height = parameters->swapchain_height;
+    dxgi_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    dxgi_desc.Stereo = FALSE;
+    dxgi_desc.SampleDesc.Count = 1;
+    dxgi_desc.SampleDesc.Quality = 0;
+    dxgi_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    dxgi_desc.BufferCount = parameters->buffer_count;
+    dxgi_desc.Scaling = parameters->scaling;
+    dxgi_desc.SwapEffect = parameters->swap_effect;
+    dxgi_desc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+    dxgi_desc.Flags = 0;
+
+    hr = IDXGIFactory2_CreateSwapChainForHwnd(factory, (IUnknown *)*device, *window, &dxgi_desc, NULL, NULL, swapchain);
+    ok(hr == S_OK, "Failed to create swapchain, hr %#lx.\n", hr);
+    IDXGIFactory2_Release(factory);
+
+    ID3D11Device_GetImmediateContext(*device, context);
+    return TRUE;
+}
+
+struct test_partial_present_grid_backbuffer_info
+{
+    DWORD background;
+    struct color_rect rectangles[1];
+};
+
+struct test_partial_present_grid_parameters
+{
+    struct test_partial_present_common_parameters c;
+    UINT cell_size;
+    UINT rows;
+    UINT columns;
+};
+
+static void test_partial_present_grid_impl(struct test_partial_present_grid_parameters *parameters)
+{
+    ID3D11Texture2D *backbuffer_0, *backbuffer_last;
+    ID3D11RenderTargetView *backbuffer_0_rtv;
+    ID3D11DeviceContext *context;
+    IDXGISwapChain1 *swapchain;
+    ID3D11Device *device;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    DXGI_PRESENT_PARAMETERS present_params;
+    RECT dirty_rect;
+    const UINT buffer_count = parameters->c.buffer_count;
+    const UINT cell_size = parameters->cell_size;
+    const UINT rows = parameters->rows;
+    const UINT columns = parameters->columns;
+    ID3D11Texture2D **backbuffers = calloc(buffer_count, sizeof(ID3D11Texture2D*));
+    const UINT backbuffer_info_size = FIELD_OFFSET(struct test_partial_present_grid_backbuffer_info, rectangles[buffer_count]);
+    char *backbuffer_info_memory = calloc(buffer_count, backbuffer_info_size);
+    struct test_partial_present_grid_backbuffer_info **backbuffer_info = calloc(buffer_count + 1, sizeof(*backbuffer_info));
+    const DWORD background_dword = RGB_DWORD(1, 1, 1);
+    const FLOAT background_float[] = { 1.0f / 255, 1.0f / 255, 1.0f / 255, 0.5f };
+
+#define PALETTE_SIZE 11
+
+    const BYTE PALETTE[PALETTE_SIZE][3] = {
+        {47, 45, 48},
+        {90, 71, 67},
+        {111, 108, 112},
+        {43, 46, 67},
+        {75, 109, 65},
+        {119, 32, 46},
+        {181, 186, 182},
+        {207, 187, 123},
+        {213, 98, 49},
+        {0, 116, 168},
+        {51, 190, 204}
+    };
+
+    DWORD PALETTE_RGBA_DWORD[PALETTE_SIZE];
+
+    FLOAT PALETTE_RGBA_FLOAT[PALETTE_SIZE][4];
+
+    for (UINT i = 0; i < PALETTE_SIZE; ++i)
+    {
+        BYTE red = PALETTE[i][0];
+        BYTE green = PALETTE[i][1];
+        BYTE blue = PALETTE[i][2];
+        PALETTE_RGBA_DWORD[i] = RGB_DWORD(red, green, blue);
+        PALETTE_RGBA_FLOAT[i][0] = red * 1.0f / 255;
+        PALETTE_RGBA_FLOAT[i][1] = green * 1.0f / 255;
+        PALETTE_RGBA_FLOAT[i][2] = blue * 1.0f / 255;
+        PALETTE_RGBA_FLOAT[i][3] = 0.5f;
+    }
+
+    for (size_t i = 0; i < buffer_count; ++i)
+        backbuffer_info[i] = (struct test_partial_present_grid_backbuffer_info*)(backbuffer_info_memory + i * backbuffer_info_size);
+
+    if (!prepare_partial_present(&parameters->c, &device, &window, &swapchain, &context))
+        return;
+
+    for (UINT i = 0; i < buffer_count; ++i)
+    {
+        hr = IDXGISwapChain1_GetBuffer(swapchain, i, &IID_ID3D11Texture2D, (void **)&backbuffers[i]);
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    }
+
+    backbuffer_0 = backbuffers[0];
+    backbuffer_last = backbuffers[buffer_count - 1];
+
+    hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)backbuffer_0, NULL, &backbuffer_0_rtv);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    for (UINT i = 0; i < buffer_count; ++i)
+        check_full(backbuffers[i], 0);
+
+    ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_0_rtv, background_float);
+
+    check_full(backbuffer_0, background_dword);
+    for (UINT i = 1; i < buffer_count; ++i)
+        check_full(backbuffers[i], 0);
+
+    present_params.DirtyRectsCount = 0;
+    present_params.pDirtyRects = NULL;
+    present_params.pScrollOffset = NULL;
+    present_params.pScrollRect = NULL;
+
+    IDXGISwapChain1_Present1(swapchain, 0, 0, &present_params);
+
+    for (UINT i = 0; i < buffer_count - 1; ++i)
+        check_full(backbuffers[i], 0);
+    check_full(backbuffer_last, background_dword);
+
+    present_params.DirtyRectsCount = 1;
+    present_params.pDirtyRects = &dirty_rect;
+
+    backbuffer_info[buffer_count - 1]->background = background_dword;
+
+    for (UINT row = 0; row < rows; ++row)
+    {
+        for (UINT col = 0; col < columns; ++col)
+        {
+            const UINT current_index = row * columns + col;
+            const UINT palette_index = (row * columns + col) % PALETTE_SIZE;
+            const FLOAT* color_float = PALETTE_RGBA_FLOAT[palette_index];
+            const DWORD color_dword = PALETTE_RGBA_DWORD[palette_index];
+
+            for (UINT k = 0; k < buffer_count; ++k)
+                flaky_wine check_texture(backbuffers[k], backbuffer_info[k]->background, buffer_count, backbuffer_info[k]->rectangles);
+
+            ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_0_rtv, color_float);
+
+            dirty_rect.top = row * cell_size;
+            dirty_rect.bottom = (row + 1) * cell_size;
+            dirty_rect.left = col * cell_size;
+            dirty_rect.right = (col + 1) * cell_size;
+            backbuffer_info[0]->background = current_index + 1 >= buffer_count ? color_dword : background_dword;
+            for (UINT k = 0; k < buffer_count - 1; ++k)
+                backbuffer_info[0]->rectangles[k] = backbuffer_info[buffer_count - 1]->rectangles[k + 1];
+            backbuffer_info[0]->rectangles[buffer_count - 1].color = color_dword;
+            backbuffer_info[0]->rectangles[buffer_count - 1].rect = dirty_rect;
+
+            IDXGISwapChain1_Present1(swapchain, 0, 0, &present_params);
+
+            backbuffer_info[buffer_count] = backbuffer_info[0];
+            for (UINT k = 0; k < buffer_count; ++k)
+                backbuffer_info[k] = backbuffer_info[k + 1];
+
+            for (UINT k = 0; k < buffer_count; ++k)
+                flaky_wine check_texture(backbuffers[k], backbuffer_info[k]->background, buffer_count, backbuffer_info[k]->rectangles);
+        }
+    }
+
+#undef PALETTE_SIZE
+
+    ID3D11RenderTargetView_Release(backbuffer_0_rtv);
+    for (UINT i = 0; i < buffer_count; ++i)
+        ID3D11Texture2D_Release(backbuffers[i]);
+    IDXGISwapChain1_Release(swapchain);
+    ID3D11DeviceContext_Release(context);
+    refcount = ID3D11Device_Release(device);
+    ok(!refcount, "Device has %lu references left.\n", refcount);
+    DestroyWindow(window);
+    free(backbuffer_info);
+    free(backbuffer_info_memory);
+    free(backbuffers);
+}
+
+static void test_partial_present_grid(void)
+{
+    struct test_partial_present_grid_parameters parameters = {
+        .c.swap_effect = DXGI_SWAP_EFFECT_SEQUENTIAL, .c.buffer_count = 5,
+        .c.swapchain_width = 640, .c.swapchain_height = 480,
+        .c.window_width = 640, .c.window_height = 480,
+        .cell_size = 160, .rows = 3, .columns = 4,
+    };
+    test_partial_present_grid_impl(&parameters);
+    parameters.c.swap_effect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    parameters.c.window_width = 1280;
+    test_partial_present_grid_impl(&parameters);
+}
+
+static void test_partial_present_scroll_impl(struct test_partial_present_common_parameters *parameters)
+{
+    ID3D11Texture2D *backbuffer_0, *backbuffer_1, *backbuffer_2;
+    ID3D11RenderTargetView *backbuffer_0_rtv;
+    ID3D11DeviceContext *context;
+    IDXGISwapChain1 *swapchain;
+    ID3D11Device *device;
+    ULONG refcount;
+    HWND window;
+    HRESULT hr;
+    DXGI_PRESENT_PARAMETERS present_params;
+
+    static const float red[] = {1.0f, 0.0f, 0.0f, 0.5f};
+    static const float green[] = {0.0f, 1.0f, 0.0f, 0.5f};
+    static const float blue[] = {0.0f, 0.0f, 1.0f, 0.5f};
+
+    const DWORD RED = RGB_DWORD(0xFF, 0, 0);
+    const DWORD GREEN = RGB_DWORD(0, 0xFF, 0);
+    const DWORD BLUE = RGB_DWORD(0, 0, 0xFF);
+    const DWORD BLACK = 0x00000000;
+
+    RECT dirty_rects_green[] = {
+        {.left = 50, .top = 50, .right = 100, .bottom = 100},
+        {.left = 200, .top = 80, .right = 400, .bottom = 300}
+    };
+
+    RECT dirty_rects_blue[] = {
+        {.left = 50, .top = 40, .right = 100, .bottom = 80},
+        {.left = 10, .top = 400, .right = 600, .bottom = 420}
+    };
+
+    RECT scroll_rect = {.left = 10, .top = 10, .right = 600, .bottom = 400};
+    POINT scroll_offset = {.x = 0, .y = -20};
+
+    if (!prepare_partial_present(parameters, &device, &window, &swapchain, &context))
+        return;
+
+    hr = IDXGISwapChain1_GetBuffer(swapchain, 0, &IID_ID3D11Texture2D, (void **)&backbuffer_0);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDXGISwapChain1_GetBuffer(swapchain, 1, &IID_ID3D11Texture2D, (void **)&backbuffer_1);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+    hr = IDXGISwapChain1_GetBuffer(swapchain, 2, &IID_ID3D11Texture2D, (void **)&backbuffer_2);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    hr = ID3D11Device_CreateRenderTargetView(device, (ID3D11Resource *)backbuffer_0, NULL, &backbuffer_0_rtv);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    check_full(backbuffer_0, BLACK);
+    check_full(backbuffer_1, BLACK);
+    check_full(backbuffer_2, BLACK);
+
+    ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_0_rtv, red);
+
+    check_full(backbuffer_0, RED);
+    check_full(backbuffer_1, BLACK);
+    check_full(backbuffer_2, BLACK);
+
+    present_params.DirtyRectsCount = 0;
+    present_params.pDirtyRects = NULL;
+    present_params.pScrollOffset = NULL;
+    present_params.pScrollRect = NULL;
+
+    hr = IDXGISwapChain1_Present1(swapchain, 0, 0, &present_params);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    check_full(backbuffer_0, BLACK);
+    check_full(backbuffer_1, BLACK);
+    check_full(backbuffer_2, RED);
+
+    ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_0_rtv, green);
+
+    check_full(backbuffer_0, GREEN);
+    check_full(backbuffer_1, BLACK);
+    check_full(backbuffer_2, RED);
+
+    present_params.DirtyRectsCount = ARRAYSIZE(dirty_rects_green);
+    present_params.pDirtyRects = dirty_rects_green;
+    present_params.pScrollOffset = NULL;
+    present_params.pScrollRect = NULL;
+
+    hr = IDXGISwapChain1_Present1(swapchain, 0, 0, &present_params);
+    ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+    check_full(backbuffer_0, BLACK);
+    check_full(backbuffer_1, RED);
+
+    todo_wine check_color(backbuffer_2, 5, 5, RED);
+    todo_wine check_color(backbuffer_2, 20, 20, RED);
+    todo_wine check_color(backbuffer_2, 49, 29, RED);
+    todo_wine check_color(backbuffer_2, 49, 39, RED);
+    flaky_wine check_colors(backbuffer_2, 49, 49, RED, RED, RED, GREEN); /* top-left corner */
+    flaky_wine check_colors(backbuffer_2, 49, 79, RED, GREEN, RED, GREEN); /* left side */
+    flaky_wine check_colors(backbuffer_2, 49, 99, RED, GREEN, RED, RED); /* bottom-left corner */
+    todo_wine check_color(backbuffer_2, 99, 29, RED);
+    todo_wine check_color(backbuffer_2, 99, 39, RED);
+    flaky_wine check_colors(backbuffer_2, 99, 49, RED, RED, GREEN, RED); /* top-right corner */
+    flaky_wine check_colors(backbuffer_2, 99, 79, GREEN, RED, GREEN, RED); /* right side */
+    flaky_wine check_colors(backbuffer_2, 99, 99, GREEN, RED, RED, RED); /* bottom-right corner */
+    todo_wine check_color(backbuffer_2, 199, 59, RED);
+    todo_wine check_color(backbuffer_2, 399, 59, RED);
+    flaky_wine check_colors(backbuffer_2, 199, 79, RED, RED, RED, GREEN); /* top-left corner */
+    flaky_wine check_colors(backbuffer_2, 399, 79, RED, RED, GREEN, RED); /* top-right corner */
+    flaky_wine check_colors(backbuffer_2, 199, 279, RED, GREEN, RED, GREEN); /* left side */
+    flaky_wine check_colors(backbuffer_2, 399, 279, GREEN, RED, GREEN, RED); /* right side */
+    flaky_wine check_colors(backbuffer_2, 199, 299, RED, GREEN, RED, RED); /* bottom-left corner */
+    flaky_wine check_colors(backbuffer_2, 399, 299, GREEN, RED, RED, RED); /* bottom-right corner */
+    todo_wine check_color(backbuffer_2, 9, 399, RED);
+    todo_wine check_color(backbuffer_2, 9, 419, RED);
+    todo_wine check_color(backbuffer_2, 599, 399, RED);
+    todo_wine check_color(backbuffer_2, 599, 419, RED);
+
+    ID3D11DeviceContext_ClearRenderTargetView(context, backbuffer_0_rtv, blue);
+
+    check_full(backbuffer_0, BLUE);
+    check_full(backbuffer_1, RED);
+
+    todo_wine check_color(backbuffer_2, 5, 5, RED);
+    todo_wine check_color(backbuffer_2, 20, 20, RED);
+    todo_wine check_color(backbuffer_2, 49, 29, RED);
+    todo_wine check_color(backbuffer_2, 49, 39, RED);
+    flaky_wine check_colors(backbuffer_2, 49, 49, RED, RED, RED, GREEN); /* top-left corner */
+    flaky_wine check_colors(backbuffer_2, 49, 79, RED, GREEN, RED, GREEN); /* left side */
+    flaky_wine check_colors(backbuffer_2, 49, 99, RED, GREEN, RED, RED); /* bottom-left corner */
+    todo_wine check_color(backbuffer_2, 99, 29, RED);
+    todo_wine check_color(backbuffer_2, 99, 39, RED);
+    flaky_wine check_colors(backbuffer_2, 99, 49, RED, RED, GREEN, RED); /* top-right corner */
+    flaky_wine check_colors(backbuffer_2, 99, 79, GREEN, RED, GREEN, RED); /* right side */
+    flaky_wine check_colors(backbuffer_2, 99, 99, GREEN, RED, RED, RED); /* bottom-right corner */
+    todo_wine check_color(backbuffer_2, 199, 59, RED);
+    todo_wine check_color(backbuffer_2, 399, 59, RED);
+    flaky_wine check_colors(backbuffer_2, 199, 79, RED, RED, RED, GREEN); /* top-left corner */
+    flaky_wine check_colors(backbuffer_2, 399, 79, RED, RED, GREEN, RED); /* top-right corner */
+    flaky_wine check_colors(backbuffer_2, 199, 279, RED, GREEN, RED, GREEN); /* left side */
+    flaky_wine check_colors(backbuffer_2, 399, 279, GREEN, RED, GREEN, RED); /* right side */
+    flaky_wine check_colors(backbuffer_2, 199, 299, RED, GREEN, RED, RED); /* bottom-left corner */
+    flaky_wine check_colors(backbuffer_2, 399, 299, GREEN, RED, RED, RED); /* bottom-right corner */
+    todo_wine check_color(backbuffer_2, 9, 399, RED);
+    todo_wine check_color(backbuffer_2, 9, 419, RED);
+    todo_wine check_color(backbuffer_2, 599, 399, RED);
+    todo_wine check_color(backbuffer_2, 599, 419, RED);
+
+    present_params.DirtyRectsCount = ARRAYSIZE(dirty_rects_blue);
+    present_params.pDirtyRects = dirty_rects_blue;
+    present_params.pScrollRect = &scroll_rect;
+    present_params.pScrollOffset = &scroll_offset;
+
+    hr = IDXGISwapChain1_Present1(swapchain, 0, 0, &present_params);
+
+    if (is_flip_model(parameters->swap_effect))
+    {
+        ok(hr == S_OK, "Got unexpected hr %#lx.\n", hr);
+
+        check_full(backbuffer_0, RED);
+
+        todo_wine check_color(backbuffer_1, 5, 5, RED);
+        todo_wine check_color(backbuffer_1, 20, 20, RED);
+        todo_wine check_color(backbuffer_1, 49, 29, RED);
+        todo_wine check_color(backbuffer_1, 49, 39, RED);
+        flaky_wine check_colors(backbuffer_1, 49, 49, RED, RED, RED, GREEN); /* top-left corner */
+        flaky_wine check_colors(backbuffer_1, 49, 79, RED, GREEN, RED, GREEN); /* left side */
+        flaky_wine check_colors(backbuffer_1, 49, 99, RED, GREEN, RED, RED); /* bottom-left corner */
+        todo_wine check_color(backbuffer_1, 99, 29, RED);
+        todo_wine check_color(backbuffer_1, 99, 39, RED);
+        flaky_wine check_colors(backbuffer_1, 99, 49, RED, RED, GREEN, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_1, 99, 79, GREEN, RED, GREEN, RED); /* right side */
+        flaky_wine check_colors(backbuffer_1, 99, 99, GREEN, RED, RED, RED); /* bottom-right corner */
+        todo_wine check_color(backbuffer_1, 199, 59, RED);
+        todo_wine check_color(backbuffer_1, 399, 59, RED);
+        flaky_wine check_colors(backbuffer_1, 199, 79, RED, RED, RED, GREEN); /* top-left corner */
+        flaky_wine check_colors(backbuffer_1, 399, 79, RED, RED, GREEN, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_1, 199, 279, RED, GREEN, RED, GREEN); /* left side */
+        flaky_wine check_colors(backbuffer_1, 399, 279, GREEN, RED, GREEN, RED); /* right side */
+        flaky_wine check_colors(backbuffer_1, 199, 299, RED, GREEN, RED, RED); /* bottom-left corner */
+        flaky_wine check_colors(backbuffer_1, 399, 299, GREEN, RED, RED, RED); /* bottom-right corner */
+        todo_wine check_color(backbuffer_1, 9, 399, RED);
+        todo_wine check_color(backbuffer_1, 9, 419, RED);
+        todo_wine check_color(backbuffer_1, 599, 399, RED);
+        todo_wine check_color(backbuffer_1, 599, 419, RED);
+
+        todo_wine check_color(backbuffer_2, 5, 5, RED);
+        todo_wine check_color(backbuffer_2, 20, 20, RED);
+        flaky_wine check_colors(backbuffer_2, 49, 29, RED, RED, RED, GREEN); /* top-left corner */
+        flaky_wine check_colors(backbuffer_2, 49, 39, RED, GREEN, RED, BLUE); /* left side, green-blue edge */
+        flaky_wine check_colors(backbuffer_2, 49, 49, RED, BLUE, RED, BLUE); /* left side */
+        flaky_wine check_colors(backbuffer_2, 49, 79, RED, BLUE, RED, RED); /* bottom-left corner */
+        todo_wine check_color(backbuffer_2, 49, 99, RED);
+        flaky_wine check_colors(backbuffer_2, 99, 29, RED, RED, GREEN, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_2, 99, 39, GREEN, RED, BLUE, RED); /* right side, green-blue edge */
+        flaky_wine check_colors(backbuffer_2, 99, 49, BLUE, RED, BLUE, RED); /* right side */
+        flaky_wine check_colors(backbuffer_2, 99, 79, BLUE, RED, RED, RED); /* bottom-right corner */
+        todo_wine check_color(backbuffer_2, 99, 99, RED);
+        flaky_wine check_colors(backbuffer_2, 199, 59, RED, RED, RED, GREEN); /* top-left corner */
+        flaky_wine check_colors(backbuffer_2, 399, 59, RED, RED, GREEN, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_2, 199, 79, RED, GREEN, RED, GREEN); /* left side */
+        flaky_wine check_colors(backbuffer_2, 399, 79, GREEN, RED, GREEN, RED); /* right side */
+        flaky_wine check_colors(backbuffer_2, 199, 279, RED, GREEN, RED, RED); /* bottom-left corner */
+        flaky_wine check_colors(backbuffer_2, 399, 279, GREEN, RED, RED, RED); /* bottom-right corner */
+        todo_wine check_color(backbuffer_2, 199, 299, RED);
+        todo_wine check_color(backbuffer_2, 399, 299, RED);
+        flaky_wine check_colors(backbuffer_2, 9, 399, RED, RED, RED, BLUE); /* top-left corner */
+        flaky_wine check_colors(backbuffer_2, 9, 419, RED, BLUE, RED, RED); /* bottom-left corner */
+        flaky_wine check_colors(backbuffer_2, 599, 399, RED, RED, BLUE, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_2, 599, 419, BLUE, RED, RED, RED); /* bottom-right corner */
+    }
+    else
+    {
+        ok(hr == DXGI_ERROR_INVALID_CALL, "Got unexpected hr %#lx.\n", hr);
+
+        /* No changes. */
+
+        check_full(backbuffer_0, BLUE);
+        check_full(backbuffer_1, RED);
+
+        todo_wine check_color(backbuffer_2, 5, 5, RED);
+        todo_wine check_color(backbuffer_2, 20, 20, RED);
+        todo_wine check_color(backbuffer_2, 49, 29, RED);
+        todo_wine check_color(backbuffer_2, 49, 39, RED);
+        flaky_wine check_colors(backbuffer_2, 49, 49, RED, RED, RED, GREEN); /* top-left corner */
+        flaky_wine check_colors(backbuffer_2, 49, 79, RED, GREEN, RED, GREEN); /* left side */
+        flaky_wine check_colors(backbuffer_2, 49, 99, RED, GREEN, RED, RED); /* bottom-left corner */
+        todo_wine check_color(backbuffer_2, 99, 29, RED);
+        todo_wine check_color(backbuffer_2, 99, 39, RED);
+        flaky_wine check_colors(backbuffer_2, 99, 49, RED, RED, GREEN, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_2, 99, 79, GREEN, RED, GREEN, RED); /* right side */
+        flaky_wine check_colors(backbuffer_2, 99, 99, GREEN, RED, RED, RED); /* bottom-right corner */
+        todo_wine check_color(backbuffer_2, 199, 59, RED);
+        todo_wine check_color(backbuffer_2, 399, 59, RED);
+        flaky_wine check_colors(backbuffer_2, 199, 79, RED, RED, RED, GREEN); /* top-left corner */
+        flaky_wine check_colors(backbuffer_2, 399, 79, RED, RED, GREEN, RED); /* top-right corner */
+        flaky_wine check_colors(backbuffer_2, 199, 279, RED, GREEN, RED, GREEN); /* left side */
+        flaky_wine check_colors(backbuffer_2, 399, 279, GREEN, RED, GREEN, RED); /* right side */
+        flaky_wine check_colors(backbuffer_2, 199, 299, RED, GREEN, RED, RED); /* bottom-left corner */
+        flaky_wine check_colors(backbuffer_2, 399, 299, GREEN, RED, RED, RED); /* bottom-right corner */
+        todo_wine check_color(backbuffer_2, 9, 399, RED);
+        todo_wine check_color(backbuffer_2, 9, 419, RED);
+        todo_wine check_color(backbuffer_2, 599, 399, RED);
+        todo_wine check_color(backbuffer_2, 599, 419, RED);
+    }
+
+    ID3D11RenderTargetView_Release(backbuffer_0_rtv);
+    ID3D11Texture2D_Release(backbuffer_0);
+    ID3D11Texture2D_Release(backbuffer_1);
+    ID3D11Texture2D_Release(backbuffer_2);
+    IDXGISwapChain1_Release(swapchain);
+    ID3D11DeviceContext_Release(context);
+    refcount = ID3D11Device_Release(device);
+    ok(!refcount, "Device has %lu references left.\n", refcount);
+    DestroyWindow(window);
+}
+
+static void test_partial_present_scroll(void)
+{
+    struct test_partial_present_common_parameters parameters = {
+        .swap_effect = DXGI_SWAP_EFFECT_SEQUENTIAL, .buffer_count = 3,
+        .swapchain_width = 640, .swapchain_height = 480,
+        .window_width = 640, .window_height = 480,
+    };
+    test_partial_present_scroll_impl(&parameters);
+    parameters.swap_effect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    parameters.window_width = 1280;
+    test_partial_present_scroll_impl(&parameters);
+}
+
 START_TEST(dxgi)
 {
     HMODULE dxgi_module, d3d11_module, d3d12_module, gdi32_module;
@@ -8591,6 +9342,8 @@ START_TEST(dxgi)
     queue_test(test_object_wrapping);
     queue_test(test_factory_check_feature_support);
     queue_test(test_video_memory_budget_notification);
+    queue_test(test_partial_present_grid);
+    queue_test(test_partial_present_scroll);
 
     run_queued_tests();
 

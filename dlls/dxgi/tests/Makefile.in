@@ -1,5 +1,5 @@
 TESTDLL   = dxgi.dll
-IMPORTS   = d3d10_1 dxgi user32
+IMPORTS   = d3d10_1 dxgi gdi32 user32
 EXTRADLLFLAGS = -Wl,--subsystem,console:5.2
 
 SOURCES = \
