@@ -2622,7 +2622,7 @@ BOOL WINAPI NtUserUpdateLayeredWindow( HWND hwnd, HDC hdc_dst, const POINT *pts_
         intersect_rect( &rect, &rect, &surface_rect );
 
         if (!(hdc = NtGdiCreateCompatibleDC( 0 ))) goto done;
-        window_surface_lock( surface );
+        if (surface != &dummy_surface) pthread_mutex_lock( &surfaces_lock );
         NtGdiSelectBitmap( hdc, surface->color_bitmap );
 
         if (dirty) intersect_rect( &rect, &rect, dirty );
@@ -2638,7 +2638,7 @@ BOOL WINAPI NtUserUpdateLayeredWindow( HWND hwnd, HDC hdc_dst, const POINT *pts_
         if (ret) add_bounds_rect( &surface->bounds, &rect );
 
         NtGdiDeleteObjectApp( hdc );
-        window_surface_unlock( surface );
+        if (surface != &dummy_surface) pthread_mutex_unlock( &surfaces_lock );
 
         if (!(flags & ULW_COLORKEY)) key = CLR_INVALID;
         window_surface_set_layered( surface, key, -1, 0xff000000 );
