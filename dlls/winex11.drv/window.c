@@ -477,6 +477,13 @@ static BOOL is_window_managed( HWND hwnd, UINT swp_flags, BOOL fullscreen )
 static inline BOOL is_window_resizable( struct x11drv_win_data *data, DWORD style )
 {
     if (data->is_resizable) return TRUE;
+    /* When the window is restoring from the maximized state, its size should be adjustable.
+       Some window managers may reject change the _NET_WM_STATE property when the window is
+       maximized but its size is restricted to normal size by XSetWMNormalHints.
+    */
+    if (!(style & (WS_MINIMIZE | WS_MAXIMIZE)) && (data->pending_state.wm_state == NormalState)
+        && (data->current_state.net_wm_state & (1 << NET_WM_STATE_MAXIMIZED)) && !data->configure_serial)
+        return TRUE;
     /* Metacity needs the window to be resizable to make it fullscreen */
     return data->is_fullscreen;
 }
