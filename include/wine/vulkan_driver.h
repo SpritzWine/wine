@@ -85,6 +85,7 @@ struct VkDevice_T
 
 #ifdef WINE_UNIX_LIB
 
+#include <pthread.h>
 #include "wine/rbtree.h"
 #include "wine/list.h"
 
@@ -163,6 +164,8 @@ struct vulkan_instance
 
     struct vulkan_physical_device *physical_devices;
     uint32_t physical_device_count;
+
+    pthread_key_t transient_object_handle;
 };
 
 static inline struct vulkan_instance *vulkan_instance_from_handle( VkInstance handle )
