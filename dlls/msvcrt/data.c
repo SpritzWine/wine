@@ -22,6 +22,7 @@
 #include <math.h>
 #include "msvcrt.h"
 #include <winnls.h>
+#include "wine/asm.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(msvcrt);
@@ -557,6 +558,8 @@ void CDECL _initterm(_INITTERMFUN *start,_INITTERMFUN *end)
   }
 }
 
+__ASM_GLOBAL_IMPORT(_initterm)
+
 /*********************************************************************
  *  _initterm_e (MSVCRT.@)
  *
@@ -580,6 +583,8 @@ int CDECL _initterm_e(_INITTERM_E_FN *table, _INITTERM_E_FN *end)
     }
     return res;
 }
+
+__ASM_GLOBAL_IMPORT(_initterm_e)
 
 /*********************************************************************
  *		__set_app_type (MSVCRT.@)

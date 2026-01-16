@@ -2278,6 +2278,7 @@ static struct strarray get_default_imports( const struct makefile *make, struct 
     {
         STRARRAY_FOR_EACH( imp, &imports ) if (!strcmp( imp, "winecrt0" )) return ret;
         strarray_add( &ret, "winecrt0" );
+        if (strarray_exists( imports, "ntdll" )) strarray_add( &ret, "ntdll" );
         if (compiler_rt) strarray_add( &ret, compiler_rt );
         return ret;
     }
@@ -2320,6 +2321,9 @@ static struct strarray add_import_libs( const struct makefile *make, struct stra
 
         /* add crt import lib only when adding the default imports libs */
         if (is_crt_module( name ) && type != IMPORT_TYPE_DEFAULT) continue;
+
+        /* when importing itself, skip the import and add object files instead */
+        if (make->importlib && !strcmp( make->importlib, name )) continue;
 
         if (name[0] == '-')
         {
@@ -3362,7 +3366,12 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
     if (source->file->flags & FLAG_C_UNIX)
         strarray_add( &make->unixobj_files, obj_name );
     else if (source->file->flags & FLAG_C_IMPLIB)
+    {
         strarray_add( &make->implib_files[arch], obj_name );
+        /* if we're importing ourselves, add importlib object files to object_files as well */
+        if (make->importlib && strarray_exists( make->imports, make->importlib ))
+            strarray_add( &make->object_files[arch], obj_name );
+    }
     else if (!(source->file->flags & FLAG_TESTDLL))
         strarray_add( &make->object_files[arch], obj_name );
     else
