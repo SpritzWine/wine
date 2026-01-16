@@ -4481,7 +4481,9 @@ void loader_init( CONTEXT *context, void **entry )
 
         if ((status = load_dll( NULL, L"kernel32.dll", 0, &kernel32, FALSE )) != STATUS_SUCCESS)
         {
-            MESSAGE( "wine: could not load kernel32.dll, status %lx\n", status );
+            MESSAGE( "wine: could not load kernel32.dll, status %lx, architecture %s, in %s\n",
+                     status, NtCurrentTeb()->WowTebOffset ? "wow64" : ( sizeof(void*) == 4 ? "win32" : "win64" ),
+                     debugstr_us(&peb->ProcessParameters->ImagePathName) );
             NtTerminateProcess( GetCurrentProcess(), status );
         }
         node_kernel32 = kernel32->ldr.DdagNode;
