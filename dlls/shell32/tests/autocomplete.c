@@ -446,10 +446,11 @@ static HRESULT string_enumerator_create(void **ppv, WCHAR **suggestions, int cou
     return S_OK;
 }
 
+static DWORD dispatch_messages_sleep = 33;
 static void dispatch_messages(void)
 {
     MSG msg;
-    Sleep(33);
+    Sleep(dispatch_messages_sleep);
     while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
     {
         TranslateMessage(&msg);
@@ -825,6 +826,12 @@ static void test_custom_source(void)
     SendMessageW(hwnd_edit, WM_CHAR, 'u', 1);
     dispatch_messages();
     SendMessageW(hwnd_edit, WM_GETTEXT, ARRAY_SIZE(buffer), (LPARAM)buffer);
+    if(!lstrcmpW(buffer, L"au")) {
+        /* increase sleep time to avoid rare failures on Windows */
+        dispatch_messages_sleep += 200;
+        dispatch_messages();
+        SendMessageW(hwnd_edit, WM_GETTEXT, ARRAY_SIZE(buffer), (LPARAM)buffer);
+    }
     ok(lstrcmpW(str_beta, buffer) == 0, "Expected %s, got %s\n", wine_dbgstr_w(str_beta), wine_dbgstr_w(buffer));
     ok(obj->num_resets == 1, "Expected 1 reset, got %u\n", obj->num_resets);
     SendMessageW(hwnd_edit, EM_SETSEL, 0, -1);
@@ -924,10 +931,13 @@ START_TEST(autocomplete)
     ok(hMainWnd != NULL, "Failed to create parent window. Tests aborted.\n");
     if (!hMainWnd) return;
 
-    /* Move the cursor away from the dropdown listbox */
+    /* Move the cursor away from the dropdown listbox...
+     * SetCursorPos(0, 0) does not seem to work, and setting it across multiple displays
+     * is bugged (on Windows), but setting it twice seems to work-around that problem */
     GetWindowRect(hMainWnd, &win_rect);
     GetCursorPos(&orig_pos);
-    SetCursorPos(win_rect.left, win_rect.top);
+    SetCursorPos(win_rect.left ? win_rect.left : 1, win_rect.top ? win_rect.top : 1);
+    SetCursorPos(win_rect.left ? win_rect.left : 1, win_rect.top ? win_rect.top : 1);
 
     test_invalid_init();
     ac = test_init();
@@ -946,6 +956,7 @@ START_TEST(autocomplete)
     IAutoComplete_Release(ac);
 
 cleanup:
+    SetCursorPos(orig_pos.x, orig_pos.y);
     SetCursorPos(orig_pos.x, orig_pos.y);
     DestroyWindow(hEdit);
     DestroyWindow(hMainWnd);
