@@ -37,6 +37,8 @@
 #include "ocidl.h"
 #include "oleauto.h"
 
+#include "../shresdef.h"
+
 #include "wine/test.h"
 
 #include <initguid.h>
@@ -6276,13 +6278,149 @@ static void test_copy_paste(void)
     SetCurrentDirectoryW(cwd);
 }
 
+static void test_link(void)
+{
+    CMINVOKECOMMANDINFO invoke_info = {.cbSize = sizeof(invoke_info)};
+    WCHAR cwd[MAX_PATH], temp_path[MAX_PATH];
+    ITEMIDLIST *pidl, *src_pidl;
+    IShellFolder *tmp_folder;
+    IContextMenu *menu;
+    HRESULT hr;
+    WIN32_FIND_DATAW findFileData;
+    WCHAR lnkpath[MAX_PATH];
+    HANDLE handle;
+    WCHAR shortcutW[255];
+    HINSTANCE shell32_hInstance = LoadLibraryW(L"shell32.dll");
+    const WCHAR filename[] = L"test_link.txt";
+    const WCHAR targetname[] = L"test_link";
+    CHAR LongFile[MAX_PATH];
+    WCHAR *filename2;
+    INT length, i;
+    INT targetCmd=0;
+    INT count;
+    HMENU hmenu = CreatePopupMenu();
+
+    /* Setup */
+    GetCurrentDirectoryW(ARRAY_SIZE(cwd), cwd);
+    GetTempPathW(ARRAY_SIZE(temp_path), temp_path);
+    SetCurrentDirectoryW(temp_path);
+
+    CreateTestFile(".\\test_link.txt");
+
+    length = MAX_PATH - (lstrlenW(temp_path) + 4);
+    for (i = 0; i < length; i++) LongFile[i] = 'a';
+    LongFile[i] = 0;
+    filename2 = make_wstr(LongFile);
+    CreateTestFile(LongFile);
+
+    LoadStringW(shell32_hInstance, IDS_SHORTCUT, shortcutW, ARRAY_SIZE(shortcutW));
+
+    hr = SHParseDisplayName(temp_path, NULL, &pidl, 0, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    hr = SHBindToObject(NULL, pidl, NULL, &IID_IShellFolder, (void **)&tmp_folder);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+    ILFree(pidl);
+
+    hr = IShellFolder_ParseDisplayName(tmp_folder, NULL, NULL, (WCHAR*)filename, NULL, &src_pidl, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IShellFolder_GetUIObjectOf(tmp_folder, NULL, 1, (const ITEMIDLIST **)&src_pidl,
+            &IID_IContextMenu, NULL, (void **)&menu);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    /* Find Command */
+    IContextMenu_QueryContextMenu(menu, hmenu, 0, 64, 32767, CMF_NORMAL);
+    count = GetMenuItemCount(hmenu);
+    for (i = 0; i < count; i++)
+    {
+        MENUITEMINFOA mii;
+        INT res;
+        char buf[255], buf2[255];
+        ZeroMemory(&mii, sizeof(MENUITEMINFOA));
+        mii.cbSize = sizeof(MENUITEMINFOA);
+        mii.fMask = MIIM_ID | MIIM_FTYPE | MIIM_STRING;
+        mii.dwTypeData = buf2;
+        mii.cch = sizeof(buf2);
+
+        res = GetMenuItemInfoA(hmenu, i, TRUE, &mii);
+        ok(res, "Failed to get menu item info, error %ld.\n", GetLastError());
+        if (!(mii.fType & MFT_SEPARATOR)) {
+            hr = IContextMenu_GetCommandString(menu, mii.wID - 64, GCS_VERBA, 0, buf, sizeof(buf));
+            ok(hr == S_OK || hr == E_NOTIMPL || hr == E_INVALIDARG,
+                "Got unexpected hr %#lx for ID %d, string %s.\n", hr, mii.wID, debugstr_a(mii.dwTypeData));
+            if (hr == S_OK)
+            {
+                if (!strcmp(buf, "link")) {
+                    targetCmd = mii.wID - 64;
+                    break;
+                }
+            }
+        }
+    }
+    DestroyMenu(hmenu);
+
+    ok (targetCmd != 0, "Failed to find link command\n");
+    if (targetCmd == 0)
+        return;
+
+    invoke_info.lpVerb = MAKEINTRESOURCEA(targetCmd);
+
+    /* Basic Success */
+    hr = IContextMenu_InvokeCommand(menu, &invoke_info);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    /* Second Success */
+    hr = IContextMenu_InvokeCommand(menu, &invoke_info);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    swprintf(lnkpath, ARRAY_SIZE(lnkpath),L"%s%s - %s.lnk", temp_path, targetname, shortcutW);
+    handle = FindFirstFileW(lnkpath, &findFileData);
+    ok(handle != INVALID_HANDLE_VALUE, "Failed to find %s\n", debugstr_w(lnkpath));
+    if (handle != INVALID_HANDLE_VALUE) FindClose(handle);
+
+    swprintf(lnkpath, ARRAY_SIZE(lnkpath),L"%s%s - %s (%u).lnk", temp_path, targetname, shortcutW, 2);
+    handle = FindFirstFileW(lnkpath, &findFileData);
+    ok(handle != INVALID_HANDLE_VALUE, "Failed to find %s\n",debugstr_w(lnkpath));
+    if (handle != INVALID_HANDLE_VALUE) FindClose(handle);
+
+    /* Path too long*/
+    hr = IShellFolder_ParseDisplayName(tmp_folder, NULL, NULL, filename2, NULL, &src_pidl, NULL);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    hr = IShellFolder_GetUIObjectOf(tmp_folder, NULL, 1, (const ITEMIDLIST **)&src_pidl,
+            &IID_IContextMenu, NULL, (void **)&menu);
+    ok(hr == S_OK, "Got hr %#lx.\n", hr);
+
+    invoke_info.lpVerb = MAKEINTRESOURCEA(targetCmd);
+    hr = IContextMenu_InvokeCommand(menu, &invoke_info);
+    ok(hr == E_INVALIDARG, "Got hr %#lx.\n", hr);
+
+    /* Cleanup */
+    swprintf(lnkpath, ARRAY_SIZE(lnkpath), L"%stest_link*.lnk", temp_path);
+    handle = FindFirstFileW(lnkpath, &findFileData);
+    if (handle != INVALID_HANDLE_VALUE) {
+        do {
+            DeleteFileW(findFileData.cFileName);
+        } while (FindNextFileW(handle, &findFileData) != 0);
+        FindClose(handle);
+    }
+    DeleteFileW(filename);
+    DeleteFileW(filename2);
+    free(filename2);
+
+    IContextMenu_Release(menu);
+    ILFree(src_pidl);
+    IShellFolder_Release(tmp_folder);
+    SetCurrentDirectoryW(cwd);
+
+}
+
 START_TEST(shlfolder)
 {
     init_function_pointers();
     /* if OleInitialize doesn't get called, ParseDisplayName returns
        CO_E_NOTINITIALIZED for malformed directory names */
     OleInitialize(NULL);
-
     test_SHBindToFolderIDListParent();
     test_ParseDisplayName();
     test_SHParseDisplayName();
@@ -6324,6 +6462,7 @@ START_TEST(shlfolder)
     test_SHGetSetFolderCustomSettings();
     test_SHOpenFolderAndSelectItems();
     test_copy_paste();
+    test_link();
 
     OleUninitialize();
 }
