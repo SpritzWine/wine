@@ -359,8 +359,8 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
 @interface WineContentView : WineBaseView <NSTextInputClient, NSViewLayerContentScaleDelegate>
 {
     CGRect surfaceRect;
-    CGImageRef colorImage;
-    CGImageRef shapeImage;
+    IOSurfaceRef _IOSurface;
+    BOOL _hasShape;
 
     NSMutableArray* glContexts;
     NSMutableArray* pendingGlContexts;
@@ -496,8 +496,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         [markedText release];
         [glContexts release];
         [pendingGlContexts release];
-        CGImageRelease(colorImage);
-        CGImageRelease(shapeImage);
+        CFRelease(_IOSurface);
         [super dealloc];
     }
 
@@ -530,26 +529,17 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         imageRect.size.width *= layer.contentsScale;
         imageRect.size.height *= layer.contentsScale;
 
-        maskedImage = shapeImage ? CGImageCreateWithMask(colorImage, shapeImage)
-                                 : CGImageRetain(colorImage);
-        image = CGImageCreateWithImageInRect(maskedImage, imageRect);
-        CGImageRelease(maskedImage);
+        layer.position = surfaceRect.origin;
+        layer.contents = (id)_IOSurface;
+        [window windowDidDrawContent];
 
-        if (image)
+        // If the window may be transparent, then we have to invalidate the
+        // shadow every time we draw.  Also, if this is the first time we've
+        // drawn since changing from transparent to opaque.
+        if (_hasShape || window.usePerPixelAlpha || window.shapeChangedSinceLastDraw)
         {
-            layer.position = surfaceRect.origin;
-            layer.contents = (id)image;
-            CFRelease(image);
-            [window windowDidDrawContent];
-
-            // If the window may be transparent, then we have to invalidate the
-            // shadow every time we draw.  Also, if this is the first time we've
-            // drawn since changing from transparent to opaque.
-            if (shapeImage || window.usePerPixelAlpha || window.shapeChangedSinceLastDraw)
-            {
-                window.shapeChangedSinceLastDraw = FALSE;
-                [window invalidateShadow];
-            }
+            window.shapeChangedSinceLastDraw = FALSE;
+            [window invalidateShadow];
         }
     }
 
@@ -558,21 +548,21 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
         surfaceRect = rect;
     }
 
-    - (void) setColorImage:(CGImageRef)image
+    - (void) setIOSurface:(IOSurfaceRef)image
     {
-        CGImageRelease(colorImage);
-        colorImage = CGImageRetain(image);
+        CFRelease(_IOSurface);
+        _IOSurface = image;
+        CFRetain(_IOSurface);
     }
 
-    - (void) setShapeImage:(CGImageRef)image
+    - (void) setHasShape:(BOOL)has_shape
     {
-        CGImageRelease(shapeImage);
-        shapeImage = CGImageRetain(image);
+        _hasShape = has_shape;
     }
 
-    - (BOOL) hasShapeImage
+    - (BOOL) hasShape
     {
-        return !!shapeImage;
+        return _hasShape;
     }
 
     - (void) viewWillDraw
@@ -2059,7 +2049,7 @@ static CVReturn WineDisplayLinkCallback(CVDisplayLinkRef displayLink, const CVTi
     - (BOOL) needsTransparency
     {
         WineContentView *view = self.contentView;
-        return self.contentView.layer.mask || [view hasShapeImage] || self.usePerPixelAlpha ||
+        return self.contentView.layer.mask || [view hasShape] || self.usePerPixelAlpha ||
                 (gl_surface_mode == GL_SURFACE_BEHIND && [view hasGLDescendant]);
     }
 
@@ -3559,51 +3549,47 @@ void macdrv_set_cocoa_parent_window(macdrv_window w, macdrv_window parent)
 
 
 /***********************************************************************
- *              macdrv_window_set_color_image
+ *              macdrv_window_set_io_surface
  *
  * Push a window surface color pixel update in a specified rect (in non-client
  * area coordinates).
  */
-void macdrv_window_set_color_image(macdrv_window w, CGImageRef image, CGRect rect, CGRect dirty)
+void macdrv_window_set_io_surface(macdrv_window w, IOSurfaceRef image, CGRect rect, CGRect dirty)
 {
 @autoreleasepool
 {
     WineWindow* window = (WineWindow*)w;
 
-    CGImageRetain(image);
+    CFRetain(image);
 
     OnMainThreadAsync(^{
         WineContentView *view = [window contentView];
 
-        [view setColorImage:image];
+        [view setIOSurface:image];
         [view setSurfaceRect:cgrect_mac_from_win(rect)];
         [view setNeedsDisplayInRect:NSRectFromCGRect(cgrect_mac_from_win(dirty))];
 
-        CGImageRelease(image);
+        CFRelease(image);
     });
 }
 }
 
 
 /***********************************************************************
- *              macdrv_window_set_shape_image
+ *              macdrv_window_shape_changed
  */
-void macdrv_window_set_shape_image(macdrv_window w, CGImageRef image)
+void macdrv_window_shape_changed(macdrv_window w, bool has_shape)
 {
 @autoreleasepool
 {
     WineWindow* window = (WineWindow*)w;
 
-    CGImageRetain(image);
-
     OnMainThreadAsync(^{
         WineContentView *view = [window contentView];
 
-        [view setShapeImage:image];
+        [view setHasShape:has_shape];
         [view setNeedsDisplay:true];
         [window checkTransparency];
-
-        CGImageRelease(image);
     });
 }
 }
@@ -3995,7 +3981,7 @@ void macdrv_set_view_backing_size(macdrv_view v, const int backing_size[2])
  *              macdrv_window_background_color
  *
  * Returns the standard Mac window background color as a 32-bit value of
- * the form 0x00rrggbb.
+ * the form 0xaarrggbb.
  */
 uint32_t macdrv_window_background_color(void)
 {
@@ -4007,14 +3993,14 @@ uint32_t macdrv_window_background_color(void)
     // of it is to draw with it.
     dispatch_once(&once, ^{
         OnMainThread(^{
-            unsigned char rgbx[4];
-            unsigned char *planes = rgbx;
+            unsigned char rgba[4];
+            unsigned char *planes = rgba;
             NSBitmapImageRep *bitmap = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:&planes
                                                                                pixelsWide:1
                                                                                pixelsHigh:1
                                                                             bitsPerSample:8
-                                                                          samplesPerPixel:3
-                                                                                 hasAlpha:NO
+                                                                          samplesPerPixel:4
+                                                                                 hasAlpha:YES
                                                                                  isPlanar:NO
                                                                            colorSpaceName:NSCalibratedRGBColorSpace
                                                                              bitmapFormat:0
@@ -4026,7 +4012,7 @@ uint32_t macdrv_window_background_color(void)
             NSRectFill(NSMakeRect(0, 0, 1, 1));
             [NSGraphicsContext restoreGraphicsState];
             [bitmap release];
-            result = rgbx[0] << 16 | rgbx[1] << 8 | rgbx[2];
+            result = rgba[0] << 16 | rgba[1] << 8 | rgba[2] | rgba[3] << 24;
         });
     });
 
