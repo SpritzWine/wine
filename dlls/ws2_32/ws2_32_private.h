@@ -38,6 +38,8 @@
 #include "mswsock.h"
 #include "bthsdpdef.h"
 #include "bluetoothapis.h"
+#include "bthdef.h"
+#include "bthioctl.h"
 #include "ws2bth.h"
 #include "ws2tcpip.h"
 #include "ws2spi.h"
@@ -52,6 +54,7 @@
 #include "ip2string.h"
 #include "windns.h"
 #include "wine/afd.h"
+#include "wine/winebth.h"
 #include "wine/debug.h"
 #include "wine/unixlib.h"
 

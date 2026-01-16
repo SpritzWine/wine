@@ -23,6 +23,7 @@
  */
 
 #include "ws2_32_private.h"
+#include "wine/winebth.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(winsock);
 WINE_DECLARE_DEBUG_CHANNEL(winediag);
@@ -2073,58 +2074,594 @@ int WINAPI WSAGetServiceClassNameByClassIdW( GUID *class, WCHAR *service, DWORD 
     return -1;
 }
 
+/* NS_BTH support */
+struct ws_bth_query_device
+{
+    BTH_DEVICE_INFO_LIST *list;
+    SIZE_T idx;
+};
+
+struct ws_bth_query_ctx
+{
+    unsigned int lookup_devices : 1;
+    union {
+        struct ws_bth_query_device device;
+    } data;
+};
+
+struct ws_lookup_service_ctx
+{
+    DWORD namespace;
+    union {
+        struct ws_bth_query_ctx bth;
+    } data;
+};
+
+static DWORD bth_for_all_radios( void (*callback)( HANDLE radio, void *data ), void *data )
+{
+    BLUETOOTH_FIND_RADIO_PARAMS params = {0};
+    HBLUETOOTH_RADIO_FIND find;
+    HANDLE radio;
+    DWORD ret;
+
+    params.dwSize = sizeof( params );
+    find = BluetoothFindFirstRadio( &params, &radio );
+    if (!find)
+        return GetLastError();
+    do {
+        callback( radio, data );
+        CloseHandle( radio );
+    } while (BluetoothFindNextRadio( find, &radio ));
+    ret = GetLastError();
+    BluetoothFindRadioClose( find );
+    return ret == ERROR_NO_MORE_ITEMS ? 0 : ret;
+}
+
+struct bth_device_discovery_data
+{
+    unsigned int device_inquiry : 1;
+    DWORD timeout_ms;
+    BTH_DEVICE_INFO_LIST **list;
+};
+
+static void bth_radio_append_device_list( HANDLE radio, void *data )
+{
+    ULONG num_devices = 1;
+    struct bth_device_discovery_data *params = data;
+    BTH_DEVICE_INFO_LIST *final_list = *params->list, *list, **ret = params->list;
+
+    if (params->device_inquiry)
+    {
+        DWORD bytes;
+
+        if (DeviceIoControl( radio, IOCTL_WINEBTH_RADIO_START_DISCOVERY, NULL, 0, NULL, 0, &bytes, NULL ))
+        {
+            Sleep( params->timeout_ms );
+            if (!DeviceIoControl( radio, IOCTL_WINEBTH_RADIO_STOP_DISCOVERY, NULL, 0, NULL, 0, &bytes, NULL ))
+                ERR( "Failed to stop device inquiry scan on radio %p: %lu\n", radio, GetLastError() );
+        }
+        else
+            ERR( "Failed to start device inquiry scan on radio %p: %lu\n", radio, GetLastError() );
+
+    }
+
+    for (;;)
+    {
+        DWORD size, bytes;
+
+        size = offsetof( BTH_DEVICE_INFO_LIST, deviceList[num_devices] );
+        list = calloc( 1, size );
+        if (!list)
+            return;
+        if (!DeviceIoControl( radio, IOCTL_BTH_GET_DEVICE_INFO, NULL, 0, list, size, &bytes, NULL )
+            && GetLastError() != ERROR_INVALID_USER_BUFFER)
+        {
+            free( list );
+            ERR( "Failed to get device list for radio %p: %lu\n", radio, GetLastError() );
+            return;
+        }
+        if (!list->numOfDevices)
+        {
+            free( list );
+            return;
+        }
+        if (num_devices == list->numOfDevices)
+            break;
+
+        /* The buffer was not properly sized, try again. */
+        num_devices = list->numOfDevices;
+        free( list );
+    }
+    if (!final_list && !(final_list = calloc( 1, sizeof( *final_list ) )))
+    {
+        free( list );
+        return;
+    }
+    else if (final_list)
+    {
+        void *ptr;
+
+        ptr = realloc( final_list, offsetof( BTH_DEVICE_INFO_LIST,
+                                             deviceList[final_list->numOfDevices + list->numOfDevices] ) );
+        if (!ptr)
+        {
+            free( list );
+            return;
+        }
+        final_list = ptr;
+    }
+
+    memcpy( &final_list->deviceList[(final_list)->numOfDevices], list->deviceList,
+            sizeof( list->deviceList[0] ) * list->numOfDevices );
+    final_list->numOfDevices += list->numOfDevices;
+    *ret = final_list;
+    free( list );
+}
+
+static INT bth_lookup_devices( const BLOB *blob, DWORD flags, struct ws_bth_query_device *query )
+{
+    struct bth_device_discovery_data data = {0};
+    DWORD err;
+
+    TRACE( "(%p, %#lx, %p)\n", blob, flags, query );
+
+
+    if (flags & LUP_FLUSHCACHE)
+    {
+        DWORD duration_ms = 6000;
+        const BTH_QUERY_DEVICE *query;
+
+        if (blob && blob->cbSize == sizeof( *query ) && blob->pBlobData)
+        {
+            query = (BTH_QUERY_DEVICE *)blob->pBlobData;
+            /* Windows caps the duration at 60 seconds. */
+            duration_ms = min( query->length, 60 ) * 1000;
+        }
+        data.device_inquiry = 1;
+        data.timeout_ms = duration_ms;
+    }
+
+    query->idx = 0;
+    query->list = NULL;
+    data.list = &query->list;
+    err = bth_for_all_radios( bth_radio_append_device_list, &data );
+    if (err)
+    {
+        free( query->list );
+        WSASetLastError( err == ERROR_NO_MORE_ITEMS ? WSASERVICE_NOT_FOUND : err );
+        return -1;
+    }
+    WSASetLastError( query->list ? ERROR_SUCCESS : WSASERVICE_NOT_FOUND );
+    return query->list ? 0 : -1;
+}
+
+/* Flags relevant to Bluetooth for WSALookupServiceBegin:
+ *
+ * LUP_CONTAINERS: If present, go through all Bluetooth devices. Otherwise, lookup bluetooth services on local radio(s)
+ *                 or a remote device (as determined by WSAQUERYSET).
+ * LUP_FLUSHCACHE: When performing a device lookup, perform an actual device inquiry procedure (discovery scan) first,
+ *                 instead of only returning devices in the local cached. Similarly for service lookup, query remote
+ *                 devices over SDP instead of returning cached SDP records.
+*/
+static INT ws_bth_lookup_service_begin( const BLOB *blob, DWORD flags, struct ws_bth_query_ctx *ctx )
+{
+    TRACE( "(%p, %#lx, %p)\n", blob, flags, ctx );
+
+    ctx->lookup_devices = !!(flags & LUP_CONTAINERS);
+
+    if (ctx->lookup_devices)
+        return bth_lookup_devices( blob, flags, &ctx->data.device );
+
+    FIXME( "Service inquiry is not supported\n" );
+    WSASetLastError( WSA_NOT_ENOUGH_MEMORY );
+    return -1;
+}
+
+static void ws_bth_lookup_service_end( struct ws_bth_query_ctx *handle );
+
+struct flags_info
+{
+    DWORD val;
+    const char *name;
+};
+
+/* Taken from dlls/dmusic/dmusic_main.c */
+static const char *debugstr_flags( DWORD flags, const struct flags_info* info, DWORD len )
+{
+    char buffer[256], *ptr = buffer;
+    DWORD i, flags_left = flags, buf_left = sizeof( buffer );
+
+    if (!flags)
+        return wine_dbg_sprintf( "0" );
+
+    for (i = 0; i < len; i++)
+    {
+        if (flags_left & info[i].val)
+        {
+            int len = snprintf( ptr, buf_left, buf_left == sizeof( buffer ) ? "%s" : " | %s", info[i].name );
+            if (len < 0 || len >= buf_left)
+                return wine_dbg_sprintf( "%#lx", flags );
+            ptr += len;
+            buf_left -= len;
+            flags_left &= ~info[i].val;
+        }
+    }
+
+    return flags_left ? wine_dbg_sprintf( "(%s | %#lx)", buffer, flags_left ) : wine_dbg_sprintf( "(%s)", buffer );
+}
+
+static const char *debugstr_WSALookupService_flags( DWORD flags )
+{
+    const static struct flags_info lookup_flags[] = {
+        { LUP_DEEP, "LUP_DEEP" },
+        { LUP_CONTAINERS, "LUP_CONTAINERS" },
+        { LUP_RETURN_NAME, "LUP_RETURN_NAME" },
+        { LUP_RETURN_TYPE, "LUP_RETURN_TYPE" },
+        { LUP_RETURN_VERSION, "LUP_RETURN_VERSION" },
+        { LUP_RETURN_COMMENT, "LUP_RETURN_COMMENT" },
+        { LUP_RETURN_ADDR, "LUP_RETURN_ADDR" },
+        { LUP_RETURN_BLOB, "LUP_RETURN_BLOB" },
+        { LUP_RETURN_ALIASES, "LUP_RETURN_ALIASES" },
+        { LUP_RETURN_QUERY_STRING, "LUP_RETURN_QUERY_STRING" },
+        { LUP_FLUSHCACHE, "LUP_FLUSHCACHE" },
+        { LUP_FLUSHPREVIOUS, "LUP_FLUSHPREVIOUS" },
+        { LUP_RES_SERVICE, "LUP_RES_SERVICE" }
+    };
+
+    return flags == LUP_RETURN_ALL ? "(LUP_RETURN_ALL)"
+                                   : debugstr_flags( flags, lookup_flags, ARRAY_SIZE( lookup_flags ) );
+}
 
 /***********************************************************************
  *      WSALookupServiceBeginA   (ws2_32.@)
  */
-int WINAPI WSALookupServiceBeginA( WSAQUERYSETA *query, DWORD flags, HANDLE *lookup )
+int WINAPI WSALookupServiceBeginA( WSAQUERYSETA *query, DWORD flags, HANDLE *lookup_handle )
 {
-    FIXME( "(%p %#lx %p) Stub!\n", query, flags, lookup );
-    SetLastError( WSA_NOT_ENOUGH_MEMORY );
-    return -1;
-}
+    struct ws_lookup_service_ctx *ret, lookup = {0};
 
+    TRACE( "(%p %s %p)\n", query, debugstr_WSALookupService_flags( flags ), lookup_handle );
+
+    if (!query || !lookup_handle)
+    {
+        WSASetLastError( WSAEFAULT );
+        return -1;
+    }
+    if (query->dwSize != sizeof( *query ))
+    {
+        WSASetLastError( WSAEINVAL );
+        return -1;
+    }
+    switch (query->dwNameSpace)
+    {
+    case NS_BTH:
+        if (ws_bth_lookup_service_begin( query->lpBlob, flags, &lookup.data.bth ))
+            return -1;
+        break;
+    default:
+        FIXME( "Unsupported dwNameSpace: %lu\n", query->dwNameSpace );
+        SetLastError( WSA_NOT_ENOUGH_MEMORY );
+        return -1;
+    }
+    if (!(ret = calloc( 1, sizeof( *ret ) )))
+    {
+        ws_bth_lookup_service_end( &lookup.data.bth );
+        WSASetLastError( WSA_NOT_ENOUGH_MEMORY );
+        return -1;
+    }
+
+    ret->namespace = query->dwNameSpace;
+    ret->data = lookup.data;
+    *lookup_handle = ret;
+
+    return 0;
+}
 
 /***********************************************************************
  *      WSALookupServiceBeginW   (ws2_32.@)
  */
-int WINAPI WSALookupServiceBeginW( WSAQUERYSETW *query, DWORD flags, HANDLE *lookup )
+int WINAPI WSALookupServiceBeginW( WSAQUERYSETW *query, DWORD flags, HANDLE *lookup_handle )
 {
-    FIXME( "(%p %#lx %p) Stub!\n", query, flags, lookup );
-    SetLastError( WSA_NOT_ENOUGH_MEMORY );
-    return -1;
+    struct ws_lookup_service_ctx *ret, lookup = {0};
+
+    TRACE( "(%p %s %p)\n", query, debugstr_WSALookupService_flags( flags ), lookup_handle );
+
+    if (!query || !lookup_handle)
+    {
+        WSASetLastError( WSAEFAULT );
+        return -1;
+    }
+    if (query->dwSize != sizeof( *query ))
+    {
+        WSASetLastError( WSAEINVAL );
+        return -1;
+    }
+    switch (query->dwNameSpace)
+    {
+    case NS_BTH:
+        if (ws_bth_lookup_service_begin( query->lpBlob, flags, &lookup.data.bth ))
+            return -1;
+        break;
+    default:
+        FIXME( "Unsupported dwNameSpace: %lu\n", query->dwNameSpace );
+        SetLastError( WSA_NOT_ENOUGH_MEMORY );
+        return -1;
+    }
+    if (!(ret = calloc( 1, sizeof( *ret ) )))
+    {
+        ws_bth_lookup_service_end( &lookup.data.bth );
+        WSASetLastError( WSA_NOT_ENOUGH_MEMORY );
+        return -1;
+    }
+
+    ret->namespace = query->dwNameSpace;
+    ret->data = lookup.data;
+    *lookup_handle = ret;
+
+    return 0;
 }
 
+static void ws_bth_lookup_service_end( struct ws_bth_query_ctx *handle )
+{
+    if (handle->lookup_devices)
+        free( handle->data.device.list );
+}
 
 /***********************************************************************
  *      WSALookupServiceEnd   (ws2_32.@)
  */
-int WINAPI WSALookupServiceEnd( HANDLE lookup )
+int WINAPI WSALookupServiceEnd( HANDLE lookup_handle )
 {
-    FIXME("(%p) Stub!\n", lookup );
+    struct ws_lookup_service_ctx *lookup = lookup_handle;
+
+    TRACE( "(%p)\n", lookup_handle );
+
+    if (!lookup_handle)
+    {
+        WSASetLastError( WSA_INVALID_HANDLE );
+        return -1;
+    }
+
+    switch (lookup->namespace)
+    {
+    case NS_BTH:
+        ws_bth_lookup_service_end( &lookup->data.bth );
+        break;
+    default:
+        WSASetLastError( WSA_INVALID_HANDLE );
+        return -1;
+    }
+
+    free( lookup_handle );
     return 0;
 }
 
 
+/* Known flags for device discovery:
+ *
+ * LUP_FLUSHPREVIOUS: Skip to the next device in the list.
+ * LUP_RETURN_TYPE: Return the class of device code inside the Data1 field of lpServiceClassId (yes, really).
+ * LUP_RETURN_NAME: Return the device name in lpszServiceInstanceName.
+ * LUP_RETURN_ADDR: Return the device address in lpcsaBuffer.LocalAddr as a SOCKADDR_BTH value.
+ * LUP_RES_SERVICE: If LUP_RETURN_ADDR is set, return the local address in lpcsaBuffer.RemoteAddr similarly as well.
+ * LUP_RETURN_BLOB: Return the BTH_DEVICE_INFO value associated with the device in lpBlob.
+ */
+static INT bth_devices_next( struct ws_bth_query_device *devices, DWORD flags, DWORD *buf_len, void *queryset, BOOL unicode )
+{
+    union {
+        WSAQUERYSETA resultsA;
+        WSAQUERYSETW resultsW;
+    } *results = queryset;
+    DWORD queryset_size = (unicode ? sizeof( results->resultsW ) : sizeof( results->resultsA ));
+    char *buf_start = (char *)queryset + queryset_size;
+    DWORD buf_required = queryset_size;
+    const BTH_DEVICE_INFO *device_info;
+
+    if (devices->list->numOfDevices == devices->idx)
+    {
+        SetLastError( WSA_E_NO_MORE );
+        return -1;
+    }
+
+    if (flags & LUP_RETURN_TYPE)
+        buf_required += sizeof( GUID );
+    if (flags & LUP_RETURN_NAME)
+        /* Windows will always require the maximum buffer length for storing a name, regardless of the name's actual length. */
+        buf_required += unicode ? BTH_MAX_NAME_SIZE * sizeof( WCHAR ) : BTH_MAX_NAME_SIZE;
+    if (flags & LUP_RETURN_ADDR)
+    {
+        buf_required += sizeof( CSADDR_INFO ) + sizeof( SOCKADDR_BTH );
+        if (flags & LUP_RES_SERVICE)
+            buf_required += sizeof( SOCKADDR_BTH );
+    }
+    if (flags & LUP_RETURN_BLOB)
+        buf_required += sizeof( BLOB ) + sizeof( BTH_DEVICE_INFO );
+
+    if (*buf_len < buf_required)
+    {
+        *buf_len = buf_required;
+        WSASetLastError( WSAEFAULT );
+        return -1;
+    }
+
+    if (flags & LUP_FLUSHPREVIOUS)
+    {
+        devices->idx++;
+        return bth_devices_next( devices, flags & ~LUP_FLUSHPREVIOUS, buf_len, queryset, unicode );
+    }
+    device_info = &devices->list->deviceList[devices->idx++];
+
+    if (flags & LUP_RETURN_TYPE)
+    {
+        GUID *cod = (GUID *)buf_start;
+
+        memset( cod, 0, sizeof( *cod ));
+        cod->Data1 = device_info->classOfDevice;
+        buf_start += sizeof( *cod );
+        if (unicode)
+            results->resultsW.lpServiceClassId = cod;
+        else
+            results->resultsA.lpServiceClassId = cod;
+    }
+    if (flags & LUP_RETURN_NAME)
+    {
+        if (unicode)
+        {
+            DWORD lenW = MultiByteToWideChar( CP_ACP, 0, device_info->name, -1, NULL, 0 );
+            results->resultsW.lpszServiceInstanceName = (WCHAR *)buf_start;
+            buf_start += lenW * sizeof( WCHAR );
+            MultiByteToWideChar( CP_ACP, 0, device_info->name, -1, results->resultsW.lpszServiceInstanceName,
+                                 lenW );
+        }
+        else
+        {
+            DWORD lenA = strlen( device_info->name ) + 1;
+            results->resultsA.lpszServiceInstanceName = buf_start;
+            buf_start += lenA;
+            memcpy( results->resultsA.lpszServiceInstanceName, device_info->name, lenA + 1 );
+        }
+    }
+    if (flags & LUP_RETURN_ADDR)
+    {
+        CSADDR_INFO *addr_info;
+        SOCKADDR_BTH *bth_addr;
+
+        addr_info = (CSADDR_INFO *)buf_start;
+        buf_start += sizeof( *addr_info );
+        bth_addr = (SOCKADDR_BTH *)buf_start;
+        buf_start += sizeof( *bth_addr );
+
+        addr_info->RemoteAddr.iSockaddrLength = sizeof( *bth_addr );
+        addr_info->RemoteAddr.lpSockaddr = (SOCKADDR *)bth_addr;
+        memset( bth_addr, 0, sizeof( *bth_addr ));
+        bth_addr->addressFamily = AF_BTH;
+        bth_addr->btAddr = device_info->address;
+        if (flags & LUP_RES_SERVICE)
+        {
+            FIXME( "LUP_RES_SERVICE: semi-stub!\n" );
+            bth_addr = (SOCKADDR_BTH *)buf_start;
+            buf_start += sizeof( *bth_addr );
+            memset( bth_addr, 0, sizeof( *bth_addr ));
+            bth_addr->addressFamily = AF_BTH;
+            addr_info->LocalAddr.iSockaddrLength = sizeof( *bth_addr );
+            addr_info->LocalAddr.lpSockaddr = (SOCKADDR *)bth_addr;
+        }
+        if (unicode)
+            results->resultsW.lpcsaBuffer = addr_info;
+        else
+            results->resultsA.lpcsaBuffer = addr_info;
+    }
+    if (flags & LUP_RETURN_BLOB)
+    {
+        BLOB *blob;
+        BTH_DEVICE_INFO *info;
+
+        blob = (BLOB *)buf_start;
+        buf_start += sizeof( *blob );
+        info = (BTH_DEVICE_INFO *)buf_start;
+        buf_start += sizeof( *info );
+
+        blob->cbSize = sizeof( *device_info );
+        blob->pBlobData = (BYTE *)info;
+        info->address = device_info->address;
+        info->classOfDevice = device_info->classOfDevice;
+        info->flags = device_info->flags;
+        if (flags & LUP_RETURN_NAME)
+            lstrcpynA( info->name, device_info->name, sizeof( info->name ) );
+
+        if (unicode)
+            results->resultsW.lpBlob = blob;
+        else
+            results->resultsA.lpBlob = blob;
+    }
+
+    WSASetLastError( ERROR_SUCCESS );
+    return 0;
+}
+
+static INT ws_bth_lookup_service_next( struct ws_bth_query_ctx *handle, DWORD flags, DWORD *buf_len, void *results,
+                                BOOL unicode )
+{
+    TRACE( "(%p, %#lx, %p, %p)\n", handle, flags, buf_len, results );
+
+    if (handle->lookup_devices)
+        return bth_devices_next( &handle->data.device, flags, buf_len, results, unicode );
+
+    WSASetLastError( WSA_INVALID_HANDLE );
+    return -1;
+}
+
 /***********************************************************************
  *      WSALookupServiceNextA   (ws2_32.@)
  */
-int WINAPI WSALookupServiceNextA( HANDLE lookup, DWORD flags, DWORD *len, WSAQUERYSETA *results )
+int WINAPI WSALookupServiceNextA( HANDLE lookup_handle, DWORD flags, DWORD *len, WSAQUERYSETA *results )
 {
-    FIXME( "(%p %#lx %p %p) Stub!\n", lookup, flags, len, results );
-    SetLastError( WSA_E_NO_MORE );
-    return -1;
+    struct ws_lookup_service_ctx *lookup = lookup_handle;
+
+    TRACE( "(%p %s %p %p)\n", lookup_handle, debugstr_WSALookupService_flags( flags ), len, results );
+
+    if (!len || !results || results->dwSize != sizeof( *results ))
+    {
+        WSASetLastError( WSAEINVAL );
+        return -1;
+    }
+    if (*len < sizeof( *results ))
+    {
+        *len = sizeof( *results );
+        WSASetLastError( WSAEFAULT );
+        return -1;
+    }
+    if (!lookup)
+    {
+        WSASetLastError( WSA_INVALID_HANDLE );
+        return -1;
+    }
+
+    switch (lookup->namespace)
+    {
+    case NS_BTH:
+        return ws_bth_lookup_service_next( &lookup->data.bth, flags, len, results, FALSE );
+    default:
+        WSASetLastError( WSA_INVALID_HANDLE );
+        return -1;
+    }
 }
 
 
 /***********************************************************************
  *      WSALookupServiceNextW   (ws2_32.@)
  */
-int WINAPI WSALookupServiceNextW( HANDLE lookup, DWORD flags, DWORD *len, WSAQUERYSETW *results )
+int WINAPI WSALookupServiceNextW( HANDLE lookup_handle, DWORD flags, DWORD *len, WSAQUERYSETW *results )
 {
-    FIXME( "(%p %#lx %p %p) Stub!\n", lookup, flags, len, results );
-    SetLastError( WSA_E_NO_MORE );
-    return -1;
+    struct ws_lookup_service_ctx *lookup = lookup_handle;
+
+    TRACE( "(%p %s %p %p)\n", lookup, debugstr_WSALookupService_flags( flags ), len, results );
+
+    if (!len || !results || results->dwSize != sizeof( *results ))
+    {
+        WSASetLastError( WSAEINVAL );
+        return -1;
+    }
+    if (*len < sizeof ( *results ))
+    {
+        *len = sizeof( *results );
+        WSASetLastError( WSAEFAULT );
+        return -1;
+    }
+    if (!lookup)
+    {
+        WSASetLastError( WSA_INVALID_HANDLE );
+        return -1;
+    }
+
+
+    switch (lookup->namespace)
+    {
+    case NS_BTH:
+        return ws_bth_lookup_service_next( &lookup->data.bth, flags, len, results, TRUE );
+    default:
+        WSASetLastError( WSA_INVALID_HANDLE );
+        return -1;
+    }
 }
 
 

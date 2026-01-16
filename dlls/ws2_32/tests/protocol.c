@@ -400,27 +400,23 @@ static void test_WSALookupService(void)
     ret = WSALookupServiceBeginW(NULL, 0, &handle);
     error = WSAGetLastError();
     ok(ret == SOCKET_ERROR, "WSALookupServiceBeginW should have failed\n");
-    todo_wine
     ok(error == WSAEFAULT, "expected 10014, got %ld\n", error);
 
     ret = WSALookupServiceBeginW(qs, 0, NULL);
     error = WSAGetLastError();
     ok(ret == SOCKET_ERROR, "WSALookupServiceBeginW should have failed\n");
-    todo_wine
     ok(error == WSAEFAULT, "expected 10014, got %ld\n", error);
 
     ret = WSALookupServiceBeginW(qs, 0, &handle);
     ok(ret == SOCKET_ERROR, "WSALookupServiceBeginW should have failed\n");
-    todo_wine ok(WSAGetLastError() == WSAEINVAL
-            || broken(WSAGetLastError() == ERROR_INVALID_PARAMETER)
-            || broken(WSAGetLastError() == WSASERVICE_NOT_FOUND) /* win10 1809 */,
-            "got error %u\n", WSAGetLastError());
+    ok(WSAGetLastError() == WSAEINVAL
+       || broken(WSAGetLastError() == ERROR_INVALID_PARAMETER)
+       || broken(WSAGetLastError() == WSASERVICE_NOT_FOUND) /* win10 1809 */,
+       "got error %u\n", WSAGetLastError());
 
     ret = WSALookupServiceEnd(NULL);
     error = WSAGetLastError();
-    todo_wine
     ok(ret == SOCKET_ERROR, "WSALookupServiceEnd should have failed\n");
-    todo_wine
     ok(error == ERROR_INVALID_HANDLE, "expected 6, got %ld\n", error);
 
     /* standard network list query */
@@ -438,6 +434,12 @@ static void test_WSALookupService(void)
     ok(!ret, "WSALookupServiceBeginW failed unexpectedly with error %ld\n", error);
     todo_wine
     ok(handle != (HANDLE)0xdeadbeef, "Handle was not filled\n");
+
+    if (ret)
+    {
+        skip( "WSALookupServiceBeginW failed, skipping.\n" );
+        return;
+    }
 
     offset = 0;
     do
@@ -534,6 +536,351 @@ static void test_WSALookupService(void)
 
     ret = WSALookupServiceEnd(handle);
     ok(!ret, "WSALookupServiceEnd failed unexpectedly\n");
+}
+
+static DWORD get_nth_lookup_flags( SIZE_T n, const DWORD *flags, SIZE_T len )
+{
+    SIZE_T i;
+    DWORD result = 0;
+
+    if (!n)
+        return 0;
+
+    for (i = 0; i < len; i++)
+        if (n & (1 << i))
+            result |= flags[i];
+
+    return result;
+}
+
+static void test_WSALookupServiceNext_bth_devices( HANDLE lookup_handle, DWORD flags, BOOL verbose )
+{
+    WSAQUERYSETA *results;
+    DWORD buf_len, i = 0;
+
+    buf_len = sizeof( *results );
+    for (;;)
+    {
+        INT ret, err;
+        const BTH_DEVICE_INFO *info = NULL;
+
+        results = calloc( 1, buf_len );
+        results->dwSize = sizeof( *results );
+
+        SetLastError( 0xdeadbeef );
+        ret = WSALookupServiceNextA( lookup_handle, flags, &buf_len, results );
+        err = WSAGetLastError();
+
+        winetest_push_context( "device %lu", i);
+        if (ret)
+        {
+            ok( ret == -1, "%d != -1\n", ret );
+            ok( err == WSA_E_NO_MORE || err == WSAEFAULT, "WSALookupServiceNextA failed: %d\n", err );
+            if (err != WSAEFAULT)
+            {
+                free( results );
+                winetest_pop_context();
+                return;
+            }
+            ok( buf_len >= sizeof( *results ), "Expected %lu to be greater than %lu\n", buf_len, (DWORD)sizeof( *results ) );
+            free( results );
+            winetest_pop_context();
+            continue;
+        }
+        i++;
+
+        if (flags & LUP_RETURN_NAME)
+        {
+            ok( !!results->lpszServiceInstanceName, "Expected lpszServiceInstanceName to not be NULL\n" );
+            if (verbose)
+                trace( "Name: %s\n", debugstr_a( results->lpszServiceInstanceName ) );
+        }
+
+        if (flags & LUP_RETURN_TYPE)
+        {
+            ok( !!results->lpServiceClassId, "Expected lpServiceClassId to not be NULL\n" );
+            if (results->lpServiceClassId && verbose)
+                trace( "CoD: %#lx\n", results->lpServiceClassId->Data1 );
+        }
+
+        if (flags & LUP_RETURN_BLOB)
+        {
+            ok( !!results->lpBlob, "Expected lpBlob to not be NULL\n" );
+            if (results->lpBlob)
+            {
+                info = (BTH_DEVICE_INFO *)results->lpBlob->pBlobData;
+                ok( results->lpBlob->cbSize >= sizeof( *info ), "%lu should be at least %lu\n",
+                    results->lpBlob->cbSize, (DWORD)sizeof( *info ) );
+                ok( !!info, "Expected pBlobData to not be NULL\n" );
+                if (info)
+                {
+                    if (results->lpszServiceInstanceName)
+                        ok( !strcmp( info->name, results->lpszServiceInstanceName ), "%s != %s", debugstr_a( info->name ),
+                            debugstr_a( results->lpszServiceInstanceName ));
+                    if (verbose)
+                        trace( "Device Flags: %#lx\n", info->flags );
+                    if (results->lpServiceClassId)
+                        ok( info->classOfDevice == results->lpServiceClassId->Data1, "%lu != %lu\n", info->classOfDevice,
+                            results->lpServiceClassId->Data1 );
+                }
+            }
+        }
+
+        if (flags & LUP_RETURN_ADDR)
+        {
+            ok( !!results->lpcsaBuffer, "Expected lpcsaBuffer to not be NULL\n" );
+            if (results->lpcsaBuffer)
+            {
+                const SOCKET_ADDRESS *remote_sock_addr = &results->lpcsaBuffer->RemoteAddr;
+                const SOCKADDR_BTH *remote_bth_addr = (SOCKADDR_BTH *)remote_sock_addr->lpSockaddr;
+                const SOCKET_ADDRESS *local_sock_addr = &results->lpcsaBuffer->LocalAddr;
+                const SOCKADDR_BTH *local_bth_addr = (SOCKADDR_BTH *)local_sock_addr->lpSockaddr;
+
+                ok( remote_sock_addr->iSockaddrLength == sizeof( *remote_bth_addr ), "%d != %lu\n",
+                    remote_sock_addr->iSockaddrLength, (DWORD)sizeof( *remote_bth_addr ) );
+                ok( !!remote_bth_addr, "Expected RemoteAddr to not be NULL\n" );
+                if (remote_bth_addr && remote_sock_addr->iSockaddrLength == sizeof( *remote_bth_addr ))
+                {
+                    ok( remote_bth_addr->addressFamily == AF_BTH, "%d != %d\n", remote_bth_addr->addressFamily, AF_BTH );
+                    if (info && info->flags & BDIF_ADDRESS)
+                        ok( remote_bth_addr->btAddr == info->address, "%I64x != %I64x\n", remote_bth_addr->btAddr, info->address );
+                }
+
+                if (flags & LUP_RES_SERVICE)
+                {
+                    ok( local_sock_addr->iSockaddrLength == sizeof( *local_bth_addr ), "%d != %lu\n",
+                        local_sock_addr->iSockaddrLength, (DWORD)sizeof( *local_bth_addr ));
+                    ok( !!local_bth_addr, "Expected LocalAddr to not be NULL\n" );
+                    if (local_bth_addr && local_sock_addr->iSockaddrLength == sizeof( *local_bth_addr ))
+                    {
+                        ok( local_bth_addr->addressFamily == AF_BTH, "%d != %d\n", local_bth_addr->addressFamily, AF_BTH );
+                        todo_wine ok( local_bth_addr->btAddr, "Expected btAddr to not be zero\n" );
+                    }
+                }
+            }
+        }
+
+        winetest_pop_context();
+        free( results );
+    }
+}
+
+static const DWORD device_lookup_flags[] = {LUP_RETURN_TYPE, LUP_RETURN_NAME, LUP_RETURN_BLOB, LUP_RETURN_ADDR,
+                                            LUP_RES_SERVICE};
+
+static void test_WSALookupService_bth_devices( void )
+{
+    DWORD all_flags = LUP_RETURN_TYPE | LUP_RETURN_NAME | LUP_RETURN_BLOB | LUP_RETURN_ADDR | LUP_RES_SERVICE;
+    /* For NS_BTH, WSALookupService only looks for LUP_CONTAINERS. If this flag is set, then it performs device
+     * inquiry. Otherwise, it performs service discovery. Other flags seem to be ignored. */
+    DWORD init_flags = LUP_CONTAINERS | LUP_NOCONTAINERS, i = 0, buf_len, orig_len;
+    BTH_QUERY_DEVICE query_device_params = {0};
+    WSAQUERYSETA queryA = {0}, *results;
+    BLOB device_inquiry_blob = {0};
+    HANDLE lookup_handle;
+    INT ret, err;
+
+    queryA.dwSize = sizeof( queryA );
+    queryA.dwNameSpace = NS_BTH;
+    if (winetest_interactive)
+        init_flags |= LUP_FLUSHCACHE;
+
+    device_inquiry_blob.cbSize = sizeof( query_device_params );
+    query_device_params.length = 5;
+
+    for (i = 1; i < 1 << ARRAY_SIZE( device_lookup_flags ); i++)
+    {
+        DWORD next_flags = get_nth_lookup_flags( i, device_lookup_flags, ARRAY_SIZE( device_lookup_flags ));
+        lookup_handle = NULL;
+
+        switch (i)
+        {
+        case 1:
+            /* WSASLookupServiceBeginA will ignore an invalid or NULL BLOB and perform device inquiry with the default
+             * timeout of 6 seconds. */
+            queryA.lpBlob = NULL;
+            break;
+        case 2:
+            queryA.lpBlob = &device_inquiry_blob;
+            queryA.lpBlob->cbSize += 1;
+            device_inquiry_blob.pBlobData = (BYTE *)&query_device_params;
+            break;
+        case 3:
+            queryA.lpBlob->cbSize = sizeof( query_device_params );
+            queryA.lpBlob->pBlobData = NULL;
+            break;
+        default:
+            queryA.lpBlob = &device_inquiry_blob;
+            queryA.lpBlob->cbSize = sizeof( query_device_params );
+            queryA.lpBlob->pBlobData = (BYTE *)&query_device_params;
+            break;
+        }
+        winetest_push_context( "flags=%#lx", next_flags );
+        SetLastError( 0xdeadbeef );
+
+        ret = WSALookupServiceBeginA( &queryA, init_flags, &lookup_handle );
+        err = WSAGetLastError();
+        if (ret)
+        {
+            /* WSASERVICE_NOT_FOUND indicates that no Bluetooth devices were found. */
+            ok( err == WSASERVICE_NOT_FOUND, "WSALookupServiceBeginA failed: %d\n", WSAGetLastError() );
+            ok( !lookup_handle, "Handle should not have been filled\n");
+            skip( "No Bluetooth devices found\n" );
+            winetest_pop_context();
+            continue;
+        }
+
+        ok( !!lookup_handle, "Handle was not filled\n");
+        test_WSALookupServiceNext_bth_devices( lookup_handle, next_flags, next_flags == all_flags );
+
+        ok( !WSALookupServiceEnd( lookup_handle ), "WSALookupServiceEnd failed: %d\n", WSAGetLastError() );
+        winetest_pop_context();
+    }
+
+    /* Test that WSALookupServiceNext does not modify the buffer partially when there's insufficient space for other
+     * params. */
+    lookup_handle = NULL;
+    SetLastError( 0xdeadbeef );
+    ret = WSALookupServiceBeginA( &queryA, init_flags, &lookup_handle );
+    err = WSAGetLastError();
+    if (ret)
+    {
+        ok( err == WSASERVICE_NOT_FOUND, "WSALookupServiceBeginA failed: %d\n", err );
+        ok( !lookup_handle, "Handle should not have been filled\n");
+        skip( "No Bluetooth devices found\n" );
+        return;
+    }
+
+    ok( !!lookup_handle, "Handle was not filled\n" );
+    /* Missing space for a BTH_DEVICE_INFO */
+    orig_len = buf_len = sizeof( *results ) + sizeof( GUID ) + sizeof( BLOB );
+    results = calloc( 1, buf_len );
+    results->dwSize = sizeof( *results );
+    SetLastError( 0xdeadbeef );
+    ret = WSALookupServiceNextA( lookup_handle, LUP_RETURN_TYPE | LUP_RETURN_BLOB, &buf_len, results );
+    err = WSAGetLastError();
+    ok( ret == -1, "Expected WSALookupServiceNextA to fail\n" );
+    ok( err == WSAEFAULT, "%d != %d\n", err, WSAEFAULT );
+    ok( buf_len > orig_len, "%ld should be greater than %ld\n", buf_len, orig_len );
+    ok( !results->lpServiceClassId, "lpServiceClassId should not have been filled\n" );
+    ok( !results->lpBlob, "lpBlob should not have been filled\n" );
+    free( results );
+    ok( !WSALookupServiceEnd( lookup_handle ), "WSALookupServiceEnd failed: %d\n", WSAGetLastError() );
+}
+
+static void test_WSALookupServiceNext_bth_services( HANDLE lookup_handle )
+{
+    WSAQUERYSETA *results;
+    DWORD buf_len, i = 0;
+
+    buf_len = sizeof( *results );
+    for (;;)
+    {
+        INT ret, err;
+
+        results = calloc( 1, buf_len );
+        results->dwSize = sizeof( *results );
+
+        SetLastError( 0xdeadbeef );
+        ret = WSALookupServiceNextA( lookup_handle, LUP_RETURN_NAME, &buf_len, results );
+        err = WSAGetLastError();
+
+        winetest_push_context( "service %lu", i );
+        if (ret)
+        {
+            ok( ret == -1, "%d != -1\n", ret );
+            ok( err == WSA_E_NO_MORE || err == WSAEFAULT, "WSALookupServiceNextA failed: %d\n", err );
+            if (err != WSAEFAULT)
+            {
+                free( results );
+                winetest_pop_context();
+                return;
+            }
+            ok( buf_len >= sizeof( *results ), "Expected %lu to be greater than %lu\n", buf_len, (DWORD)sizeof( *results ) );
+            free( results );
+            winetest_pop_context();
+            continue;
+        }
+
+        i++;
+        ok( !!results->lpszServiceInstanceName, "Expected lpszServiceInstanceName to not be NULL\n" );
+        if (results->lpszServiceInstanceName)
+            trace( "Service name: %s\n", debugstr_a( results->lpszServiceInstanceName ) );
+        winetest_pop_context();
+        free( results );
+    }
+}
+
+static void test_WSALookupService_bth_services( void )
+{
+    GUID L2CAP_UUID = {0x0100, 0x0000, 0x1000, {0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb}};
+    BLUETOOTH_FIND_RADIO_PARAMS find_params = {.dwSize = sizeof( find_params )};
+    BLUETOOTH_RADIO_INFO radio_info = {0};
+    HBLUETOOTH_RADIO_FIND radio_find;
+    SOCKADDR_BTH bth_addr = {0};
+    WSAQUERYSETA query = {0};
+    char addr_str[64];
+    HANDLE radio, lookup = NULL;
+    DWORD ret, len = sizeof( addr_str ), init_flags = 0;
+
+
+    radio_find = BluetoothFindFirstRadio( &find_params, &radio );
+    ret = GetLastError();
+    if (!radio_find)
+    {
+        ok( ret == ERROR_NO_MORE_ITEMS, "BluetoothFindFirstRadio failed with %lu\n", ret );
+        skip( "No Bluetooth radios found.\n" );
+        return;
+    }
+
+    radio_info.dwSize = sizeof( radio_info );
+    ret = BluetoothGetRadioInfo( radio, &radio_info );
+    CloseHandle( radio );
+    ok( !ret, "BluetoothGetRadioInfo failed: %lu\n", ret );
+    if (ret)
+    {
+        skip( "BluetoothGetRadioInfo failed.\n" );
+        return;
+    }
+
+    bth_addr.addressFamily = AF_BTH;
+    bth_addr.btAddr = radio_info.address.ullLong;
+    addr_str[0] = 0;
+    ret = WSAAddressToStringA( (SOCKADDR *)&bth_addr, sizeof( bth_addr ), NULL, addr_str, &len );
+    ok( !ret, "WSAAddressToStringA failed: %d\n", WSAGetLastError() );
+
+
+    query.dwSize = sizeof( query );
+    query.dwNameSpace = NS_BTH;
+    query.lpServiceClassId = &L2CAP_UUID;
+    if (winetest_interactive)
+        init_flags |= LUP_FLUSHCACHE;
+    query.lpszContext = addr_str;
+
+    ret = WSALookupServiceBeginA( &query, init_flags, &lookup );
+    if (ret)
+    {
+        todo_wine ok( ret == WSASERVICE_NOT_FOUND, "WSALookupServiceBeginA failed: %d\n", WSAGetLastError() );
+        skip( "WSALookupServiceBeginA failed.\n" );
+        return;
+    }
+
+    test_WSALookupServiceNext_bth_services( lookup );
+    ret = WSALookupServiceEnd( lookup );
+    ok( !ret, "WSALookupServiceEnd failed: %d\n", WSAGetLastError() );
+
+    /* As with device discovery, LUP_NOCONTAINERS is ignored here as well. */
+    ret = WSALookupServiceBeginA( &query, init_flags | LUP_NOCONTAINERS, &lookup );
+    if (ret)
+    {
+        todo_wine ok( ret == WSASERVICE_NOT_FOUND, "WSALookupServiceBeginA failed: %d\n", WSAGetLastError() );
+        skip( "WSALookupServiceBeginA failed.\n" );
+        return;
+    }
+
+    test_WSALookupServiceNext_bth_services( lookup );
+    ret = WSALookupServiceEnd( lookup );
+    ok( !ret, "WSALookupServiceEnd failed: %d\n", WSAGetLastError() );
 }
 
 #define WM_ASYNCCOMPLETE (WM_USER + 100)
@@ -3189,6 +3536,8 @@ START_TEST( protocol )
 
     test_getservbyname();
     test_WSALookupService();
+    test_WSALookupService_bth_devices();
+    test_WSALookupService_bth_services();
 
     test_inet_ntoa();
     test_inet_addr();

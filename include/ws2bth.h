@@ -37,6 +37,12 @@ typedef struct _SOCKADDR_BTH
     ULONG port;
 } SOCKADDR_BTH, *PSOCKADDR_BTH;
 
+typedef struct _BTH_QUERY_DEVICE
+{
+    ULONG LAP;
+    UCHAR length;
+} BTH_QUERY_DEVICE, *PBTH_QUERY_DEVICE, BTHNS_INQUIRYBLOB, *PBTHNS_INQUIRYBLOB;
+
 #pragma pack(pop)
 
 #endif /* __WS2BTH_H__ */

@@ -468,6 +468,8 @@ extern "C" {
 
 /* Constants for WSALookupServiceBegin() */
 #define LUP_DEEP                0x0001
+#define LUP_CONTAINERS          0x0002
+#define LUP_NOCONTAINERS        0x0004
 #define LUP_RETURN_NAME         0x0010
 #define LUP_RETURN_TYPE         0x0020
 #define LUP_RETURN_VERSION      0x0040
@@ -476,6 +478,9 @@ extern "C" {
 #define LUP_RETURN_BLOB         0x0200
 #define LUP_RETURN_ALIASES      0x0400
 #define LUP_RETURN_QUERY_STRING 0x0800
+#define LUP_FLUSHCACHE          0x1000
+#define LUP_FLUSHPREVIOUS       0x2000
+#define LUP_RES_SERVICE         0x8000
 #define LUP_RETURN_ALL          (LUP_RETURN_ADDR|LUP_RETURN_BLOB|LUP_RETURN_ALIASES|LUP_RETURN_QUERY_STRING \
                                 |LUP_RETURN_NAME|LUP_RETURN_TYPE|LUP_RETURN_VERSION|LUP_RETURN_COMMENT)
 
