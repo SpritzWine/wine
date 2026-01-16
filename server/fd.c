@@ -351,6 +351,7 @@ static struct list abs_timeout_list = LIST_INIT(abs_timeout_list); /* sorted abs
 static struct list rel_timeout_list = LIST_INIT(rel_timeout_list); /* sorted relative timeouts list */
 timeout_t current_time;
 timeout_t monotonic_time;
+static timeout_t current_suspend_bias;
 
 struct _KUSER_SHARED_DATA *user_shared_data = NULL;
 static const timeout_t user_shared_data_timeout = 16 * 10000;
@@ -369,6 +370,15 @@ static void atomic_store_ulong(volatile ULONG *ptr, ULONG value)
 }
 
 static void atomic_store_long(volatile LONG *ptr, LONG value)
+{
+#if defined(__i386__) || defined(__x86_64__)
+    *ptr = value;
+#else
+    __atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+#endif
+}
+
+static void atomic_store_ulonglong(volatile ULONGLONG *ptr, ULONGLONG value)
 {
 #if defined(__i386__) || defined(__x86_64__)
     *ptr = value;
@@ -407,6 +417,7 @@ static void set_user_shared_data_time(void)
 
     atomic_store_long(&user_shared_data->InterruptTime.High2Time, monotonic_time >> 32);
     atomic_store_ulong(&user_shared_data->InterruptTime.LowPart, monotonic_time);
+    atomic_store_ulonglong(&user_shared_data->InterruptTimeBias, current_suspend_bias);
     atomic_store_long(&user_shared_data->InterruptTime.High1Time, monotonic_time >> 32);
 
     atomic_store_long(&user_shared_data->TickCount.High2Time, tick_count >> 32);
@@ -419,9 +430,23 @@ void set_current_time(void)
 {
     static const timeout_t ticks_1601_to_1970 = (timeout_t)86400 * (369 * 365 + 89) * TICKS_PER_SEC;
     struct timeval now;
+    timeout_t bias1, bias2 = 0;
+    timeout_t bias_difference;
     gettimeofday( &now, NULL );
     current_time = (timeout_t)now.tv_sec * TICKS_PER_SEC + now.tv_usec * 10 + ticks_1601_to_1970;
-    monotonic_time = monotonic_counter();
+    for (;;)
+    {
+        monotonic_time = monotonic_counter( &bias1 );
+        if (bias1 < current_suspend_bias + 10000)
+            break;
+        monotonic_time = monotonic_counter( &bias2 );
+        bias_difference = bias1 > bias2 ? bias1 - bias2 : bias2 - bias1;
+        if (bias_difference < 100)
+        {
+            current_suspend_bias = (bias1 + bias2) / 2;
+            break;
+        }
+    }
     if (user_shared_data) set_user_shared_data_time();
 }
 

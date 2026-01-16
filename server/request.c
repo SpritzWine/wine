@@ -505,24 +505,28 @@ int send_client_fd( struct process *process, int fd, obj_handle_t handle )
     return -1;
 }
 
-/* return a monotonic time counter */
-timeout_t monotonic_counter(void)
+/* return a monotonic time counter and optional suspend bias */
+timeout_t monotonic_counter( timeout_t *bias )
 {
+    timeout_t counter, unbiased_counter = 0;
 #ifdef __APPLE__
     static mach_timebase_info_data_t timebase;
 
     if (!timebase.denom) mach_timebase_info( &timebase );
-    return mach_continuous_time() * timebase.numer / timebase.denom / 100;
+    unbiased_counter = mach_absolute_time() * timebase.numer / timebase.denom / 100;
+    counter = mach_continuous_time() * timebase.numer / timebase.denom / 100;
 #elif defined(HAVE_CLOCK_GETTIME)
     struct timespec ts;
+    if (!clock_gettime( CLOCK_MONOTONIC, &ts ))
+        counter = unbiased_counter = (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100;
 #ifdef CLOCK_BOOTTIME
     if (!clock_gettime( CLOCK_BOOTTIME, &ts ))
-        return (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100;
+        counter = (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100;
 #endif
-    if (!clock_gettime( CLOCK_MONOTONIC, &ts ))
-        return (timeout_t)ts.tv_sec * TICKS_PER_SEC + ts.tv_nsec / 100;
 #endif
-    return current_time - server_start_time;
+    if (!unbiased_counter) counter = unbiased_counter = current_time - server_start_time;
+    if (bias) *bias = counter - unbiased_counter;
+    return counter;
 }
 
 static void master_socket_dump( struct object *obj, int verbose )

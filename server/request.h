@@ -54,7 +54,7 @@ extern int receive_fd( struct process *process );
 extern int send_client_fd( struct process *process, int fd, obj_handle_t handle );
 extern void read_request( struct thread *thread );
 extern void write_reply( struct thread *thread );
-extern timeout_t monotonic_counter(void);
+extern timeout_t monotonic_counter( timeout_t *bias );
 extern void open_master_socket(void);
 extern void close_master_socket( timeout_t timeout );
 extern void shutdown_master_socket(void);
@@ -69,7 +69,7 @@ extern void trace_reply( enum request req, const union generic_reply *reply );
 /* get current tick count to return to client */
 static inline unsigned int get_tick_count(void)
 {
-    return monotonic_counter() / 10000;
+    return monotonic_counter( NULL ) / 10000;
 }
 
 /* get the request vararg data */
