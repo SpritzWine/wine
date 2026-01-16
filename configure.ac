@@ -94,9 +94,9 @@ AC_ARG_WITH(wine64,    AS_HELP_STRING([--with-wine64=DIR],[use the 64-bit Wine i
 AC_CANONICAL_HOST
 AC_SUBST(srcdir)
 
-AS_IF([test "x$enable_sast" = xyes],[CC=${CC:-clang}
-with_mingw=${with_mingw:-clang}
-AC_CHECK_PROGS(SARIF_CONVERTER,sarif-converter,false)])
+AS_IF([test "x$enable_sast" = xyes],[CC=${CC:-clang}; CXX=${CXX:-clang++}
+  with_mingw=${with_mingw:-clang}
+  AC_CHECK_PROGS(SARIF_CONVERTER,sarif-converter,false)])
 
 dnl **** Check for some programs ****
 
@@ -147,8 +147,10 @@ case $host in
     if test x"$wine_cv_thumb2" = xyes
     then
         CFLAGS="$CFLAGS -mthumb"
+        CXXFLAGS="$CXXFLAGS -mthumb"
     else
         CFLAGS="$CFLAGS -marm"
+        CXXFLAGS="$CXXFLAGS -marm"
     fi
     AC_CACHE_CHECK([whether $CC supports floating point instructions],wine_cv_float_abi,
                    [WINE_TRY_ASM_LINK(["vmrs r2,fpscr"],,,[wine_cv_float_abi=yes],[wine_cv_float_abi=no])])
@@ -184,7 +186,7 @@ case "$host_cpu" in
   x86_64)          HOST_ARCH=x86_64 ;;
 esac
 m4_set_add_all([_AC_SUBST_VARS],[HOST_ARCH]m4_foreach([cpu],[aarch64,arm,arm64ec,i386,x86_64],
-                                [m4_foreach([var],[CC,CFLAGS,EXTRACFLAGS,LDFLAGS,DEBUG,TARGET,STRIP,DELAYLOADFLAG,DISABLED_SUBDIRS],[,cpu[_]var])]))
+                                [m4_foreach([var],[CC,CFLAGS,CXX,CXXFLAGS,EXTRACFLAGS,LDFLAGS,DEBUG,TARGET,STRIP,DELAYLOADFLAG,DISABLED_SUBDIRS],[,cpu[_]var])]))
 
 AC_SUBST(toolsdir,[$with_wine_tools])
 AC_MSG_CHECKING([for the directory containing the Wine tools])
@@ -387,7 +389,9 @@ AS_VAR_SET_IF([enable_archs],
 AS_VAR_IF([PE_ARCHS],[none],[cross_archs=])
 
 saved_CC=$CC
+saved_CXX=$CXX
 saved_CFLAGS=$CFLAGS
+saved_CXXFLAGS=$CXXFLAGS
 saved_CPPFLAGS=$CPPFLAGS
 saved_LDFLAGS=$LDFLAGS
 
@@ -408,27 +412,36 @@ do
       *)    mingw_cpu=$wine_arch ;;
     esac
     case "x$with_mingw" in
-      xclang|x*/clang) AS_VAR_SET(${wine_arch}_CC,$with_mingw) ;;
-      xllvm-mingw)     AS_VAR_SET(${wine_arch}_CC,${mingw_cpu}-w64-mingw32-clang) ;;
+      xclang|x*/clang) AS_VAR_SET(${wine_arch}_CC,$with_mingw)
+                       AS_VAR_SET(${wine_arch}_CXX,${with_mingw}++) ;;
+      xllvm-mingw)     AS_VAR_SET(${wine_arch}_CC,${mingw_cpu}-w64-mingw32-clang)
+                       AS_VAR_SET(${wine_arch}_CXX,${mingw_cpu}-w64-mingw32-clang++) ;;
     esac
     AS_VAR_IF([${wine_arch}_CC],[],
         [case $wine_arch in
           aarch64)
             AC_CHECK_PROGS(aarch64_CC,[aarch64-w64-mingw32-clang aarch64-w64-mingw32-gcc clang],[false])
+            AC_CHECK_PROGS(aarch64_CXX,[aarch64-w64-mingw32-clang++ aarch64-w64-mingw32-g++ clang++],[false])
             ;;
           arm64ec)
             AC_CHECK_PROGS(arm64ec_CC,[arm64ec-w64-mingw32-clang arm64ec-w64-mingw32-gcc clang],[false])
+            AC_CHECK_PROGS(arm64ec_CXX,[arm64ec-w64-mingw32-clang++ arm64ec-w64-mingw32-g++ clang++],[false])
             ;;
           arm)
             AC_CHECK_PROGS(arm_CC,[armv7-w64-mingw32-clang armv7-w64-mingw32-gcc clang],[false])
+            AC_CHECK_PROGS(arm_CXX,[armv7-w64-mingw32-clang++ armv7-w64-mingw32-g++ clang++],[false])
             ;;
           i386)
             ac_prefix_list="m4_foreach([cc],[gcc,clang],m4_foreach([cpu],[i686,i586,i486,i386],[cpu-w64-mingw32-cc ]))"
             AC_CHECK_PROGS(i386_CC,[$ac_prefix_list clang],[false])
+            ac_prefix_list="m4_foreach([cc],[g++,clang++],m4_foreach([cpu],[i686,i586,i486,i386],[cpu-w64-mingw32-cc ]))"
+            AC_CHECK_PROGS(i386_CXX,[$ac_prefix_list clang++],[false])
             ;;
           x86_64)
             ac_prefix_list="m4_foreach([cc],[gcc,clang],m4_foreach([cpu],[x86_64,amd64],[cpu-w64-mingw32-cc ]))"
             AC_CHECK_PROGS(x86_64_CC,[$ac_prefix_list clang],[false])
+            ac_prefix_list="m4_foreach([cc],[g++,clang++],m4_foreach([cpu],[x86_64,amd64],[cpu-w64-mingw32-cc ]))"
+            AC_CHECK_PROGS(x86_64_CXX,[$ac_prefix_list clang++],[false])
             ;;
          esac
          wine_try_msvc=yes],
@@ -436,9 +449,12 @@ do
 
     CPPFLAGS=""
     AS_VAR_SET_IF([${wine_arch}_CFLAGS],[],[AS_VAR_SET([${wine_arch}_CFLAGS],[${CROSSCFLAGS:-"-g -O2"}])])
+    AS_VAR_SET_IF([${wine_arch}_CXXFLAGS],[],[AS_VAR_SET([${wine_arch}_CXXFLAGS],[${CROSSCFLAGS:-"-g -O2"}])])
     AS_VAR_SET_IF([${wine_arch}_LDFLAGS],[],[AS_VAR_SET([${wine_arch}_LDFLAGS],[$CROSSLDFLAGS])])
     AS_VAR_COPY([CC],[${wine_arch}_CC])
+    AS_VAR_COPY([CXX],[${wine_arch}_CXX])
     AS_VAR_COPY([CFLAGS],[${wine_arch}_CFLAGS])
+    AS_VAR_COPY([CXXFLAGS],[${wine_arch}_CXXFLAGS])
     AS_VAR_COPY([LDFLAGS],[${wine_arch}_LDFLAGS])
     AS_VAR_SET([${wine_arch}_EXTRACFLAGS],["-D__WINE_PE_BUILD -Wall"])
 
@@ -636,7 +652,9 @@ This is an error since --enable-archs=$wine_arch was requested.])])
 done
 
 CC=$saved_CC
+CXX=$saved_CXX
 CFLAGS=$saved_CFLAGS
+CXXFLAGS=$saved_CXXFLAGS
 CPPFLAGS=$saved_CPPFLAGS
 LDFLAGS=$saved_LDFLAGS
 
