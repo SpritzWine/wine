@@ -193,6 +193,7 @@ static DWORD clipboard_thread_id;
 static HWND clipboard_hwnd;
 static BOOL is_clipboard_owner;
 static Window selection_window;
+static Time selection_timestamp;
 static Window import_window;
 static Atom current_selection;
 static UINT rendered_formats;
@@ -1733,7 +1734,7 @@ static BOOL export_multiple( Display *display, Window win, Atom prop, Atom targe
  */
 static BOOL export_timestamp( Display *display, Window win, Atom prop, Atom target, void *data, size_t size )
 {
-    Time time = CurrentTime;  /* FIXME */
+    Time time = selection_timestamp;
     put_property( display, win, prop, XA_INTEGER, 32, &time, 1 );
     return TRUE;
 }
@@ -1907,6 +1908,56 @@ static BOOL read_property( Display *display, Window w, Atom prop,
 }
 
 
+static Bool timestamp_predicate (Display *display, XEvent *xevent, XPointer arg)
+{
+  Window xwindow = (Window)arg;
+
+  if (xevent->type == PropertyNotify &&
+      xevent->xproperty.window == xwindow &&
+      xevent->xproperty.atom == x11drv_atom(__wine_timestamp_prop))
+    return True;
+
+  return False;
+}
+
+
+/**************************************************************************
+ *		get_server_time
+ *
+ * Get the current X11 server timestamp by generating a PropertyNotify event
+ */
+static Time get_server_time( Display *display, Window win )
+{
+    int i;
+    XEvent event;
+    Time timestamp = CurrentTime;
+    XWindowAttributes attrs;
+
+    /* Ensure window can receive PropertyNotify events */
+    XGetWindowAttributes( display, win, &attrs );
+    XSelectInput( display, win, attrs.your_event_mask | PropertyChangeMask );
+
+    /* Generate a PropertyNotify event to get server time */
+    XChangeProperty( display, win, x11drv_atom(__wine_timestamp_prop), XA_INTEGER, 8, PropModeReplace, NULL, 0 );
+    XSync( display, False );
+
+    /* Wait for the PropertyNotify event */
+    for (i = 0; i < SELECTION_RETRIES; i++)
+    {
+        if(XCheckIfEvent( display, &event, timestamp_predicate, (XPointer)win ))
+        {
+            timestamp = event.xproperty.time;
+            break;
+        }
+        selection_sleep();
+    }
+    /* Restore original event mask */
+    XSelectInput( display, win, attrs.your_event_mask );
+
+    return timestamp;
+}
+
+
 /**************************************************************************
  *		acquire_selection
  *
@@ -1920,9 +1971,10 @@ static void acquire_selection( Display *display )
                                       InputOutput, CopyFromParent, 0, NULL );
     if (!selection_window) return;
 
-    XSetSelectionOwner( display, x11drv_atom(CLIPBOARD), selection_window, CurrentTime );
-    if (use_primary_selection) XSetSelectionOwner( display, XA_PRIMARY, selection_window, CurrentTime );
-    TRACE( "win %lx\n", selection_window );
+    selection_timestamp = get_server_time(display, selection_window);
+    XSetSelectionOwner( display, x11drv_atom(CLIPBOARD), selection_window, selection_timestamp );
+    if (use_primary_selection) XSetSelectionOwner( display, XA_PRIMARY, selection_window, selection_timestamp );
+    TRACE( "win %lx timestamp %lu\n", selection_window, selection_timestamp );
 }
 
 
