@@ -1319,6 +1319,59 @@ static void test_file_io_completion(void)
     pNtClose( h );
 }
 
+static void test_file_setFileAllocationInformation(void) {
+#ifdef HAVE_FALLOCATE
+    FILE_ALLOCATION_INFORMATION fas;
+    IO_STATUS_BLOCK io;
+    HANDLE handle;
+    int res;
+    char* buffer;
+    DWORD bytesWritten, bytesRead, size;
+    DWORD length = 64*1024;
+    LARGE_INTEGER distanceToMove;
+
+    distanceToMove.QuadPart = 0;
+
+    if( !(handle = create_temp_file(0)) ) return;
+
+    memset( &fas, 0, sizeof(fas) );
+    fas.AllocationSize.QuadPart = length;
+    res = pNtSetInformationFile( handle, &io, &fas, sizeof fas, FileAllocationInformation );
+
+    ok ( res == STATUS_SUCCESS, "file allocation failed, NtSetInformationFile returned %x\n", res );
+    ok ( io.Status == STATUS_SUCCESS, "file allocation failed, io.Status is %lx\n", io.Status );
+
+    size = GetFileSize( handle, NULL );
+    ok( size == 0, "incorrect file size after allocation: should be 0, got %lx\n", size );
+
+    buffer = malloc(length);
+    memset( buffer, 0xa5, length );
+    res = WriteFile( handle, buffer, length, &bytesWritten, NULL );
+    ok ( res != 0 , "couldn't write to file after allocation\n");
+    ok ( bytesWritten == length, "couldn't write to whole or part of file after allocation: allocated %lx, written %lx\n", length, bytesWritten );
+    size = GetFileSize( handle, NULL);
+    ok ( size == bytesWritten, "wrong file size after write: should be 0x10000, got 0x%lx\n", size);
+
+    memset( buffer, 0, length );
+    SetFilePointerEx( handle, distanceToMove, NULL, FILE_BEGIN );
+    res = ReadFile( handle, buffer, length, &bytesRead, NULL );
+    ok ( res != 0 , "couldn't read file after allocation\n" );
+    ok ( bytesRead == length, "couldn't read whole or part of file after allocation: allocated %lx, read %lx\n", length, bytesRead );
+    ok ( *buffer == (char)0xa5, "data read from allocated file doesn't match written pattern: wrote 0xa5, got 0x%x\n", *buffer & 0xff );
+
+    fas.AllocationSize.QuadPart = 2 * length;
+    size = GetFileSize( handle, NULL );
+    ok ( size == bytesWritten, "wrong file size after new lengthier allocation: should be 0x10000, got 0x%lx\n", size);
+
+    fas.AllocationSize.QuadPart = length / 2;
+    size = GetFileSize( handle, NULL );
+    ok ( size == bytesWritten, "wrong file size after new shorter allocation: should be 0x10000, got 0x%lx\n", size);
+
+    free(buffer);
+    CloseHandle( handle );
+#endif
+}
+
 static void test_file_full_size_information(void)
 {
     IO_STATUS_BLOCK io;
@@ -7411,6 +7464,7 @@ START_TEST(file)
     test_file_access_information();
     test_file_attribute_tag_information();
     test_file_stat_information();
+    test_file_setFileAllocationInformation();
     test_dotfile_file_attributes();
     test_file_mode();
     test_file_readonly_access();

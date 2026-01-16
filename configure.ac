@@ -2128,6 +2128,7 @@ AC_CHECK_FUNCS(\
 	port_create \
 	posix_fadvise \
 	posix_fallocate \
+	fallocate \
 	prctl \
 	process_vm_readv \
 	process_vm_writev \

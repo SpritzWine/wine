@@ -5169,6 +5169,25 @@ NTSTATUS WINAPI NtSetInformationFile( HANDLE handle, IO_STATUS_BLOCK *io,
         else status = STATUS_INVALID_PARAMETER_3;
         break;
 
+    case FileAllocationInformation:
+#ifdef HAVE_FALLOCATE
+        if (len >= sizeof(FILE_ALLOCATION_INFORMATION))
+        {
+            const FILE_ALLOCATION_INFORMATION *info = ptr;
+            if ((status = server_get_unix_fd( handle, 0, &fd, &needs_close, NULL, NULL )))
+                return io->Status = status;
+
+            if (fallocate( fd, FALLOC_FL_KEEP_SIZE, 0, (off_t)info->AllocationSize.QuadPart ) == -1)
+                status = errno_to_status( errno );
+
+            if (needs_close) close( fd );
+        }
+        else status = STATUS_INVALID_PARAMETER_3;
+#else
+            WARN( "setting file allocation information not supported on this platform\n" );
+#endif
+        break;
+
     case FilePositionInformation:
         if (len >= sizeof(FILE_POSITION_INFORMATION))
         {
