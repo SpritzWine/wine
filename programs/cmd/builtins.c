@@ -3301,6 +3301,7 @@ RETURN_CODE WCMD_start(WCHAR *args)
     WCHAR *cmdline, *cmdline_params;
     STARTUPINFOW st;
     PROCESS_INFORMATION pi;
+    WCHAR current_dir[MAX_PATH] = {0};
 
     GetSystemDirectoryW( file, MAX_PATH );
     lstrcatW(file, L"\\start.exe");
@@ -3310,43 +3311,43 @@ RETURN_CODE WCMD_start(WCHAR *args)
     cmdline_params = cmdline + lstrlenW(cmdline);
 
     /* The start built-in has some special command-line parsing properties
-     * which will be outlined here.
-     *
-     * both '\t' and ' ' are argument separators
-     * '/' has a special double role as both separator and switch prefix, e.g.
-     *
-     * > start /low/i
-     * or
-     * > start "title"/i
-     *
-     * are valid ways to pass multiple options to start. In the latter case
-     * '/i' is not a part of the title but parsed as a switch.
-     *
-     * However, '=', ';' and ',' are not separators:
-     * > start "deus"=ex,machina
-     *
-     * will in fact open a console titled 'deus=ex,machina'
-     *
-     * The title argument parsing code is only interested in quotes themselves,
-     * it does not respect escaping of any kind and all quotes are dropped
-     * from the resulting title, therefore:
-     *
-     * > start "\"" hello"/low
-     *
-     * actually opens a console titled '\ hello' with low priorities.
-     *
-     * To not break compatibility with wine programs relying on
-     * wine's separate 'start.exe', this program's peculiar console
-     * title parsing is actually implemented in 'cmd.exe' which is the
-     * application native Windows programs will use to invoke 'start'.
-     *
-     * WCMD_parameter_with_delims will take care of everything for us.
-     */
+    * which will be outlined here.
+    *
+    * both '\t' and ' ' are argument separators
+    * '/' has a special double role as both separator and switch prefix, e.g.
+    *
+    * > start /low/i
+    * or
+    * > start "title"/i
+    *
+    * are valid ways to pass multiple options to start. In the latter case
+    * '/i' is not a part of the title but parsed as a switch.
+    *
+    * However, '=', ';' and ',' are not separators:
+    * > start "deus"=ex,machina
+    *
+    * will in fact open a console titled 'deus=ex,machina'
+    *
+    * The title argument parsing code is only interested in quotes themselves,
+    * it does not respect escaping of any kind and all quotes are dropped
+    * from the resulting title, therefore:
+    *
+    * > start "\"" hello"/low
+    *
+    * actually opens a console titled '\ hello' with low priorities.
+    *
+    * To not break compatibility with wine programs relying on
+    * wine's separate 'start.exe', this program's peculiar console
+    * title parsing is actually implemented in 'cmd.exe' which is the
+    * application native Windows programs will use to invoke 'start'.
+    *
+    * WCMD_parameter_with_delims will take care of everything for us.
+    */
     /* FIXME: using an external start.exe has several caveats:
-     * - cannot discriminate syntax error in arguments from child's return code
-     * - need to access start.exe's child to get its running state
-     *   (not start.exe itself)
-     */
+    * - cannot discriminate syntax error in arguments from child's return code
+    * - need to access start.exe's child to get its running state
+    *   (not start.exe itself)
+    */
     have_title = FALSE;
     for (argno=0; ; argno++) {
         WCHAR *thisArg, *argN;
@@ -3357,6 +3358,61 @@ RETURN_CODE WCMD_start(WCHAR *args)
         /* No more parameters */
         if (!argN)
             break;
+
+        if (wcsicmp(thisArg, L"D") == 0) 
+        {
+            WCHAR *dirArg, *nextN;
+            DWORD attr;
+            dirArg = WCMD_parameter_with_delims(args, ++argno, &nextN, FALSE, FALSE, L" \t/");
+          if (dirArg) 
+          {
+              lstrcpynW(current_dir, dirArg, MAX_PATH);
+              attr = GetFileAttributesW(current_dir);
+              if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY)) 
+              {
+                  WCHAR tmpPath[MAX_PATH];
+                  WCHAR *pSlash;
+
+                  lstrcpynW(tmpPath, current_dir, MAX_PATH);
+                  pSlash = tmpPath;
+
+                  if (tmpPath[0] && tmpPath[1] == L':' && tmpPath[2] == L'\\')
+                      pSlash = tmpPath + 3;
+                  else if (wcsncmp(tmpPath, L"\\\\?\\", 4) == 0 && tmpPath[5] == L':' && tmpPath[6] == L'\\')
+                      pSlash = tmpPath + 7;
+                      
+                  for (; *pSlash; pSlash++) 
+                  {
+                      if (*pSlash == L'\\') 
+                      {
+                          *pSlash = 0;
+                          if (GetFileAttributesW(tmpPath) == INVALID_FILE_ATTRIBUTES) 
+                          {
+                              if (!CreateDirectoryW(tmpPath, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) 
+                              {
+                                  WCMD_output_asis(L"start: failed to create directory\n");
+                                  return ERROR_PATH_NOT_FOUND;\
+                              }
+                          }
+                          *pSlash = L'\\';
+                      }
+                      else if (*(pSlash + 1) == L'\0') 
+                      {
+                          if (GetFileAttributesW(tmpPath) == INVALID_FILE_ATTRIBUTES) 
+                          {
+                              if (!CreateDirectoryW(tmpPath, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) 
+                              {
+                                  WCMD_output_asis(L"start: failed to create directory\n");
+                                  return ERROR_PATH_NOT_FOUND;
+                              }
+                          }
+                      }
+                  }
+              }
+              continue;
+          }
+
+        }
 
         /* Found the title */
         if (argN[0] == '"') {
@@ -3398,7 +3454,7 @@ RETURN_CODE WCMD_start(WCHAR *args)
     memset( &st, 0, sizeof(STARTUPINFOW) );
     st.cb = sizeof(STARTUPINFOW);
 
-    if (CreateProcessW( file, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &st, &pi ))
+    if (CreateProcessW( file, cmdline, NULL, NULL, TRUE, 0, NULL, current_dir[0] ? current_dir : NULL, &st, &pi ))
     {
         DWORD exit_code;
         WaitForSingleObject( pi.hProcess, INFINITE );
