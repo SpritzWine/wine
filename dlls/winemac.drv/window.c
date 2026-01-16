@@ -1113,6 +1113,10 @@ static void macdrv_client_surface_update(struct client_surface *client)
     NtUserGetClientRect(hwnd, &rect, NtUserGetWinMonitorDpi(hwnd, MDT_RAW_DPI));
     NtUserMapWindowPoints(hwnd, toplevel, (POINT *)&rect, 2, NtUserGetWinMonitorDpi(toplevel, MDT_RAW_DPI));
 
+    if (surface->toplevel == toplevel && EqualRect(&surface->rect, &rect)) return;
+    surface->toplevel = toplevel;
+    surface->rect = rect;
+
     if (!(data = get_win_data(toplevel))) return;
     OffsetRect(&rect, data->rects.client.left - data->rects.visible.left, data->rects.client.top - data->rects.visible.top);
     macdrv_set_view_frame(surface->cocoa_view, cgrect_from_rect(rect));

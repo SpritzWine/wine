@@ -197,6 +197,8 @@ struct macdrv_client_surface
     macdrv_view           cocoa_view;
     macdrv_metal_device   metal_device;
     macdrv_metal_view     metal_view;
+    HWND                  toplevel;
+    RECT                  rect;
 };
 
 static inline struct macdrv_client_surface *impl_from_client_surface(struct client_surface *client)
