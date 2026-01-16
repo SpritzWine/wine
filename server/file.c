@@ -606,7 +606,10 @@ void file_set_error(void)
     case ENOENT:    set_error( STATUS_NO_SUCH_FILE ); break;
     case EISDIR:    set_error( STATUS_FILE_IS_A_DIRECTORY ); break;
     case ENFILE:
-    case EMFILE:    set_error( STATUS_TOO_MANY_OPENED_FILES ); break;
+    case EMFILE:
+        fprintf( stderr, "wineserver: too many opened files\n" );
+        set_error( STATUS_TOO_MANY_OPENED_FILES );
+        break;
     case EEXIST:    set_error( STATUS_OBJECT_NAME_COLLISION ); break;
     case EINVAL:    set_error( STATUS_INVALID_PARAMETER ); break;
     case ESPIPE:    set_error( STATUS_ILLEGAL_FUNCTION ); break;
