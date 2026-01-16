@@ -493,6 +493,12 @@ static void scmdatabase_wait_terminate(struct scmdatabase *db)
         list_add_tail(&db->processes, &process->entry);
         release_process(process);
     }
+    while (!list_empty(&db->services))
+    {
+        scmdatabase_unlock(db);
+        Sleep(500);
+        scmdatabase_lock(db);
+    }
     scmdatabase_unlock(db);
 }
 
