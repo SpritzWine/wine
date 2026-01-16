@@ -830,6 +830,12 @@ static void test_readwrite(void)
     }
 
     SetLastError(0xdeadbeef);
+    buf = (void*)0xdeadbeef;
+    ret = ReportEventA(handle, 0, 0, 0, NULL, 1, 0, buf, NULL);
+    ok(!ret, "Expected failure\n");
+    ok(GetLastError() == ERROR_INVALID_PARAMETER, "Expected ERROR_INVALID_PARAMETER, but got: %lx\n",  GetLastError());
+
+    SetLastError(0xdeadbeef);
     ret = ReportEventA(handle, 0x20, 0, 0, NULL, 0, 0, NULL, NULL);
     if (!ret && GetLastError() == ERROR_CRC)
     {

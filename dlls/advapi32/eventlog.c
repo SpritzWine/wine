@@ -32,6 +32,7 @@
 #include "evntprov.h"
 
 #include "wine/debug.h"
+#include "wine/exception.h"
 
 #include "advapi32_misc.h"
 
@@ -601,7 +602,7 @@ BOOL WINAPI ReportEventA ( HANDLE hEventLog, WORD wType, WORD wCategory, DWORD d
     LPWSTR *wideStrArray;
     UNICODE_STRING str;
     UINT i;
-    BOOL ret;
+    BOOL ret = FALSE;
 
     FIXME("(%p,0x%04x,0x%04x,0x%08lx,%p,0x%04x,0x%08lx,%p,%p): stub\n", hEventLog,
           wType, wCategory, dwEventID, lpUserSid, wNumStrings, dwDataSize, lpStrings, lpRawData);
@@ -610,12 +611,22 @@ BOOL WINAPI ReportEventA ( HANDLE hEventLog, WORD wType, WORD wCategory, DWORD d
     if (!lpStrings) return TRUE;
 
     wideStrArray = malloc(sizeof(WCHAR *) * wNumStrings);
-    for (i = 0; i < wNumStrings; i++)
+    __TRY
     {
-        RtlCreateUnicodeStringFromAsciiz(&str, lpStrings[i]);
-        wideStrArray[i] = str.Buffer;
+        for (i = 0; i < wNumStrings; i++)
+        {
+            RtlCreateUnicodeStringFromAsciiz(&str, lpStrings[i]);
+            wideStrArray[i] = str.Buffer;
+        }
+        ret = TRUE;
     }
-    ret = ReportEventW(hEventLog, wType, wCategory, dwEventID, lpUserSid,
+    __EXCEPT_PAGE_FAULT
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+    }
+    __ENDTRY
+
+    if (ret) ret = ReportEventW(hEventLog, wType, wCategory, dwEventID, lpUserSid,
                        wNumStrings, dwDataSize, (LPCWSTR *)wideStrArray, lpRawData);
     for (i = 0; i < wNumStrings; i++)
         free(wideStrArray[i]);
