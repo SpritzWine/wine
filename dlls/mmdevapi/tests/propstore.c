@@ -43,15 +43,12 @@ static void test_propertystore(IPropertyStore *store)
     const WAVEFORMATEXTENSIBLE *format;
     HRESULT hr;
     PROPVARIANT pv;
-    char temp[128];
-    temp[sizeof(temp)-1] = 0;
 
     pv.vt = VT_EMPTY;
     hr = IPropertyStore_GetValue(store, &PKEY_AudioEndpoint_GUID, &pv);
     ok(hr == S_OK, "Failed with %08lx\n", hr);
     ok(pv.vt == VT_LPWSTR, "Value should be %i, is %i\n", VT_LPWSTR, pv.vt);
-    WideCharToMultiByte(CP_ACP, 0, pv.pwszVal, -1, temp, sizeof(temp)-1, NULL, NULL);
-    trace("guid: %s\n", temp);
+    trace("guid: %s\n", debugstr_w(pv.pwszVal));
     PropVariantClear(&pv);
 
     pv.vt = VT_EMPTY;
