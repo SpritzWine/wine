@@ -502,11 +502,38 @@ BOOL WINAPI DECLSPEC_HOTPATCH AreFileApisANSI(void)
 }
 
 /******************************************************************************
+ *  cpfile2_cb_abrt_chk
+ *
+ *  Check for aborting, e.g routine return COPYFILE2_PROGRESS_PAUSED/CANCEL
+ */
+static BOOL cpfile2_cb_abrt_chk( PCOPYFILE2_PROGRESS_ROUTINE *routine, void *params, BOOL *delete_dest, const COPYFILE2_MESSAGE* msg )
+{
+    switch((*routine)(msg, params))
+    {
+    case COPYFILE2_PROGRESS_QUIET:
+        *routine = NULL;
+        break;
+    
+    case COPYFILE2_PROGRESS_CANCEL:
+    case COPYFILE2_PROGRESS_STOP:
+        *delete_dest = TRUE;
+        return HRESULT_FROM_WIN32(ERROR_REQUEST_ABORTED);
+
+    case COPYFILE2_PROGRESS_PAUSE:
+        return HRESULT_FROM_WIN32(ERROR_REQUEST_PAUSED);
+
+    case COPYFILE2_PROGRESS_CONTINUE:
+        return TRUE;
+    }
+    return TRUE;
+}
+
+/******************************************************************************
  *  copy_file
  */
 static BOOL copy_file( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTENDED_PARAMETERS *params )
 {
-    DWORD flags = params ? params->dwCopyFlags : 0;
+    DWORD flags = params ? params->dwCopyFlags : 0; 
     BOOL *cancel_ptr = params ? params->pfCancel : NULL;
     PCOPYFILE2_PROGRESS_ROUTINE progress = params ? params->pProgressRoutine : NULL;
 
@@ -517,12 +544,14 @@ static BOOL copy_file( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTENDE
     DWORD count;
     BOOL ret = FALSE;
     char *buffer;
+    ULARGE_INTEGER file_size = {0};
+    ULONGLONG bytes_transfered = 0;
+    ULONGLONG chunk_id = 0;
+    BOOL delete_dest = FALSE;
 
     if (cancel_ptr)
         FIXME("pfCancel is not supported\n");
-    if (progress)
-        FIXME("PCOPYFILE2_PROGRESS_ROUTINE is not supported\n");
-
+    
     if (!source || !dest)
     {
         SetLastError( ERROR_INVALID_PARAMETER );
@@ -548,6 +577,13 @@ static BOOL copy_file( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTENDE
     {
         WARN("Unable to open source %s\n", debugstr_w(source));
         HeapFree( GetProcessHeap(), 0, buffer );
+        if(progress) {
+            COPYFILE2_MESSAGE msg = {0};
+            msg.Type = COPYFILE2_CALLBACK_ERROR;
+            msg.Info.Error.CopyPhase = COPYFILE2_PHASE_PREPARE_SOURCE;
+            msg.Info.Error.hrFailure = HRESULT_FROM_WIN32(GetLastError());
+            progress(&msg, params->pvCallbackContext);
+        }
         return FALSE;
     }
 
@@ -556,6 +592,13 @@ static BOOL copy_file( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTENDE
         WARN("GetFileInformationByHandle returned error for %s\n", debugstr_w(source));
         HeapFree( GetProcessHeap(), 0, buffer );
         CloseHandle( h1 );
+        if(progress) {
+            COPYFILE2_MESSAGE msg = {0};
+            msg.Type = COPYFILE2_CALLBACK_ERROR;
+            msg.Info.Error.CopyPhase = COPYFILE2_PHASE_PREPARE_SOURCE;
+            msg.Info.Error.hrFailure = HRESULT_FROM_WIN32(GetLastError());
+            progress(&msg, params->pvCallbackContext);
+        }
         return FALSE;
     }
 
@@ -584,22 +627,106 @@ static BOOL copy_file( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTENDE
         WARN("Unable to open dest %s\n", debugstr_w(dest));
         HeapFree( GetProcessHeap(), 0, buffer );
         CloseHandle( h1 );
+        if(progress)
+        {
+            COPYFILE2_MESSAGE msg = {0};
+            msg.Type = COPYFILE2_CALLBACK_ERROR;
+            msg.Info.Error.CopyPhase = COPYFILE2_PHASE_PREPARE_DEST;
+            msg.Info.Error.hrFailure = HRESULT_FROM_WIN32(GetLastError());
+            progress(&msg, params->pvCallbackContext);
+        }
         return FALSE;
+    }
+
+    if(progress)
+    {
+        COPYFILE2_MESSAGE msg = {0};
+
+        LARGE_INTEGER lFileSize = {0};
+        if(GetFileSizeEx(h1, &lFileSize) != 0)
+            file_size.QuadPart = (ULONGLONG)lFileSize.QuadPart;
+
+        msg.Type = COPYFILE2_CALLBACK_STREAM_STARTED;
+        /* One default stream unless add support for Alternate File Stream, default stream is "::$DATA" */
+        msg.Info.StreamStarted.dwStreamNumber = 1;
+        msg.Info.StreamStarted.hSourceFile = h1;
+        msg.Info.StreamStarted.hDestinationFile = h2;
+        msg.Info.StreamStarted.uliStreamSize = 
+        msg.Info.StreamStarted.uliTotalFileSize = file_size;
+        if((ret = cpfile2_cb_abrt_chk(&progress, params->pvCallbackContext, &delete_dest, &msg)) != TRUE)
+            goto done;
     }
 
     while (ReadFile( h1, buffer, buffer_size, &count, NULL ) && count)
     {
         char *p = buffer;
+        DWORD chunk_size = count;
+        if(progress)
+        {
+            COPYFILE2_MESSAGE msg = {0};
+            msg.Type = COPYFILE2_CALLBACK_CHUNK_STARTED;
+            msg.Info.ChunkStarted.dwStreamNumber = 1;
+            msg.Info.ChunkStarted.hSourceFile = h1;
+            msg.Info.ChunkStarted.hDestinationFile = h2;
+            msg.Info.ChunkStarted.uliChunkNumber.QuadPart = chunk_id;
+            msg.Info.ChunkStarted.uliChunkSize.QuadPart = (ULONGLONG)chunk_size;
+            msg.Info.ChunkStarted.uliStreamSize = 
+            msg.Info.ChunkStarted.uliTotalFileSize =
+            file_size;
+            if((ret = cpfile2_cb_abrt_chk(&progress, params->pvCallbackContext, &delete_dest, &msg)) != TRUE)
+                goto done;
+        }
         while (count != 0)
         {
             DWORD res;
             if (!WriteFile( h2, p, count, &res, NULL ) || !res) goto done;
             p += res;
             count -= res;
+            bytes_transfered += res;
+        }
+        if(progress)
+        {
+            COPYFILE2_MESSAGE msg = {0};
+            msg.Type = COPYFILE2_CALLBACK_CHUNK_FINISHED;
+            msg.Info.ChunkFinished.dwStreamNumber = 1;
+            msg.Info.ChunkFinished.hSourceFile = h1;
+            msg.Info.ChunkFinished.hDestinationFile = h2;
+            msg.Info.ChunkFinished.uliChunkNumber.QuadPart = chunk_id;
+            msg.Info.ChunkFinished.uliChunkSize.QuadPart = (ULONGLONG)chunk_size;
+            msg.Info.ChunkFinished.uliStreamSize = 
+            msg.Info.ChunkFinished.uliTotalFileSize =
+            file_size;
+            msg.Info.ChunkFinished.uliStreamBytesTransferred.QuadPart = 
+            msg.Info.ChunkFinished.uliTotalBytesTransferred.QuadPart =
+            bytes_transfered;
+            chunk_id++;
+            if((ret = cpfile2_cb_abrt_chk(&progress, params->pvCallbackContext, &delete_dest, &msg)) != TRUE)
+                goto done;
         }
     }
     ret = TRUE;
 done:
+    if(progress)
+    {
+        COPYFILE2_MESSAGE msg = {0};
+        LARGE_INTEGER liZero = {0};
+        LARGE_INTEGER liPos = {0};
+
+        SetFilePointerEx(h1, liZero, &liPos, FILE_CURRENT);
+
+        msg.Type = COPYFILE2_CALLBACK_STREAM_FINISHED;
+        msg.Info.StreamFinished.dwStreamNumber = 1;
+        msg.Info.StreamFinished.hSourceFile = h1;
+        msg.Info.StreamFinished.hDestinationFile = h2;
+        msg.Info.StreamFinished.uliStreamSize = 
+        msg.Info.StreamFinished.uliTotalFileSize = file_size;
+        msg.Info.StreamFinished.uliStreamBytesTransferred.QuadPart = 
+        msg.Info.StreamFinished.uliTotalBytesTransferred.QuadPart =
+        (ULONGLONG)liPos.QuadPart;
+        if((ret = cpfile2_cb_abrt_chk(&progress, params->pvCallbackContext, &delete_dest, &msg)) != TRUE)
+            goto done;
+    }
+
     /* Maintain the timestamp of source file to destination file and read-only attribute */
     info.FileAttributes &= FILE_ATTRIBUTE_READONLY;
     NtSetInformationFile( h2, &io, &info, sizeof(info), FileBasicInformation );
@@ -607,6 +734,8 @@ done:
     CloseHandle( h1 );
     CloseHandle( h2 );
     if (ret) SetLastError( 0 );
+    if(delete_dest)
+        DeleteFileW(dest);
     return ret;
 }
 
@@ -618,7 +747,64 @@ HRESULT WINAPI CopyFile2( const WCHAR *source, const WCHAR *dest, COPYFILE2_EXTE
     return copy_file(source, dest, params) ? S_OK : HRESULT_FROM_WIN32(GetLastError());
 }
 
+struct copyfile_compat_data {
+    LPPROGRESS_ROUTINE progress;
+    void *progress_param;
+    LARGE_INTEGER file_size;
+    LARGE_INTEGER total_transfered;
+};
+/******************************************************************************
+ *  copyfile_filter_retval
+ *
+ *  Filter return value of LPPROGRESS_ROUTINE to match how copy_file expected
+ */
+static inline COPYFILE2_MESSAGE_ACTION copyfile_filter_retval(const DWORD value)
+{
+    if(value > PROGRESS_QUIET)
+        return COPYFILE2_PROGRESS_CONTINUE;
+    return (COPYFILE2_MESSAGE_ACTION)value;
+}
+/******************************************************************************
+ *  copy_file_compat_func
+ *
+ *  A function to use LPPROGRESS_ROUTINE of CopyFileEx in copy_file, which expected PCOPYFILE2_PROGRESS_ROUTINE
+ */
+static COPYFILE2_MESSAGE_ACTION copyfile_compat_func(const COPYFILE2_MESSAGE *msg, void *ctx)
+{
+    struct copyfile_compat_data *data = ctx;
+    switch(msg->Type)
+    {
+    case COPYFILE2_CALLBACK_CHUNK_FINISHED: {
+        LARGE_INTEGER file_bytes_transfered;
+        LARGE_INTEGER stream_size;
+        LARGE_INTEGER stream_bytes_transfered;
+        file_bytes_transfered.QuadPart = (LONGLONG)msg->Info.ChunkFinished.uliTotalBytesTransferred.QuadPart;
+        stream_size.QuadPart = (LONGLONG)msg->Info.ChunkFinished.uliStreamSize.QuadPart;
+        stream_bytes_transfered.QuadPart = (LONGLONG)msg->Info.ChunkFinished.uliStreamBytesTransferred.QuadPart;
+        return copyfile_filter_retval(data->progress(data->file_size, file_bytes_transfered, stream_size, stream_bytes_transfered,
+            msg->Info.ChunkFinished.dwStreamNumber, CALLBACK_CHUNK_FINISHED, 
+            msg->Info.ChunkFinished.hSourceFile, msg->Info.ChunkFinished.hDestinationFile, data->progress_param));
+    }
 
+    case COPYFILE2_CALLBACK_STREAM_STARTED: {
+        LARGE_INTEGER stream_size;
+        LARGE_INTEGER zero = {0};
+        stream_size.QuadPart = (LONGLONG)msg->Info.StreamStarted.uliStreamSize.QuadPart;
+
+        data->file_size.QuadPart = (LONGLONG)msg->Info.StreamStarted.uliTotalFileSize.QuadPart;
+        return data->progress(data->file_size, data->total_transfered, stream_size, zero, msg->Info.StreamStarted.dwStreamNumber,
+            CALLBACK_STREAM_SWITCH, msg->Info.StreamStarted.hSourceFile, msg->Info.StreamStarted.hDestinationFile, data->progress_param);
+    }
+
+    case COPYFILE2_CALLBACK_STREAM_FINISHED: {
+        data->total_transfered.QuadPart = (LONGLONG)msg->Info.StreamFinished.uliTotalBytesTransferred.QuadPart;
+        /* Fall-through */
+    }
+        
+    default:
+        return COPYFILE2_PROGRESS_CONTINUE;
+    }
+}
 /***********************************************************************
  *	CopyFileExW   (kernelbase.@)
  */
@@ -626,6 +812,7 @@ BOOL WINAPI CopyFileExW( const WCHAR *source, const WCHAR *dest, LPPROGRESS_ROUT
                          void *param, BOOL *cancel_ptr, DWORD flags )
 {
     COPYFILE2_EXTENDED_PARAMETERS params;
+    struct copyfile_compat_data data = { progress, param };
 
     if (progress)
         FIXME("LPPROGRESS_ROUTINE is not supported\n");
@@ -634,8 +821,8 @@ BOOL WINAPI CopyFileExW( const WCHAR *source, const WCHAR *dest, LPPROGRESS_ROUT
 
     params.dwSize = sizeof(params);
     params.dwCopyFlags = flags;
-    params.pProgressRoutine = NULL;
-    params.pvCallbackContext = NULL;
+    params.pProgressRoutine = progress ? copyfile_compat_func : NULL;
+    params.pvCallbackContext = &data;
     params.pfCancel = NULL;
 
     return copy_file( source, dest, &params );

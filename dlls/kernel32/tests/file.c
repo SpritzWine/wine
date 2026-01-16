@@ -396,7 +396,7 @@ static void test__lcreat( void )
     ok( SetFileAttributesA(filename, FILE_ATTRIBUTE_NORMAL ) != 0, "couldn't change attributes on file\n" );
     todo_wine
     ok( DeleteFileA( filename ) != 0, "now it should be possible to delete the file\n" );
-
+    
     filehandle = _lcreat( filename, 2 );
     ok( HFILE_ERROR != filehandle, "couldn't create file \"%s\" (err=%ld)\n", filename, GetLastError(  ) );
 
@@ -952,6 +952,42 @@ static void test_CopyFileW(void)
     ok(ret, "DeleteFileW: error %ld\n", GetLastError());
 }
 
+static COPYFILE2_MESSAGE_ACTION CopyFile2_Routine(const COPYFILE2_MESSAGE* pMessage, PVOID pvCallbackContext)
+{
+    switch(pMessage->Type) {
+    case COPYFILE2_CALLBACK_STREAM_STARTED:
+        trace("Stream %lu was started. Size: %llu bytes.\n",
+            pMessage->Info.StreamStarted.dwStreamNumber,
+            pMessage->Info.StreamStarted.uliStreamSize.QuadPart
+        );
+        break;
+
+    case COPYFILE2_CALLBACK_CHUNK_STARTED:
+        trace("Chunk %llu was started. Size: %llu bytes.\n",
+            pMessage->Info.ChunkStarted.uliChunkNumber.QuadPart,
+            pMessage->Info.ChunkStarted.uliChunkSize.QuadPart
+        );
+        break;
+
+    case COPYFILE2_CALLBACK_CHUNK_FINISHED:
+        trace("Chunk %llu was finished. Transfered Total: %llu bytes.\n",
+            pMessage->Info.ChunkFinished.uliChunkNumber.QuadPart,
+            pMessage->Info.ChunkFinished.uliStreamBytesTransferred.QuadPart
+        );
+        break;
+
+    case COPYFILE2_CALLBACK_STREAM_FINISHED:
+        trace("Stream %lu was finished. Copied: %llu bytes\n",
+            pMessage->Info.StreamFinished.dwStreamNumber,
+            pMessage->Info.StreamFinished.uliStreamBytesTransferred.QuadPart
+        );
+        break;
+    default:
+        break;
+    }
+    return COPYFILE2_PROGRESS_CONTINUE;
+}
+
 static void test_CopyFile2(void)
 {
     static const WCHAR doesntexistW[] = {'d','o','e','s','n','t','e','x','i','s','t',0};
@@ -963,7 +999,7 @@ static void test_CopyFile2(void)
     DWORD ret, len;
     char buf[10];
     HRESULT hr;
-
+    
     if (!pCopyFile2)
     {
         todo_wine win_skip("CopyFile2 is not available\n");
@@ -984,12 +1020,13 @@ static void test_CopyFile2(void)
     memset(&params, 0, sizeof(params));
     params.dwSize = sizeof(params);
     params.dwCopyFlags = COPY_FILE_FAIL_IF_EXISTS;
+    params.pProgressRoutine = CopyFile2_Routine; 
 
     SetLastError(0xdeadbeef);
     hr = pCopyFile2(source, dest, &params);
     ok(hr == HRESULT_FROM_WIN32(ERROR_FILE_EXISTS), "CopyFile2: unexpected error 0x%08lx\n", hr);
     ok(GetLastError() == ERROR_FILE_EXISTS, "CopyFile2: last error %ld\n", GetLastError());
-
+    
     /* don't fail if exists */
     params.dwSize = sizeof(params);
     params.dwCopyFlags = 0;
@@ -1213,6 +1250,7 @@ static void test_CopyFileEx(void)
     ok(hfile != INVALID_HANDLE_VALUE, "failed to open destination file, error %ld\n", GetLastError());
     SetLastError(0xdeadbeef);
     retok = CopyFileExA(source, dest, copy_progress_cb, hfile, NULL, 0);
+    trace("retok: 0x%08x\n", retok);
     todo_wine
     ok(!retok, "CopyFileExA unexpectedly succeeded\n");
     todo_wine
