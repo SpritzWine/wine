@@ -710,6 +710,7 @@ int main(int argc, char** argv)
     if (argc && !strcmp(argv[0], "--gdb"))
     {
         restart_if_wow64();
+        SymSetOptions(SymGetOptions() | SYMOPT_INCLUDE_32BIT_MODULES);
         retv = gdb_main(argc, argv);
         if (retv == -1) dbg_winedbg_usage(FALSE);
         return retv;
