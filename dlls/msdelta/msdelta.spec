@@ -1,7 +1,7 @@
-@ stub ApplyDeltaA
+@ stdcall ApplyDeltaA(int64 ptr ptr ptr)
 @ stub ApplyDeltaB
 @ stub ApplyDeltaProvidedB
-@ stub ApplyDeltaW
+@ stdcall ApplyDeltaW(int64 ptr ptr ptr)
 @ stub CreateDeltaA
 @ stub CreateDeltaB
 @ stub CreateDeltaW
