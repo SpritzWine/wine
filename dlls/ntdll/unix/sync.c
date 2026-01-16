@@ -94,7 +94,7 @@ static inline ULONGLONG monotonic_counter(void)
     static mach_timebase_info_data_t timebase;
 
     if (!timebase.denom) mach_timebase_info( &timebase );
-    return mach_continuous_time() * timebase.numer / timebase.denom / 100;
+    return mach_continuous_approximate_time() * timebase.numer / timebase.denom / 100;
 #elif defined(HAVE_CLOCK_GETTIME)
     struct timespec ts;
 #ifdef CLOCK_BOOTTIME
@@ -104,7 +104,7 @@ static inline ULONGLONG monotonic_counter(void)
     if (!clock_gettime( CLOCK_MONOTONIC, &ts ))
         return ts.tv_sec * (ULONGLONG)TICKSPERSEC + ts.tv_nsec / 100;
 #endif
-    gettimeofday( &now, 0 );
+    gettimeofday( &now, NULL );
     return ticks_from_time_t( now.tv_sec ) + now.tv_usec * 10 - server_start_time;
 }
 
@@ -2483,7 +2483,17 @@ NTSTATUS WINAPI NtQueryPerformanceCounter( LARGE_INTEGER *counter, LARGE_INTEGER
  */
 NTSTATUS WINAPI NtQuerySystemTime( LARGE_INTEGER *time )
 {
-#ifdef HAVE_CLOCK_GETTIME
+#ifdef __APPLE__
+    /* On macOS clock_gettime() will eventually call into this, given a
+     * CLOCK_REALTIME clock_id.
+     * Similarly would gettimeofday(). For performance reasons this is directly
+     * linked against here. */
+    extern int __commpage_gettimeofday( struct timeval *tp ) __attribute__((weak_import));
+    struct timeval tp;
+    if (__commpage_gettimeofday != NULL && __commpage_gettimeofday( &tp ) == KERN_SUCCESS)
+        time->QuadPart = ticks_from_time_t( tp.tv_sec ) + tp.tv_usec * 10;
+    else
+#elif defined(HAVE_CLOCK_GETTIME)
     struct timespec ts;
     static clockid_t clock_id = CLOCK_MONOTONIC; /* placeholder */
 
@@ -2509,7 +2519,7 @@ NTSTATUS WINAPI NtQuerySystemTime( LARGE_INTEGER *time )
     {
         struct timeval now;
 
-        gettimeofday( &now, 0 );
+        gettimeofday( &now, NULL );
         time->QuadPart = ticks_from_time_t( now.tv_sec ) + now.tv_usec * 10;
     }
     return STATUS_SUCCESS;
@@ -2600,7 +2610,8 @@ NTSTATUS system_time_precise( void *args )
 {
     LONGLONG *ret = args;
     struct timeval now;
-#ifdef HAVE_CLOCK_GETTIME
+    /* Excluding macOS here for the reason outlined in NtQuerySystemTime */
+#if defined(HAVE_CLOCK_GETTIME) && !defined(__APPLE__)
     struct timespec ts;
 
     if (!clock_gettime( CLOCK_REALTIME, &ts ))
@@ -2609,7 +2620,7 @@ NTSTATUS system_time_precise( void *args )
         return STATUS_SUCCESS;
     }
 #endif
-    gettimeofday( &now, 0 );
+    gettimeofday( &now, NULL );
     *ret = ticks_from_time_t( now.tv_sec ) + now.tv_usec * 10;
     return STATUS_SUCCESS;
 }
