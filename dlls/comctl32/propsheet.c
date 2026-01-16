@@ -3011,7 +3011,9 @@ static INT_PTR PROPSHEET_PropertySheet(PropSheetInfo* psInfo, BOOL unicode)
       if (parent) EnableWindow(parent, FALSE);
   }
   bRet = PROPSHEET_CreateDialog(psInfo);
-  if(!psInfo->isModeless)
+  if (!IsWindow((HWND)bRet))
+      bRet = 0;
+  else if(!psInfo->isModeless)
       bRet = do_loop(psInfo);
   return bRet;
 }
@@ -3663,7 +3665,8 @@ PROPSHEET_DialogProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       idx = psInfo->active_page;
       psInfo->active_page = -1;
 
-      PROPSHEET_SetCurSel(hwnd, idx, 1, psInfo->proppage[idx].hpage);
+      if (!PROPSHEET_SetCurSel(hwnd, idx, 1, psInfo->proppage[idx].hpage))
+          return FALSE;
 
       /* doing TCM_SETCURSEL seems to be needed even in case of PSH_WIZARD,
        * as some programs call TCM_GETCURSEL to get the current selection
