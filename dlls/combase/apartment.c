@@ -1098,8 +1098,7 @@ static HRESULT apartment_hostobject(struct apartment *apt, const struct host_obj
         return hr;
 
     hr = CoMarshalInterface(params->stream, &params->iid, object, MSHCTX_INPROC, NULL, MSHLFLAGS_NORMAL);
-    if (FAILED(hr))
-        IUnknown_Release(object);
+    IUnknown_Release(object);
     IStream_Seek(params->stream, llZero, STREAM_SEEK_SET, NULL);
 
     return hr;

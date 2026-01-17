@@ -101,6 +101,7 @@ static const GUID IID_Testiface8 = { 0x92222222, 0x1234, 0x1234, { 0x12, 0x34, 0
 static const GUID IID_TestPS = { 0x66666666, 0x8888, 0x7777, { 0x66, 0x66, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55 } };
 
 DEFINE_GUID(CLSID_testclsid, 0xacd014c7,0x9535,0x4fac,0x8b,0x53,0xa4,0x8c,0xa7,0xf4,0xd7,0x26);
+DEFINE_GUID(CLSID_Creatable, 0xa2222222,0x9535,0x4fac,0x8b,0x53,0xa4,0x8c,0xa7,0xf4,0xd7,0x26);
 
 static const WCHAR stdfont[] = {'S','t','d','F','o','n','t',0};
 static const WCHAR wszNonExistent[] = {'N','o','n','E','x','i','s','t','e','n','t',0};
@@ -315,6 +316,13 @@ static const char actctx_manifest[] =
 "    />"
 "    <comClass clsid=\"{62222222-1234-1234-1234-56789abcdef0}\" >"
 "        <progid>ProgId.ProgId.1</progid>"
+"    </comClass>"
+"    <comClass "
+"        clsid=\"{a2222222-9535-4fac-8b53-a48ca7f4d726}\""
+"        description=\"Creatable Class\""
+"        threadingModel=\"Apartment\""
+"        progid=\"TestLib.Creatable\" >"
+"        <progid>TestLib.Creatable.1</progid>"
 "    </comClass>"
 "    <comInterfaceProxyStub "
 "        name=\"Iifaceps\""
@@ -902,6 +910,30 @@ static void test_CoGetClassObject(void)
 
         hr = CoGetClassObject(&IID_Testiface8, CLSCTX_INPROC_SERVER, NULL, &IID_IUnknown, (void **)&pUnk);
         ok(hr == REGDB_E_CLASSNOTREG, "Unexpected hr %#lx.\n", hr);
+
+        hr = CoGetClassObject(&CLSID_Creatable, CLSCTX_INPROC_SERVER, NULL, &IID_IClassFactory, (void**)&pUnk);
+        ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
+        ok(pUnk != NULL, "Could not load test class factory\n");
+        if(pUnk != NULL)
+        {
+            HMODULE htestlib = NULL;
+            HRESULT(WINAPI * pDllCanUnloadNow)(void) = NULL;
+
+            ok(GetModuleHandleExA(0, "testlib.dll", &htestlib), "GetModuleHandleEx failed, error = %lu\n", GetLastError());
+            pDllCanUnloadNow = (void*)GetProcAddress(htestlib, "DllCanUnloadNow");
+            ok(pDllCanUnloadNow != NULL, "GetProcAddress(\"DllCanUnloadNow\") failed, error = %lu\n", GetLastError());
+            if(pDllCanUnloadNow)
+            {
+                hr = (*pDllCanUnloadNow)();
+                ok(S_FALSE == hr, "Unexpected hr %#lx.\n", hr);
+                IUnknown_Release(pUnk);
+                pUnk = NULL;
+
+                hr = (*pDllCanUnloadNow)();
+                ok(S_OK == hr, "Unexpected hr %#lx.\n", hr);
+                CloseHandle(htestlib);
+            }
+        }
 
         deactivate_context(handle, cookie);
     }
