@@ -4360,7 +4360,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 ac_config_headers="$ac_config_headers include/config.h"
 
 
-CFLAGS="$CFLAGS -I$srcdir/rust"
+CFLAGS="$CFLAGS -I$srcdir/../rust"
 
 
 
@@ -6706,10 +6706,10 @@ case "$HOST_ARCH" in
 esac
 
 
-RUST_LIB_DIR="\$(top_srcdir)/rust/target/$RUST_TARGET/release/deps"
+RUST_LIB_DIR="\$(top_srcdir)/../rust/target/$RUST_TARGET/release/deps"
 
 
-WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
+WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
 
 
 WINE_API_DLLFLAGS="-mwinerust"
@@ -23344,7 +23344,7 @@ wine_fn_config_makefile dlls/wldp enable_wldp
 wine_fn_config_makefile dlls/wldp/tests enable_tests
 wine_fn_config_makefile dlls/wmadmod enable_wmadmod
 wine_fn_config_makefile dlls/wmasf enable_wmasf
-wine_fn_config_makefile rust enable_rust
+wine_fn_config_makefile ../rust enable_rust
 wine_fn_config_makefile dlls/wmi enable_wmi
 wine_fn_config_makefile dlls/wmilib.sys enable_wmilib_sys
 wine_fn_config_makefile dlls/wminet_utils enable_wminet_utils
