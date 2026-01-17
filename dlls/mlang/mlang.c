@@ -1327,6 +1327,8 @@ static INT CALLBACK map_font_enum_proc(const LOGFONTW *lf, const TEXTMETRICW *nt
     UINT charset;
     struct map_font_enum_data *data = (struct map_font_enum_data *)lParam;
 
+    if (type != TRUETYPE_FONTTYPE) return 1;
+
     data->src_lf.lfCharSet = lf->lfCharSet;
     wcscpy(data->src_lf.lfFaceName, lf->lfFaceName);
 

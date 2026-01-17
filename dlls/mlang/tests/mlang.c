@@ -2716,6 +2716,14 @@ static void test_MapFont(IMLangFontLink *font_link, IMLangFontLink2 *font_link2)
     HFONT font1 = NULL;
     HFONT font2 = NULL;
     DWORD codepages;
+    DWORD all_codepages[] = {
+        FS_LATIN1, FS_LATIN2, FS_CYRILLIC, FS_GREEK, FS_TURKISH, FS_HEBREW,
+        FS_ARABIC, FS_BALTIC, FS_VIETNAMESE, FS_THAI, FS_JISJAPAN, FS_CHINESESIMP,
+        FS_WANSUNG, FS_CHINESETRAD
+    };
+    ULONG i;
+    DWORD Csb[2];
+    CHARSETINFO ci;
     DWORD font_codepages;
     HRESULT ret;
     HDC hdc;
@@ -2783,12 +2791,20 @@ static void test_MapFont(IMLangFontLink *font_link, IMLangFontLink2 *font_link2)
     ret = IMLangFontLink2_MapFont(font_link2, hdc, codepages, 0, &new_font);
     ok(ret == S_OK && new_font == last_font, "IMLangFontLink2_MapFont: expected S_OK/%p, got %08lx/%p\n", last_font, ret, new_font);
 
-    /* check that the returned font can directly handle the codepage (instead of relying on a child font) */
-    ret = IMLangFontLink2_MapFont(font_link2, hdc, FS_JISJAPAN, 0, &new_font);
-    old_font = SelectObject(hdc, new_font);
-    charset = GetTextCharsetInfo(hdc, &fs, 0);
-    SelectObject(hdc, old_font);
-    ok(ret == S_OK && charset == SHIFTJIS_CHARSET && !!(fs.fsCsb[0] & FS_JISJAPAN), "IMLangFontLink2_MapFont: expected S_OK/%u/1, got %08lx/%u/0\n", SHIFTJIS_CHARSET, ret, charset);
+    /* check that the returned font can directly handle the requested codepage (instead of relying on a child font) by checking the corresponding charset */
+    for (i = 0; i < sizeof(all_codepages)/sizeof(all_codepages[0]); i++)
+    {
+        Csb[0] = all_codepages[i];
+        Csb[1] = 0x0;
+        if(!TranslateCharsetInfo(Csb, &ci, TCI_SRCFONTSIG)) continue;
+        ret = IMLangFontLink2_MapFont(font_link2, hdc, all_codepages[i], 0, &new_font);
+        /* an appropriate font might just not exist on the system */
+        if(ret != S_OK) continue;
+        old_font = SelectObject(hdc, new_font);
+        charset = GetTextCharsetInfo(hdc, &fs, 0);
+        SelectObject(hdc, old_font);
+        ok(charset == ci.ciCharset && !!(fs.fsCsb[0] & all_codepages[i]), "IMLangFontLink2_MapFont: expected %u/1, got %u/0\n", ci.ciCharset, charset);
+    }
 
     ret = IMLangFontLink2_ReleaseFont(font_link2, NULL);
     ok(ret == E_FAIL, "IMLangFontLink2_ReleaseFont: expected E_FAIL, got %08lx\n", ret);
