@@ -1546,6 +1546,8 @@ typedef struct {
     void *blocking_xhr;
     unsigned tasks_locked;
     BOOL timer_blocked;
+    ULONG minimize_hook_ref;
+    HWINEVENTHOOK minimize_hook;
 } thread_data_t;
 
 thread_data_t *get_thread_data(BOOL);
@@ -1559,6 +1561,7 @@ HRESULT push_task(task_t*,task_proc_t,task_proc_t,LONG);
 HRESULT push_event_task(event_task_t*,HTMLInnerWindow*,event_task_proc_t,event_task_proc_t,LONG);
 void remove_target_tasks(LONG);
 double get_time_stamp(void);
+void CALLBACK minimize_event_hook(HWINEVENTHOOK,DWORD,HWND,LONG,LONG,DWORD,DWORD);
 
 enum timer_type {
     TIMER_TIMEOUT,

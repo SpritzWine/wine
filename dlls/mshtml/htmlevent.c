@@ -220,7 +220,7 @@ static const event_info_t event_info[] = {
     {L"unload",            EVENT_TYPE_UIEVENT,   DISPID_EVMETH_ONUNLOAD,
         EVENT_BIND_TO_TARGET},
     {L"visibilitychange",  EVENT_TYPE_EVENT,     DISPID_EVPROP_VISIBILITYCHANGE,
-        EVENT_FIXME | EVENT_BUBBLES},
+        EVENT_BUBBLES},
 
     /* EVENTID_LAST special entry */
     {NULL,                 EVENT_TYPE_EVENT,     0, 0}
@@ -268,6 +268,22 @@ const WCHAR *get_event_name(eventid_t eid)
     return event_info[eid].name;
 }
 
+static BOOL install_minimize_event_hook(void)
+{
+    thread_data_t *thread_data = get_thread_data(TRUE);
+
+    if(!thread_data)
+        return FALSE;
+
+    if(!thread_data->minimize_hook) {
+        thread_data->minimize_hook = SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, NULL, minimize_event_hook, 0, 0, WINEVENT_OUTOFCONTEXT);
+        if(!thread_data->minimize_hook)
+            return FALSE;
+    }
+    thread_data->minimize_hook_ref++;
+    return TRUE;
+}
+
 static listener_container_t *get_listener_container(EventTarget *event_target, const WCHAR *type, BOOL alloc)
 {
     const event_target_vtbl_t *vtbl;
@@ -292,6 +308,12 @@ static listener_container_t *get_listener_container(EventTarget *event_target, c
         return NULL;
     memcpy(container->type, type, (type_len + 1) * sizeof(WCHAR));
     list_init(&container->listeners);
+
+    if(eid == EVENTID_VISIBILITYCHANGE && !install_minimize_event_hook()) {
+        free(container);
+        return NULL;
+    }
+
     vtbl = dispex_get_vtbl(&event_target->dispex);
     if (!vtbl->bind_event)
         FIXME("Unsupported event binding on target %p\n", event_target);
@@ -5177,9 +5199,15 @@ void traverse_event_target(EventTarget *event_target, nsCycleCollectionTraversal
 
 void release_event_target(EventTarget *event_target)
 {
+    thread_data_t *thread_data = get_thread_data(FALSE);
     listener_container_t *iter, *iter2;
 
     WINE_RB_FOR_EACH_ENTRY_DESTRUCTOR(iter, iter2, &event_target->handler_map, listener_container_t, entry) {
+        if(thread_data && !wcscmp(iter->type, L"visibilitychange") && !--thread_data->minimize_hook_ref) {
+            UnhookWinEvent(thread_data->minimize_hook);
+            thread_data->minimize_hook = NULL;
+            thread_data = NULL;
+        }
         while(!list_empty(&iter->listeners)) {
             event_listener_t *listener = LIST_ENTRY(list_head(&iter->listeners), event_listener_t, entry);
             list_remove(&listener->entry);

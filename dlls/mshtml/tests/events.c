@@ -2011,6 +2011,29 @@ static void pump_msgs(BOOL *b)
     }
 }
 
+#define pump_msgs_timeout(a,b) pump_msgs_timeout_(a,b,__LINE__)
+static void pump_msgs_timeout_(BOOL *b, DWORD timeout, unsigned line)
+{
+    DWORD end = GetTickCount() + timeout, t;
+    MSG msg;
+
+    while(!*b && end - (t = GetTickCount()) <= timeout) {
+        UINT_PTR timer = SetTimer(NULL, 0, end - t, NULL);
+        BOOL ret = GetMessageW(&msg, NULL, 0, 0);
+
+        KillTimer(NULL, timer);
+        if(ret <= 0 || (msg.message == WM_TIMER && msg.wParam == timer))
+            break;
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    while(PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    ok_(__FILE__,line)(*b, "timed out\n");
+}
+
 static IOleCommandTarget cmdtarget, cmdtarget_stub;
 
 static HRESULT WINAPI cmdtarget_QueryInterface(IOleCommandTarget *iface, REFIID riid, void **ppv)
@@ -3507,19 +3530,14 @@ static void test_visibilitychange(IHTMLDocument2 *doc)
         ShowWindow(container_hwnd, SW_RESTORE);
         pump_msgs(NULL);
     }else {
-        /* FIXME: currently not implemented in Wine, so we can't wait for it */
-        BOOL *expect = broken(1) ? &called_visibilitychange : NULL;
-
         SET_EXPECT(visibilitychange);
         ShowWindow(container_hwnd, SW_MINIMIZE);
-        pump_msgs(expect);
-        todo_wine
+        pump_msgs_timeout(&called_visibilitychange, 3000);
         CHECK_CALLED(visibilitychange);
 
         SET_EXPECT(visibilitychange);
         ShowWindow(container_hwnd, SW_RESTORE);
-        pump_msgs(expect);
-        todo_wine
+        pump_msgs_timeout(&called_visibilitychange, 3000);
         CHECK_CALLED(visibilitychange);
     }
 

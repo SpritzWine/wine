@@ -65,6 +65,32 @@ HTMLOuterWindow *mozwindow_to_window(const mozIDOMWindowProxy *mozwindow)
     return entry ? WINE_RB_ENTRY_VALUE(entry, HTMLOuterWindow, entry) : NULL;
 }
 
+void CALLBACK minimize_event_hook(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime)
+{
+    thread_data_t *thread_data = get_thread_data(FALSE);
+    HTMLOuterWindow *window;
+    HTMLDocumentNode *doc;
+    DOMEvent *dom_event;
+    HRESULT hres;
+
+    if(!thread_data || thread_data->minimize_hook != hWinEventHook)
+        return;
+
+    RB_FOR_EACH_ENTRY(window, &window_map, HTMLOuterWindow, entry) {
+        if(window->browser && hwnd == GetAncestor(window->browser->doc->hwnd, GA_ROOT)) {
+            LIST_FOR_EACH_ENTRY(doc, &window->browser->document_nodes, HTMLDocumentNode, browser_entry) {
+                if(doc->document_mode >= COMPAT_MODE_IE10) {
+                    hres = create_document_event(doc, EVENTID_VISIBILITYCHANGE, &dom_event);
+                    if(SUCCEEDED(hres)) {
+                        dispatch_event(&doc->node.event_target, dom_event);
+                        IDOMEvent_Release(&dom_event->IDOMEvent_iface);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static HRESULT get_location(HTMLOuterWindow *This, HTMLLocation **ret)
 {
     if(!This->location) {
