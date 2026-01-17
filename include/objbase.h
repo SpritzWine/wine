@@ -304,6 +304,14 @@ typedef enum tagCOINIT
     COINIT_SPEED_OVER_MEMORY  = 0x8  /* Trade memory for speed */
 } COINIT;
 
+typedef enum tagCOMSD
+{
+    SD_LAUNCHPERMISSIONS   = 0,
+    SD_ACCESSPERMISSIONS   = 1,
+    SD_LAUNCHRESTRICTIONS  = 2,
+    SD_ACCESSRESTRICTIONS  = 3
+} COMSD;
+
 DECLARE_HANDLE(CO_MTA_USAGE_COOKIE);
 
 WINOLE32API HRESULT WINAPI CoInitialize(LPVOID lpReserved);
@@ -336,6 +344,7 @@ WINOLE32API HRESULT WINAPI CoRegisterMallocSpy(LPMALLOCSPY pMallocSpy);
 WINOLE32API HRESULT WINAPI CoRevokeMallocSpy(void);
 
 WINOLE32API HRESULT WINAPI CoGetContextToken( ULONG_PTR *token );
+WINOLE32API HRESULT WINAPI CoGetSystemSecurityPermissions( COMSD type, PSECURITY_DESCRIPTOR *sd );
 
 /* class registration flags; passed to CoRegisterClassObject */
 typedef enum tagREGCLS

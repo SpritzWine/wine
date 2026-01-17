@@ -3368,6 +3368,22 @@ HRESULT WINAPI CoGetCallerTID(DWORD *tid)
 }
 
 /***********************************************************************
+ *             CoGetSystemSecurityPermissions (combase.@)
+ */
+HRESULT WINAPI CoGetSystemSecurityPermissions(COMSD type, PSECURITY_DESCRIPTOR *sys_sd)
+{
+    SECURITY_DESCRIPTOR *sd;
+
+    FIXME("(%d, %p): stub\n", type, sys_sd);
+
+    if (!(sd = LocalAlloc(LMEM_FIXED, SECURITY_DESCRIPTOR_MIN_LENGTH))) return E_OUTOFMEMORY;
+    InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION);
+    *sys_sd = sd;
+
+    return S_OK;
+}
+
+/***********************************************************************
  *           CoIsHandlerConnected    (combase.@)
  */
 BOOL WINAPI CoIsHandlerConnected(IUnknown *object)

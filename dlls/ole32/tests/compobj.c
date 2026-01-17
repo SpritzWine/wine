@@ -75,6 +75,7 @@ static HRESULT (WINAPI * pCoGetObjectContext)(REFIID riid, LPVOID *ppv);
 static HRESULT (WINAPI * pCoSwitchCallContext)(IUnknown *pObject, IUnknown **ppOldObject);
 static HRESULT (WINAPI * pCoGetContextToken)(ULONG_PTR *token);
 static HRESULT (WINAPI * pCoGetApartmentType)(APTTYPE *type, APTTYPEQUALIFIER *qualifier);
+static HRESULT (WINAPI * pCoGetSystemSecurityPermissions)(COMSD type, PSECURITY_DESCRIPTOR *sd);
 static HRESULT (WINAPI * pCoIncrementMTAUsage)(CO_MTA_USAGE_COOKIE *cookie);
 static HRESULT (WINAPI * pCoDecrementMTAUsage)(CO_MTA_USAGE_COOKIE cookie);
 static LONG (WINAPI * pRegDeleteKeyExA)(HKEY, LPCSTR, REGSAM, DWORD);
@@ -4071,6 +4072,7 @@ static void init_funcs(void)
     pCoIncrementMTAUsage = (void*)GetProcAddress(hOle32, "CoIncrementMTAUsage");
     pCoDecrementMTAUsage = (void*)GetProcAddress(hOle32, "CoDecrementMTAUsage");
     pCoCreateInstanceFromApp = (void*)GetProcAddress(hOle32, "CoCreateInstanceFromApp");
+    pCoGetSystemSecurityPermissions = (void*)GetProcAddress(hOle32, "CoGetSystemSecurityPermissions");
     pRegDeleteKeyExA = (void*)GetProcAddress(hAdvapi32, "RegDeleteKeyExA");
     pRegOverridePredefKey = (void*)GetProcAddress(hAdvapi32, "RegOverridePredefKey");
 
@@ -4472,6 +4474,16 @@ static void test_oletlsdata(void)
             "Unexpected flags %#lx.\n", flags);
 }
 
+static void test_CoGetSystemSecurityPermissions(void)
+{
+    PSECURITY_DESCRIPTOR psd;
+    HRESULT hr;
+
+    hr = pCoGetSystemSecurityPermissions(SD_LAUNCHPERMISSIONS, &psd);
+    ok(IsValidSecurityDescriptor(psd) && (hr == S_OK), "Unexpected hr %#lx.\n", hr);
+    LocalFree(psd);
+}
+
 START_TEST(compobj)
 {
     init_funcs();
@@ -4524,6 +4536,7 @@ START_TEST(compobj)
     test_mta_usage();
     test_CoCreateInstanceFromApp();
     test_call_cancellation();
+    test_CoGetSystemSecurityPermissions();
 
     DeleteFileA( testlib );
 }

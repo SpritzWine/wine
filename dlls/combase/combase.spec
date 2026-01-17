@@ -119,7 +119,7 @@
 @ stub CoGetProcessIdentifier
 @ stdcall CoGetStandardMarshal(ptr ptr long ptr long ptr)
 @ stub CoGetStdMarshalEx
-@ stub CoGetSystemSecurityPermissions
+@ stdcall CoGetSystemSecurityPermissions(long ptr)
 @ stdcall CoGetTreatAsClass(ptr ptr)
 @ stdcall CoImpersonateClient()
 @ stdcall CoIncrementMTAUsage(ptr)
