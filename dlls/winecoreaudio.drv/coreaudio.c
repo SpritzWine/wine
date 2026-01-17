@@ -42,6 +42,7 @@
 #include <fcntl.h>
 #include <fenv.h>
 #include <unistd.h>
+#include <math.h>
 
 #include <CoreAudio/CoreAudio.h>
 #include <AudioToolbox/AudioFormat.h>
@@ -1726,33 +1727,25 @@ static NTSTATUS unix_get_prop_value(void *args)
 
 static NTSTATUS unix_set_volumes(void *args)
 {
+    static unsigned int once;
+    if (!once++)
+        WARN("CoreAudio doesn't support per-channel volume control\n");
+
     struct set_volumes_params *params = args;
     struct coreaudio_stream *stream = handle_get_stream(params->stream);
     Float32 level = params->master_volume;
     OSStatus sc;
     UINT32 i;
-    AudioObjectPropertyAddress prop_addr = {
-        kAudioDevicePropertyVolumeScalar,
-        kAudioObjectPropertyScopeGlobal,
-        kAudioObjectPropertyElementMain
-    };
 
-    sc = AudioObjectSetPropertyData(stream->dev_id, &prop_addr, 0, NULL, sizeof(float), &level);
-    if (sc == noErr)
-        level = 1.0f;
-    else
-        WARN("Couldn't set master volume, applying it directly to the channels: %x\n", (int)sc);
-
-    for (i = 1; i <= stream->fmt->nChannels; ++i) {
-        const float vol = level * params->session_volumes[i - 1] * params->volumes[i - 1];
-
-        prop_addr.mElement = i;
-
-        sc = AudioObjectSetPropertyData(stream->dev_id, &prop_addr, 0, NULL, sizeof(float), &vol);
-        if (sc != noErr) {
-            WARN("Couldn't set channel #%u volume: %x\n", i, (int)sc);
-        }
+    for(i = 0; i < stream->fmt->nChannels; ++i){
+        const Float32 vol = params->master_volume * params->volumes[i] * params->session_volumes[i];
+        level = fminf(level, vol);
     }
+
+    sc = AudioUnitSetParameter(stream->unit, kHALOutputParam_Volume,
+                               kAudioUnitScope_Global, 0, level, 0);
+    if(sc != noErr)
+        WARN("Couldn't set volume: %x\n", (int)sc);
 
     return STATUS_SUCCESS;
 }
