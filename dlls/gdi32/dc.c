@@ -2170,7 +2170,7 @@ BOOL WINAPI FillPath( HDC hdc )
 
     if (!(dc_attr = get_dc_attr( hdc ))) return FALSE;
     if (dc_attr->print) print_call_start_page( dc_attr );
-    if (dc_attr->emf && !EMFDC_FillPath( dc_attr )) return FALSE;
+    if (dc_attr->emf) return EMFDC_FillPath( dc_attr );
     return NtGdiFillPath( hdc );
 }
 
