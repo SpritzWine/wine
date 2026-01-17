@@ -26,6 +26,7 @@
 #include <lmaccess.h>
 #include <lmerr.h>
 #include <lmapibuf.h>
+#include <sddl.h>
 
 #include "wine/test.h"
 
@@ -268,6 +269,7 @@ static void run_localgroupgetinfo_tests(void)
     NET_API_STATUS status;
     PLOCALGROUP_INFO_1 lgi = NULL;
     PLOCALGROUP_MEMBERS_INFO_3 buffer = NULL;
+    PLOCALGROUP_MEMBERS_INFO_1 bufinfo1 = NULL;
     DWORD entries_read = 0, total_entries =0;
     int i;
 
@@ -290,6 +292,23 @@ static void run_localgroupgetinfo_tests(void)
         trace("domain and name: %s\n", wine_dbgstr_w(buffer[i].lgrmi3_domainandname));
 
     NetApiBufferFree(buffer);
+
+    status = NetLocalGroupGetMembers(NULL, L"Administrators", 1, (BYTE **)&bufinfo1,
+            MAX_PREFERRED_LENGTH, &entries_read, &total_entries, NULL);
+    ok(status == NERR_Success, "NetLocalGroupGetMembers unexpectedly returned %ld\n", status);
+    ok(entries_read > 0 && total_entries > 0, "Amount of entries is unexpectedly 0\n");
+    for(i=0;i<entries_read;i++)
+    {
+        PWSTR sidstr = NULL;
+        ok(bufinfo1[i].lgrmi1_sid != 0, "Sid of index %d is unexpectedly NULL\n", i);
+        ok(ConvertSidToStringSidW(bufinfo1[i].lgrmi1_sid, &sidstr), "ConvertSidToStringSidW failed for index %d\n", i);
+        trace("name: %s, usage: %x, sid: %s\n", wine_dbgstr_w(bufinfo1[i].lgrmi1_name),
+            bufinfo1[i].lgrmi1_sidusage, wine_dbgstr_w(sidstr));
+        if (sidstr)
+            LocalFree(sidstr);
+    }
+
+    NetApiBufferFree(bufinfo1);
 }
 
 static void test_DavGetHTTPFromUNCPath(void)

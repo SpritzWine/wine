@@ -2528,6 +2528,52 @@ NET_API_STATUS WINAPI NetLocalGroupGetMembers(
         *entriesread = 1;
     }
 
+    if (level == 1)
+    {
+        WCHAR userName[MAX_COMPUTERNAME_LENGTH + 1];
+        DWORD userNameLen, domainNameLen, sidLen;
+        DWORD len,needlen;
+        PLOCALGROUP_MEMBERS_INFO_1 ptr;
+        SID_NAME_USE use;
+
+        /* still a stub,  current user is belonging to all groups */
+
+        *totalentries = 1;
+        *entriesread = 0;
+
+        userNameLen = MAX_COMPUTERNAME_LENGTH + 1;
+        if (!GetUserNameW(userName,&userNameLen))
+            return ERROR_NOT_ENOUGH_MEMORY;
+
+        /* query length of sid for username */
+        LookupAccountNameW(servername, userName, NULL, &sidLen, NULL, &domainNameLen, &use);
+        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+            return GetLastError();
+
+        needlen = sizeof(LOCALGROUP_MEMBERS_INFO_1) +
+             (userNameLen+2) * sizeof(WCHAR) +
+             sizeof(sidLen);
+
+        if (prefmaxlen != MAX_PREFERRED_LENGTH)
+            len = min(prefmaxlen,needlen);
+        else
+            len = needlen;
+
+        NetApiBufferAllocate(len, (LPVOID *) bufptr);
+        if (len < needlen)
+            return ERROR_MORE_DATA;
+
+        ptr = (PLOCALGROUP_MEMBERS_INFO_1)*bufptr;
+        ptr->lgrmi1_sid = (LPWSTR)(*bufptr+sizeof(LOCALGROUP_MEMBERS_INFO_1));
+        ptr->lgrmi1_name = (LPWSTR)(*bufptr+sizeof(LOCALGROUP_MEMBERS_INFO_1) + sidLen);
+        lstrcpyW(ptr->lgrmi1_name, userName);
+        if (!LookupAccountNameW(servername, userName, ptr->lgrmi1_sid, &sidLen, NULL, &domainNameLen, &use))
+            return GetLastError();
+        ptr->lgrmi1_sidusage = use;
+
+        *entriesread = 1;
+    }
+
     return NERR_Success;
 }
 
