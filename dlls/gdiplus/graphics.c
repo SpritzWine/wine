@@ -5576,7 +5576,6 @@ GpStatus gdip_format_string(GpGraphics *graphics, HDC hdc,
     int sum = 0, height = 0, fit, fitcpy, i, j, lret, nwidth,
         nheight, lineend, lineno = 0;
     RectF bounds;
-    StringAlignment halign;
     GpStatus stat = Ok;
     SIZE size;
     HotkeyPrefix hkprefix;
@@ -5657,8 +5656,6 @@ GpStatus gdip_format_string(GpGraphics *graphics, HDC hdc,
 
     length = j;
 
-    halign = format->align;
-
     generate_font_link_info(&info, length, font);
 
     while(sum < length){
@@ -5724,20 +5721,7 @@ GpStatus gdip_format_string(GpGraphics *graphics, HDC hdc,
             bounds.Height = size.cy;
 
         bounds.Y = rect->Y + height;
-
-        switch (halign)
-        {
-        case StringAlignmentNear:
-        default:
-            bounds.X = rect->X;
-            break;
-        case StringAlignmentCenter:
-            bounds.X = rect->X + (rect->Width/2) - (bounds.Width/2);
-            break;
-        case StringAlignmentFar:
-            bounds.X = rect->X + rect->Width - bounds.Width;
-            break;
-        }
+        bounds.X = rect->X;
 
         for (hotkeyprefix_end_pos=hotkeyprefix_pos; hotkeyprefix_end_pos<hotkeyprefix_count; hotkeyprefix_end_pos++)
             if (hotkeyprefix_offsets[hotkeyprefix_end_pos] >= sum + lineend)
@@ -5810,7 +5794,7 @@ void transform_properties(GpGraphics *graphics, GDIPCONST GpMatrix *matrix, BOOL
 
 struct measure_ranges_args {
     GpRegion **regions;
-    REAL rel_width, rel_height;
+    REAL x, y, rel_width, rel_height;
 };
 
 static GpStatus measure_ranges_callback(struct gdip_format_string_info *info)
@@ -5829,14 +5813,37 @@ static GpStatus measure_ranges_callback(struct gdip_format_string_info *info)
             GpRectF range_rect;
             SIZE range_size;
 
-            range_rect.Y = info->bounds->Y / args->rel_height;
+            switch (info->format->line_align)
+            {
+            case StringAlignmentNear:
+            default:
+                range_rect.Y = args->y + info->rect->Y / args->rel_height;
+                break;
+            case StringAlignmentCenter:
+                range_rect.Y = args->y + (info->rect->Y + (info->rect->Height - info->bounds->Height) / 2) / args->rel_height;
+                break;
+            case StringAlignmentFar:
+                range_rect.Y = args->y + (info->rect->Y + info->rect->Height - info->bounds->Height) / args->rel_height;
+                break;
+            }
             range_rect.Height = info->bounds->Height / args->rel_height;
 
-            font_link_get_text_extent_point(info, info->index, range_start - info->index, INT_MAX, NULL, &range_size);
-            range_rect.X = (info->bounds->X + range_size.cx) / args->rel_width;
+            switch (info->format->align)
+            {
+            case StringAlignmentNear:
+            default:
+                range_rect.X = args->x + info->rect->X / args->rel_width;
+                break;
+            case StringAlignmentCenter:
+                range_rect.X = args->x + (info->rect->X + (info->rect->Width - info->bounds->Width) / 2) / args->rel_width;
+                break;
+            case StringAlignmentFar:
+                range_rect.X = args->x + (info->rect->X + info->rect->Width - info->bounds->Width) / args->rel_width;
+                break;
+            }
 
             font_link_get_text_extent_point(info, info->index, range_end - info->index, INT_MAX, NULL, &range_size);
-            range_rect.Width = (info->bounds->X + range_size.cx) / args->rel_width - range_rect.X;
+            range_rect.Width = range_size.cx / args->rel_width;
 
             stat = GdipCombineRegionRect(args->regions[i], &range_rect, CombineModeUnion);
             if (stat != Ok)
@@ -5888,10 +5895,16 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
     margin_x = stringFormat->generic_typographic ? 0.0 : font->emSize / 6.0;
     margin_x *= units_scale(font->unit, graphics->unit, graphics->xres, graphics->printer_display);
     transform_properties(graphics, NULL, TRUE, &args.rel_width, &args.rel_height, NULL);
-    scaled_rect.X = (layoutRect->X + margin_x) * args.rel_width;
-    scaled_rect.Y = layoutRect->Y * args.rel_height;
+    scaled_rect.X = margin_x * args.rel_width;
+    scaled_rect.Y = 0.0;
     scaled_rect.Width = layoutRect->Width * args.rel_width;
     scaled_rect.Height = layoutRect->Height * args.rel_height;
+    if (scaled_rect.Width >= 0.5)
+    {
+        scaled_rect.Width -= margin_x * 2.0 * args.rel_width;
+        if (scaled_rect.Width < 0.5) /* doesn't fit */
+            scaled_rect.Width = 0.0;
+    }
 
     if (scaled_rect.Width >= 1 << 23) scaled_rect.Width = 1 << 23;
     if (scaled_rect.Height >= 1 << 23) scaled_rect.Height = 1 << 23;
@@ -5912,6 +5925,8 @@ GpStatus WINGDIPAPI GdipMeasureCharacterRanges(GpGraphics* graphics,
         }
     }
 
+    args.x = layoutRect->X;
+    args.y = layoutRect->Y;
     args.regions = regions;
 
     gdi_transform_acquire(graphics);
@@ -5960,13 +5975,25 @@ static GpStatus measure_string_callback(struct gdip_format_string_info *info)
     if (args->linesfilled)
         (*args->linesfilled)++;
 
-    switch (info->format ? info->format->align : StringAlignmentNear)
+    switch (info->format->align)
     {
     case StringAlignmentCenter:
         bounds->X = bounds->X + (info->rect->Width/2) - (bounds->Width/2);
         break;
     case StringAlignmentFar:
         bounds->X = bounds->X + info->rect->Width - bounds->Width;
+        break;
+    default:
+        break;
+    }
+
+    switch (info->format->line_align)
+    {
+    case StringAlignmentCenter:
+        bounds->Y = bounds->Y + (info->rect->Height/2) - (bounds->Height/2);
+        break;
+    case StringAlignmentFar:
+        bounds->Y = bounds->Y + info->rect->Height - bounds->Height;
         break;
     default:
         break;
@@ -6084,7 +6111,20 @@ static GpStatus draw_string_callback(struct gdip_format_string_info *info)
     struct gdip_font_link_section *section;
     GpStatus stat = Ok;
 
-    position.X = args->x + info->bounds->X / args->rel_width;
+    switch (info->format->align)
+    {
+    case StringAlignmentNear:
+    default:
+        position.X = args->x + info->rect->X / args->rel_width;
+        break;
+    case StringAlignmentCenter:
+        position.X = args->x + (info->rect->X + (info->rect->Width - info->bounds->Width) / 2) / args->rel_width;
+        break;
+    case StringAlignmentFar:
+        position.X = args->x + (info->rect->X + info->rect->Width - info->bounds->Width) / args->rel_width;
+        break;
+    }
+
     position.Y = args->y + info->bounds->Y / args->rel_height + args->ascent;
 
     LIST_FOR_EACH_ENTRY(section, &info->font_link_info.sections, struct gdip_font_link_section, entry)
