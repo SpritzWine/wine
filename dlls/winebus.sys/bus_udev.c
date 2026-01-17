@@ -54,6 +54,10 @@
 # ifndef SYN_DROPPED
 #  define SYN_DROPPED 3
 # endif
+# ifndef EV_BTN
+#  define EV_BTN 0x06
+#  define EVIOCGBTNCNT 0
+# endif
 #endif
 
 #ifndef BUS_BLUETOOTH
@@ -179,10 +183,12 @@ struct lnxev_info
     struct input_id id;
     char name[MAX_PATH];
     char uniq[MAX_PATH];
+    BYTE ev[(EV_CNT) + 7 / 8];
     BYTE abs[(ABS_CNT + 7) / 8];
     BYTE rel[(REL_CNT + 7) / 8];
     BYTE key[(KEY_CNT + 7) / 8];
     BYTE ff[(FF_CNT + 7) / 8];
+    ULONG num_button;
 };
 
 struct lnxev_device
@@ -198,6 +204,7 @@ struct lnxev_device
     int hat_count;
     int button_count;
     BOOL is_gamepad;
+    BOOL ev_btn;
 
     pthread_cond_t haptics_cond;
     pthread_t haptics_thread;
@@ -662,7 +669,13 @@ static BOOL set_report_from_event(struct unix_device *iface, struct input_event 
     case EV_MSC:
         return FALSE;
 #endif
+    case EV_BTN:
+        if (impl->ev_btn)
+            hid_device_set_button(iface, ie->code - 1, ie->value);
+        return FALSE;
     case EV_KEY:
+        if (impl->ev_btn)
+            return FALSE;
         if (!(button = impl->button_map[ie->code])) return FALSE;
         if (impl->is_gamepad && !impl->hat_count)
         {
@@ -1207,13 +1220,14 @@ static NTSTATUS lnxev_device_create(struct udev_device *dev, int fd, const char 
 #ifdef HAS_PROPER_INPUT_HEADER
     static const WCHAR evdev[] = {'e','v','d','e','v',0};
     static const WCHAR zeros[] = {'0','0','0','0',0};
-    int axis_count = 0, button_count = 0;
+    unsigned int axis_count = 0, button_count = 0;
     struct lnxev_info info = {0};
     struct lnxev_device *impl;
 
     if (ioctl(fd, EVIOCGID, &info.id) == -1) memset(&info.id, 0, sizeof(info.id));
     if (ioctl(fd, EVIOCGNAME(sizeof(info.name) - 1), info.name) == -1) memset(info.name, 0, sizeof(info.name));
     if (ioctl(fd, EVIOCGUNIQ(sizeof(info.uniq) - 1), info.uniq) == -1) memset(info.uniq, 0, sizeof(info.uniq));
+    if (ioctl(fd, EVIOCGBIT(0, sizeof(info.ev)), info.ev) == -1) memset(info.ev, 0, sizeof(info.ev));
     if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(info.abs)), info.abs) == -1) memset(info.abs, 0, sizeof(info.abs));
     if (ioctl(fd, EVIOCGBIT(EV_REL, sizeof(info.rel)), info.rel) == -1) memset(info.rel, 0, sizeof(info.rel));
     if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(info.key)), info.key) == -1) memset(info.key, 0, sizeof(info.key));
@@ -1262,14 +1276,28 @@ static NTSTATUS lnxev_device_create(struct udev_device *dev, int fd, const char 
         impl->hat_map[i - ABS_HAT0X + 1] = impl->hat_count;
     }
 
-    for (int i = BTN_MISC; i < KEY_MAX; i++)
+    if (test_bit(info.ev, EV_BTN))
     {
-        if (!test_bit(info.key, i)) continue;
-        impl->button_map[i] = ++impl->button_count;
+        if (ioctl(fd, EVIOCGBTNCNT, &button_count)) button_count = 0;
+        else
+        {
+            impl->button_count = button_count;
+            impl->ev_btn = TRUE;
+        }
+    }
+
+    if (!impl->ev_btn)
+    {
+        for (int i = BTN_MISC; i < KEY_MAX; i++)
+        {
+            if (!test_bit(info.key, i)) continue;
+            impl->button_map[i] = ++impl->button_count;
+        }
     }
 
     if (is_xbox_gamepad(desc.vid, desc.pid)) desc.is_gamepad = TRUE;
-    else if (axis_count == 6 && button_count >= (impl->hat_count ? 10 : 14)) desc.is_gamepad = TRUE;
+    else if (test_bit(info.key, BTN_GAMEPAD) && axis_count == 6 && button_count >= (impl->hat_count ? 10 : 14))
+        desc.is_gamepad = TRUE;
 
     if ((impl->is_gamepad = desc.is_gamepad))
     {
