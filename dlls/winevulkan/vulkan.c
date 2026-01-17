@@ -585,11 +585,7 @@ void wine_vkGetPhysicalDeviceExternalFencePropertiesKHR(VkPhysicalDevice client_
 static inline VkTimeDomainEXT get_performance_counter_time_domain(void)
 {
 #if !defined(__APPLE__) && defined(HAVE_CLOCK_GETTIME)
-# ifdef CLOCK_MONOTONIC_RAW
-    return VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT;
-# else
     return VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT;
-# endif
 #else
     FIXME("No mapping for VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT on this platform.\n");
     return VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
@@ -607,7 +603,16 @@ static VkTimeDomainEXT map_to_host_time_domain(VkTimeDomainEXT domain)
 
 static inline uint64_t convert_monotonic_timestamp(uint64_t value)
 {
-    return value / (NANOSECONDS_IN_A_SECOND / TICKSPERSEC);
+    ULONG64 offset = 0;
+#if defined(HAVE_CLOCK_GETTIME) && defined(CLOCK_BOOTTIME) && !defined(__APPLE__)
+    LARGE_INTEGER ticks;
+    struct timespec ts;
+    NtQueryPerformanceCounter(&ticks, NULL);
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    /* ticks spent during suspend */
+    offset = ticks.QuadPart - ((ULONG64)ts.tv_sec * TICKSPERSEC + ts.tv_nsec / 100);
+#endif
+    return value / (NANOSECONDS_IN_A_SECOND / TICKSPERSEC) + offset;
 }
 
 static inline uint64_t convert_timestamp(VkTimeDomainEXT host_domain, VkTimeDomainEXT target_domain, uint64_t value)
@@ -616,7 +621,7 @@ static inline uint64_t convert_timestamp(VkTimeDomainEXT host_domain, VkTimeDoma
         return value;
 
     /* Convert between MONOTONIC time in ns -> QueryPerformanceCounter */
-    if ((host_domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT || host_domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT)
+    if (host_domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT
             && target_domain == VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT)
         return convert_monotonic_timestamp(value);
 
@@ -663,7 +668,7 @@ static VkResult wine_vk_get_time_domains(struct vulkan_physical_device *physical
                                          VkTimeDomainEXT *time_domains,
                                          VkResult (*get_domains)(VkPhysicalDevice, uint32_t *, VkTimeDomainEXT *))
 {
-    BOOL supports_device = FALSE, supports_monotonic = FALSE, supports_monotonic_raw = FALSE;
+    BOOL supports_device = FALSE, supports_monotonic = FALSE;
     const VkTimeDomainEXT performance_counter_domain = get_performance_counter_time_domain();
     VkTimeDomainEXT *host_time_domains;
     uint32_t host_time_domain_count;
@@ -693,8 +698,6 @@ static VkResult wine_vk_get_time_domains(struct vulkan_physical_device *physical
             supports_device = TRUE;
         else if (host_time_domains[i] == VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT)
             supports_monotonic = TRUE;
-        else if (host_time_domains[i] == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT)
-            supports_monotonic_raw = TRUE;
         else
             FIXME("Unknown time domain %d\n", host_time_domains[i]);
     }
@@ -704,9 +707,7 @@ static VkResult wine_vk_get_time_domains(struct vulkan_physical_device *physical
     out_time_domain_count = 0;
 
     /* Map our monotonic times -> QPC */
-    if (supports_monotonic_raw && performance_counter_domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_EXT)
-        out_time_domains[out_time_domain_count++] = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
-    else if (supports_monotonic && performance_counter_domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT)
+    if (supports_monotonic && performance_counter_domain == VK_TIME_DOMAIN_CLOCK_MONOTONIC_EXT)
         out_time_domains[out_time_domain_count++] = VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT;
     else
         FIXME("VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_EXT not supported on this platform.\n");
