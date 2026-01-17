@@ -192,7 +192,7 @@ static HRESULT load_mono(LPCWSTR mono_path)
 
         if (!find_mono_dll(mono_path, mono_dll_path)) goto fail;
 
-        mono_handle = LoadLibraryW(mono_dll_path);
+        mono_handle = LoadLibraryExW(mono_dll_path, NULL, LDR_WINE_INTERNAL);
 
         if (!mono_handle) goto fail;
 
