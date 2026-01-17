@@ -258,8 +258,8 @@ struct gdi_font
     struct list            entry;
     struct list            unused_entry;
     DWORD                  refcount;
-    DWORD                  gm_size;
-    struct glyph_metrics **gm;
+    DWORD                  gm_size[WINE_GGO_FORMAT_COUNT];
+    struct glyph_metrics **gm[WINE_GGO_FORMAT_COUNT];
     OUTLINETEXTMETRICW     otm;
     KERNINGPAIR           *kern_pairs;
     int                    kern_count;

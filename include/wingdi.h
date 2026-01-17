@@ -1342,11 +1342,12 @@ typedef struct
 #define GGO_UNHINTED        0x100
 
 #ifdef __WINESRC__
-#define WINE_GGO_GRAY16_BITMAP 0x10
-#define WINE_GGO_HRGB_BITMAP   0x11
-#define WINE_GGO_HBGR_BITMAP   0x12
-#define WINE_GGO_VRGB_BITMAP   0x13
-#define WINE_GGO_VBGR_BITMAP   0x14
+#define WINE_GGO_GRAY16_BITMAP 7
+#define WINE_GGO_HRGB_BITMAP   8
+#define WINE_GGO_HBGR_BITMAP   9
+#define WINE_GGO_VRGB_BITMAP   10
+#define WINE_GGO_VBGR_BITMAP   11
+#define WINE_GGO_FORMAT_COUNT  (WINE_GGO_VBGR_BITMAP + 1)
 #endif
 
 typedef struct
