@@ -2381,6 +2381,7 @@ static BOOL copy_or_cut( ME_TextEditor *editor, BOOL cut )
     if (editor->password_char) return FALSE;
 
     count -= offs;
+    if (!count) return FALSE;
     hr = editor_copy_or_cut( editor, cut, sel_start, count, NULL );
     if (FAILED( hr )) editor_beep( editor, MB_ICONERROR );
 
