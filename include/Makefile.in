@@ -990,6 +990,7 @@ SOURCES = \
 	wine/schrpc.idl \
 	wine/server.h \
 	wine/server_protocol.h \
+	wine/server_workdir.h \
 	wine/strmbase.h \
 	wine/svcctl.idl \
 	wine/test.h \

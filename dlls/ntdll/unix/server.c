@@ -81,6 +81,10 @@
 #include "unix_private.h"
 #include "ddk/wdm.h"
 
+#ifndef __ANDROID__
+#include "wine/server_workdir.h"
+#endif
+
 WINE_DEFAULT_DEBUG_CHANNEL(server);
 WINE_DECLARE_DEBUG_CHANNEL(syscall);
 
@@ -1303,13 +1307,25 @@ int server_pipe( int fd[2] )
  */
 static const char *init_server_dir( dev_t dev, ino_t ino )
 {
-    char *dir = NULL;
+    char *base_dir = NULL, *dir = NULL;
 
 #ifdef __ANDROID__  /* there's no /tmp dir on Android */
-    asprintf( &dir, "%s/.wineserver/server-%llx-%llx", config_dir, (unsigned long long)dev, (unsigned long long)ino );
+    if (asprintf( &base_dir, "%s/.wineserver", config_dir ) < 0)
+        fatal_error( "out of memory\n" );
 #else
-    asprintf( &dir, "/tmp/.wine-%u/server-%llx-%llx", getuid(), (unsigned long long)dev, (unsigned long long)ino );
+    if (!(base_dir = wineserver_workdir()))
+    {
+        if (errno == ENOMEM) fatal_error( "out of memory\n" );
+        fatal_error( "error while building wineserver directory\n" );
+    }
 #endif
+
+    if (asprintf( &dir, "%s/server-%llx-%llx", base_dir, (unsigned long long) dev, (unsigned long long) ino ) < 0)
+        fatal_error( "out of memory\n" );
+
+    /* not needed anymore */
+    free( base_dir );
+
     return dir;
 }
 

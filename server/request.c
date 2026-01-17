@@ -62,6 +62,10 @@
 #include "handle.h"
 #include "request_handlers.h"
 
+#ifndef __ANDROID__
+#include "wine/server_workdir.h"
+#endif
+
 /* Some versions of glibc don't define this */
 #ifndef SCM_RIGHTS
 #define SCM_RIGHTS 1
@@ -591,6 +595,7 @@ static void create_dir( const char *name, struct stat *st )
     if (!S_ISDIR(st->st_mode)) fatal_error( "%s is not a directory\n", name );
     if (st->st_uid != getuid()) fatal_error( "%s is not owned by you\n", name );
     if (st->st_mode & 077) fatal_error( "%s must not be accessible by other users\n", name );
+    if ((st->st_mode & 0700) != 0700) fatal_error( "%s must be writeable by you\n", name );
 }
 
 /* create the server directory and chdir to it */
@@ -641,11 +646,14 @@ static char *create_server_dir( int force )
     /* create the base directory if needed */
 
 #ifdef __ANDROID__  /* there's no /tmp dir on Android */
-    if (asprintf( &base_dir, "%s/.wineserver", config_dir ) == -1)
+    if (asprintf( &base_dir, "%s/.wineserver", config_dir ) < 0)
         fatal_error( "out of memory\n" );
 #else
-    if (asprintf( &base_dir, "/tmp/.wine-%u", getuid() ) == -1)
-        fatal_error( "out of memory\n" );
+    if (!(base_dir = wineserver_workdir()))
+    {
+        if (errno == ENOMEM) fatal_error( "out of memory\n" );
+        fatal_error( "error while building wineserver directory\n" );
+    }
 #endif
     create_dir( base_dir, &st2 );
 
