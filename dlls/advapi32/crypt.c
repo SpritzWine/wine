@@ -1143,6 +1143,17 @@ BOOL WINAPI CryptEnumProvidersW (DWORD dwIndex, DWORD *pdwReserved,
 		}
 
 		RegEnumKeyExW(hKey, dwIndex, provNameW, pcbProvName, NULL, NULL, NULL, NULL);
+
+		if (pdwProvType)
+		{
+			HKEY hSubkey;
+			DWORD size = sizeof(DWORD);
+
+			RegOpenKeyW(hKey, provNameW, &hSubkey);
+			RegQueryValueExW(hSubkey, L"Type", NULL, NULL, (BYTE*)pdwProvType, &size);
+			RegCloseKey(hSubkey);
+		}
+
 		CRYPT_Free(provNameW);
 		(*pcbProvName)++;
 		*pcbProvName *= sizeof(WCHAR);

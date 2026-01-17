@@ -707,8 +707,12 @@ static void test_enum_providers(void)
 			ERROR_NO_MORE_ITEMS, GetLastError());
 	
 	/* check expected versus actual values returned */
+	type = -1;
+	providerLen = -1;
 	result = pCryptEnumProvidersA(dwIndex, NULL, 0, &type, NULL, &providerLen);
-	ok(result && providerLen==cbName, "expected %i, got %i\n", (int)cbName, (int)providerLen);
+	ok(result, "expected TRUE, got %ld\n", result);
+	ok(type==dwType, "expected %ld, got %ld\n", dwType, type);
+	ok(providerLen==cbName, "expected %i, got %i\n", (int)cbName, (int)providerLen);
 	if (!(provider = LocalAlloc(LMEM_ZEROINIT, providerLen)))
 		return;
 		
