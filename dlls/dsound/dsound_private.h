@@ -65,9 +65,8 @@ typedef struct DSFilter {
     IMediaObjectInPlace* inplace;
 } DSFilter;
 
-/*****************************************************************************
- * IDirectSoundDevice implementation structure
- */
+struct cubic_coefficients;
+
 struct DirectSoundDevice
 {
     LONG                        ref;
@@ -88,8 +87,9 @@ struct DirectSoundDevice
     int                         speaker_num[DS_MAX_CHANNELS];
     int                         num_speakers;
     int                         lfe_channel;
-    float *tmp_buffer, *cp_buffer;
-    DWORD                       tmp_buffer_len, cp_buffer_len;
+    float *tmp_buffer, *cp_buffer, *out_buffer;
+    DWORD                       tmp_buffer_len, cp_buffer_len, out_buffer_len;
+    struct cubic_coefficients  *cubic_table;
     CO_MTA_USAGE_COOKIE         mta_cookie;
 
     DSVOLUMEPAN                 volpan;
@@ -123,9 +123,8 @@ HRESULT DirectSoundDevice_AddBuffer(
     IDirectSoundBufferImpl * pDSB);
 void DirectSoundDevice_RemoveBuffer(DirectSoundDevice * device, IDirectSoundBufferImpl * pDSB);
 
-/*****************************************************************************
- * IDirectSoundBuffer implementation structure
- */
+#define RESAMPLER_MAX_STATE 1
+
 struct IDirectSoundBufferImpl
 {
     IDirectSoundBuffer8         IDirectSoundBuffer8_iface;
@@ -146,11 +145,10 @@ struct IDirectSoundBufferImpl
     DSVOLUMEPAN                 volpan;
     DSBUFFERDESC                dsbd;
     /* used for frequency conversion (PerfectPitch) */
-    ULONG                       freqneeded;
-    DWORD                       firstep;
-    float                       firgain;
     LONG64                      freqAdjustNum,freqAdjustDen;
     LONG64                      freqAccNum;
+    BOOL                        first_resample;
+    float                       resampler_state[RESAMPLER_MAX_STATE * DS_MAX_CHANNELS];
     /* used for mixing */
     DWORD                       sec_mixpos;
     /* Holds a copy of the next 'writelead' bytes, to be used for mixing. This makes it
