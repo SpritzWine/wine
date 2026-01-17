@@ -5421,6 +5421,7 @@ static void normalize_nonclientmetrics( NONCLIENTMETRICSW *pncm)
     if( pncm->iScrollHeight < 8) pncm->iScrollHeight = 8;
 
     /* adjust some heights to the corresponding font */
+    memset( &tm, 0, sizeof tm );
     get_text_metr_size( hdc, &pncm->lfMenuFont, &tm, NULL);
     pncm->iMenuHeight = max( pncm->iMenuHeight, 2 + tm.tmHeight + tm.tmExternalLeading );
     get_text_metr_size( hdc, &pncm->lfCaptionFont, &tm, NULL);
