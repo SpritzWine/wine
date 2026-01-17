@@ -199,22 +199,37 @@ DWORD WINAPI VWIN32_VxDCall( DWORD service, CONTEXT *context )
              */
             return 0x0405;
         }
+    case 0x0010: /* Int21 dispatch */
     case 0x0029: /* Int31/DPMI dispatch */
+    case 0x002a: /* Int41 dispatch */
         {
-            DWORD callnum = stack32_pop(context);
-            DWORD parm    = stack32_pop(context);
+            BYTE intnum = 0;
 
-            TRACE("Int31/DPMI dispatch(%08lx)\n", callnum);
+            context->Eax = stack32_pop( context );
+            context->Ecx = stack32_pop( context );
 
-            context->Eax = callnum;
-            context->Ecx = parm;
-            __wine_call_int_handler16( 0x31, context );
+            switch ( LOWORD( service ) )
+            {
+            case 0x0010: /* Int21 dispatch */
+                intnum = 0x21;
+                break;
+            case 0x0029: /* Int31/DPMI dispatch */
+                intnum = 0x31;
+                break;
+            case 0x002a: /* Int41 dispatch */
+                intnum = 0x41;
+                break;
+            }
+
+            TRACE( "Int%x dispatch: "
+                   "eax=0x%08lx, ebx=0x%08lx, ecx=0x%08lx, "
+                   "edx=0x%08lx, esi=0x%08lx, edi=0x%08lx\n",
+                   intnum,
+                   context->Eax, context->Ebx, context->Ecx,
+                   context->Edx, context->Esi, context->Edi );
+
+            __wine_call_int_handler16( intnum, context );
             return LOWORD(context->Eax);
-        }
-    case 0x002a: /* Int41 dispatch - parm = int41 service number */
-        {
-            DWORD callnum = stack32_pop(context);
-            return callnum; /* FIXME: should really call INT_Int41Handler() */
         }
     default:
         FIXME("Unknown service %08lx\n", service);
