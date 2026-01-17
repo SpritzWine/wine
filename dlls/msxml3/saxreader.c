@@ -60,7 +60,8 @@ typedef enum
     SuppressValidationfatalError = 1 << 12,
     UseInlineSchema              = 1 << 13,
     UseSchemaLocation            = 1 << 14,
-    LexicalHandlerParEntities    = 1 << 15
+    LexicalHandlerParEntities    = 1 << 15,
+    NormalizeLineBreaks          = 1 << 16
 } saxreader_feature;
 
 struct saxreader_feature_pair
@@ -76,6 +77,7 @@ static const struct saxreader_feature_pair saxreader_feature_map[] = {
     { LexicalHandlerParEntities, L"http://xml.org/sax/features/lexical-handler/parameter-entities" },
     { NamespacePrefixes, L"http://xml.org/sax/features/namespace-prefixes" },
     { Namespaces, L"http://xml.org/sax/features/namespaces" },
+    { NormalizeLineBreaks, L"normalize-line-breaks" },
     { ProhibitDTD, L"prohibit-dtd" },
     { SchemaValidation, L"schema-validation" },
 };
@@ -3190,6 +3192,9 @@ static HRESULT WINAPI isaxxmlreader_getFeature(
     if (This->version < MSXML4 && (feature == ExhaustiveErrors || feature == SchemaValidation))
         return E_INVALIDARG;
 
+    if (This->version >= MSXML4 && feature == NormalizeLineBreaks)
+        return E_INVALIDARG;
+
     if (feature == Namespaces ||
             feature == NamespacePrefixes ||
             feature == ExhaustiveErrors ||
@@ -3224,7 +3229,8 @@ static HRESULT WINAPI isaxxmlreader_putFeature(
     if (feature == LexicalHandlerParEntities ||
             feature == ProhibitDTD ||
             feature == ExternalGeneralEntities ||
-            feature == ExternalParameterEntities)
+            feature == ExternalParameterEntities ||
+            feature == NormalizeLineBreaks )
     {
         FIXME("(%p)->(%s %x) stub\n", This, debugstr_w(feature_name), value);
         return set_feature_value(This, feature, value);

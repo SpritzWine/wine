@@ -4688,7 +4688,7 @@ static void test_saxreader_features(void)
     hr = ISAXXMLReader_getFeature(reader, _bstr_("schema-validation"), &value);
     ok(hr == S_OK, "Failed to get feature value, hr %#lx.\n", hr);
     ok(value == VARIANT_FALSE, "Unexpected default feature value.\n");
-    hr = ISAXXMLReader_putFeature(reader, _bstr_("exhaustive-errors"), VARIANT_FALSE);
+    hr = ISAXXMLReader_putFeature(reader, _bstr_("schema-validation"), VARIANT_FALSE);
     ok(hr == S_OK, "Failed to put feature value, hr %#lx.\n", hr);
 
     name = feature_names;
