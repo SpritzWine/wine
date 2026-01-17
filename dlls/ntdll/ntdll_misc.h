@@ -186,4 +186,6 @@ extern void *__os_arm64x_helper8;
 
 #endif
 
+extern NTSTATUS query_dword_option( HANDLE hkey, LPCWSTR name, LONG *value );
+
 #endif

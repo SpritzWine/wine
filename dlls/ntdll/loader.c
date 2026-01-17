@@ -3722,7 +3722,7 @@ NTSTATUS WINAPI LdrQueryProcessModuleInformation(RTL_PROCESS_MODULES *smi,
 }
 
 
-static NTSTATUS query_dword_option( HANDLE hkey, LPCWSTR name, LONG *value )
+NTSTATUS query_dword_option( HANDLE hkey, LPCWSTR name, LONG *value )
 {
     NTSTATUS status;
     UNICODE_STRING str;

@@ -5263,11 +5263,61 @@ static const WCHAR *find_app_settings( ACTIVATION_CONTEXT *actctx, const WCHAR *
     return NULL;
 }
 
+/* Windows 10, version 1607, building number 14393, Redstone, August 2, 2016 */
+static BOOL is_win10_1607_or_later(void)
+{
+    static RTL_OSVERSIONINFOEXW rovi = { 0 };
+
+    if (rovi.dwOSVersionInfoSize == 0)
+    {
+        rovi.dwOSVersionInfoSize = sizeof(rovi);
+        if (RtlGetVersion(&rovi) == ERROR_SUCCESS)
+        {
+            TRACE("windows version: win %ld, build %ld\n", rovi.dwMajorVersion, rovi.dwBuildNumber);
+        }
+        else
+        {
+            ERR("RtlGetVersion failed\n");
+            rovi.dwMajorVersion = 0;
+            rovi.dwBuildNumber = 0;
+        }
+    }
+
+    return rovi.dwMajorVersion >= 10 && rovi.dwBuildNumber >= 14393;
+}
+
+static BOOL is_reg_long_path_enabled(void)
+{
+    static DWORD LongPathEnabled = -1;
+    HANDLE hkey;
+    OBJECT_ATTRIBUTES attr;
+    UNICODE_STRING file_system_str =
+        RTL_CONSTANT_STRING( L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\FileSystem" );
+
+    if (LongPathEnabled == -1)
+    {
+        InitializeObjectAttributes( &attr, &file_system_str, OBJ_CASE_INSENSITIVE, 0, NULL );
+        if (!NtOpenKey( &hkey, KEY_QUERY_VALUE, &attr ))
+        {
+            query_dword_option(hkey, L"LongPathsEnabled", (LONG*)&LongPathEnabled);
+            NtClose(hkey);
+        }
+        else
+        {
+            LongPathEnabled = 0;
+        }
+        TRACE("in registry LongPathsEnabled: %ld\n", LongPathEnabled);
+    }
+    return LongPathEnabled == 1;
+}
+
+
 /* initialize the activation context for the current process */
 void actctx_init(void)
 {
     ACTCTXW ctx;
     ACTIVATION_CONTEXT *actctx;
+    WCHAR buffer[5];
 
     ctx.cbSize   = sizeof(ctx);
     ctx.lpSource = NULL;
@@ -5278,6 +5328,16 @@ void actctx_init(void)
     if (!RtlCreateActivationContext( &actctx, &ctx )) process_actctx = check_actctx( actctx );
 
     NtCurrentTeb()->Peb->ActivationContextData = process_actctx;
+
+    if (!RtlQueryActivationContextApplicationSettings( 0, NULL, L"http://schemas.microsoft.com/SMI/2016/WindowsSettings",
+        L"longPathAware", buffer, ARRAY_SIZE(buffer), NULL ))
+    {
+        TRACE( "got longPathAware=%s\n", debugstr_w(buffer) );
+        if (!wcsicmp( buffer, L"true" ) && is_win10_1607_or_later() && is_reg_long_path_enabled())
+        {
+            NtCurrentTeb()->Peb->IsLongPathAwareProcess = 1;
+        }
+    }
 }
 
 
