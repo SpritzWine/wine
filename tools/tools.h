@@ -158,6 +158,40 @@ static inline char *xstrdup( const char *str )
     return strcpy( xmalloc( strlen(str)+1 ), str );
 }
 
+static int xvasprintf( char **ret, const char *format, va_list ap ) __attribute__ ((__format__ (__printf__, 2, 0)));
+static inline int xvasprintf( char **ret, const char *fmt, va_list ap )
+{
+#ifdef _WIN32
+    int n;
+    char *p;
+    va_list copy;
+    size_t size = 100;
+
+    for (;;)
+    {
+        p = xmalloc( size );
+        va_copy( copy, ap );
+        n = vsnprintf( p, size, fmt, copy );
+        va_end( copy );
+        if (n == -1) size *= 2;
+        else if ((size_t)n >= size) size = n + 1;
+        else break;
+        free( p );
+    }
+    *ret = p;
+    return n;
+#else
+    int n = vasprintf( ret, fmt, ap );
+
+    if (n == -1)
+    {
+        fprintf( stderr, "Virtual memory exhausted.\n" );
+        exit(1);
+    }
+    return n;
+#endif
+}
+
 static inline bool strendswith( const char *str, const char *end )
 {
     int l = strlen( str );
@@ -168,21 +202,13 @@ static inline bool strendswith( const char *str, const char *end )
 static char *strmake( const char* fmt, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static inline char *strmake( const char* fmt, ... )
 {
-    int n;
-    size_t size = 100;
     va_list ap;
+    char *ret;
 
-    for (;;)
-    {
-        char *p = xmalloc( size );
-        va_start( ap, fmt );
-	n = vsnprintf( p, size, fmt, ap );
-	va_end( ap );
-        if (n == -1) size *= 2;
-        else if ((size_t)n >= size) size = n + 1;
-        else return p;
-        free( p );
-    }
+    va_start( ap, fmt );
+    xvasprintf( &ret, fmt, ap );
+    va_end( ap );
+    return ret;
 }
 
 /* generic array functions */
