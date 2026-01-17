@@ -596,6 +596,9 @@ DWORD NETCON_secure_connect(netconn_t *connection, server_t *server)
 {
     DWORD res;
 
+    if (!is_valid_netconn(connection))
+        return ERROR_INTERNET_CANNOT_CONNECT;
+
     /* can't connect if we are already connected */
     if(connection->secure) {
         ERR("already connected\n");
