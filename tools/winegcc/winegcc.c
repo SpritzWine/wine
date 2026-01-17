@@ -1406,11 +1406,11 @@ static void build(struct strarray input_files, const char *output)
         
         if (!rust_target) rust_target = "i686-unknown-linux-gnu";  /* default */
         if (wine_objdir_env && wine_objdir_env[0])
-            rust_lib_path = strmake("%s/rust/target/%s/release/deps", wine_objdir_env, rust_target);
+            rust_lib_path = strmake("%s/../rust/target/%s/release/deps", wine_objdir_env, rust_target);
         else if (wine_objdir)
-            rust_lib_path = strmake("%s/rust/target/%s/release/deps", wine_objdir, rust_target);
+            rust_lib_path = strmake("%s/../rust/target/%s/release/deps", wine_objdir, rust_target);
         else
-            rust_lib_path = strmake("rust/target/%s/release/deps", rust_target);
+            rust_lib_path = strmake("/..rust/target/%s/release/deps", rust_target);
         
         strarray_add(&link_args, strmake("-Wl,-rpath,%s", rust_lib_path));
         strarray_add(&link_args, strmake("-L%s", rust_lib_path));
