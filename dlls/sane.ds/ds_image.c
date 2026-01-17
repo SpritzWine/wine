@@ -143,6 +143,15 @@ TW_UINT16 SANE_Start(void)
           return TWRC_FAILURE;
       }
 
+      /* Workaround for some SANE backends that report a wrong value
+       * for bytes_per_line in LineArt mode */
+      if (activeDS.frame_params.depth == 1 &&
+          activeDS.frame_params.format == FMT_GRAY &&
+          activeDS.frame_params.bytes_per_line == activeDS.frame_params.pixels_per_line)
+      {
+          activeDS.frame_params.bytes_per_line = (activeDS.frame_params.pixels_per_line + 7) / 8;
+      }
+
       if (activeDS.progressWnd)
       {
           WCHAR szLocaleBuffer[4];
