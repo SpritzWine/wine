@@ -875,6 +875,30 @@ err:
 }
 
 /***********************************************************************
+ *           copy_rectangle_into_center_of_square
+ *
+ * Copies non-square rectangle src to the center of square dest.
+ */
+static void copy_rectangle_into_center_of_square(const unsigned int *src,
+                                                 int src_w, int src_h,
+                                                 int dest_length,
+                                                 unsigned int *dest)
+{
+    int off_x = (dest_length - src_w) / 2;
+    int off_y = (dest_length - src_h) / 2;
+
+    dest += off_y * dest_length + off_x;
+
+    for (int y = 0; y < src_h; ++y)
+    {
+        memcpy(dest, src, src_w * 4);
+
+        src += src_w;
+        dest += dest_length;
+    }
+}
+
+/***********************************************************************
  *           wayland_shm_buffer_from_color_bitmaps
  *
  * Create a wayland_shm_buffer for a color bitmap.
@@ -882,21 +906,32 @@ err:
  * Adapted from wineandroid.drv code.
  */
 struct wayland_shm_buffer *wayland_shm_buffer_from_color_bitmaps(HDC hdc, HBITMAP color,
-                                                                 HBITMAP mask)
+                                                                 HBITMAP mask, BOOL force_square)
 {
     struct wayland_shm_buffer *shm_buffer = NULL;
     char buffer[FIELD_OFFSET(BITMAPINFO, bmiColors[256])];
     BITMAPINFO *info = (BITMAPINFO *)buffer;
     BITMAP bm;
-    unsigned int *ptr, *bits = NULL;
+    unsigned int *ptr, *bits = NULL, *non_square_bits;
     unsigned char *mask_bits = NULL;
-    int i, j;
+    int i, j, square_length;
     BOOL has_alpha = FALSE;
 
     if (!NtGdiExtGetObjectW(color, sizeof(bm), &bm)) goto failed;
 
-    shm_buffer = wayland_shm_buffer_create(bm.bmWidth, bm.bmHeight,
-                                           WL_SHM_FORMAT_ARGB8888);
+    square_length = max(bm.bmWidth, bm.bmHeight);
+
+    if (force_square)
+    {
+        shm_buffer = wayland_shm_buffer_create(square_length, square_length,
+                                               WL_SHM_FORMAT_ARGB8888);
+    }
+    else
+    {
+        shm_buffer = wayland_shm_buffer_create(bm.bmWidth, bm.bmHeight,
+                                               WL_SHM_FORMAT_ARGB8888);
+    }
+
     if (!shm_buffer) goto failed;
     bits = shm_buffer->map_data;
 
@@ -912,9 +947,28 @@ struct wayland_shm_buffer *wayland_shm_buffer_from_color_bitmaps(HDC hdc, HBITMA
     info->bmiHeader.biClrUsed = 0;
     info->bmiHeader.biClrImportant = 0;
 
-    if (!NtGdiGetDIBitsInternal(hdc, color, 0, bm.bmHeight, bits, info,
-                                DIB_RGB_COLORS, 0, 0))
-        goto failed;
+    if (force_square && bm.bmWidth != bm.bmHeight)
+    {
+        if (!(non_square_bits = malloc(info->bmiHeader.biSizeImage))) goto failed;
+
+        if (!NtGdiGetDIBitsInternal(hdc, color, 0, bm.bmHeight, non_square_bits, info,
+                                    DIB_RGB_COLORS, 0, 0))
+        {
+            free(non_square_bits);
+            goto failed;
+        }
+
+        copy_rectangle_into_center_of_square(non_square_bits, bm.bmWidth, bm.bmHeight,
+                                             square_length, bits);
+
+        free(non_square_bits);
+    }
+    else
+    {
+        if (!NtGdiGetDIBitsInternal(hdc, color, 0, bm.bmHeight, bits, info,
+                                    DIB_RGB_COLORS, 0, 0))
+            goto failed;
+    }
 
     for (i = 0; i < bm.bmWidth * bm.bmHeight; i++)
         if ((has_alpha = (bits[i] & 0xff000000) != 0)) break;
@@ -942,7 +996,7 @@ struct wayland_shm_buffer *wayland_shm_buffer_from_color_bitmaps(HDC hdc, HBITMA
     }
 
     /* Wayland requires pre-multiplied alpha values */
-    for (ptr = bits, i = 0; i < bm.bmWidth * bm.bmHeight; ptr++, i++)
+    for (ptr = bits, i = 0; i < shm_buffer->width * shm_buffer->height; ptr++, i++)
     {
         unsigned char alpha = *ptr >> 24;
         if (alpha == 0)
@@ -1253,7 +1307,7 @@ void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type,
     TRACE("surface=%p type=%x ii=%p\n", surface, type, ii);
 
     hDC = NtGdiCreateCompatibleDC(0);
-    icon_buf = wayland_shm_buffer_from_color_bitmaps(hDC, ii->hbmColor, ii->hbmMask);
+    icon_buf = wayland_shm_buffer_from_color_bitmaps(hDC, ii->hbmColor, ii->hbmMask, TRUE);
     NtGdiDeleteObjectApp(hDC);
 
     if (surface->big_icon_buffer && type == ICON_BIG)
