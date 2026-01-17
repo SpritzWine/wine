@@ -40,6 +40,7 @@ static DWORD (WINAPI *pRtlGetFullPathName_U)(const WCHAR*,ULONG,WCHAR*,WCHAR**);
 static BOOLEAN (WINAPI *pRtlDosPathNameToNtPathName_U)(const WCHAR*, UNICODE_STRING*, WCHAR**, CURDIR*);
 static NTSTATUS (WINAPI *pRtlDosPathNameToNtPathName_U_WithStatus)(const WCHAR*, UNICODE_STRING*, WCHAR**, CURDIR*);
 static NTSTATUS (WINAPI *pNtOpenFile)( HANDLE*, ACCESS_MASK, OBJECT_ATTRIBUTES*, IO_STATUS_BLOCK*, ULONG, ULONG );
+static NTSTATUS (WINAPI *pRtlSetCurrentDirectory_U)(const UNICODE_STRING* dir);
 
 static void test_RtlDetermineDosPathNameType_U(void)
 {
@@ -739,6 +740,85 @@ static void test_nt_names(void)
     }
 }
 
+static void test_RtlSetCurrentDirectory_U(void)
+{
+    static const struct {
+        const char *path;
+        const char *expected_path;  /* NULL means same as path */
+        NTSTATUS expected_status;
+    } tests[] = {
+        { "C:\\foo", NULL, STATUS_SUCCESS },
+        { "C:\\foo\\", NULL, STATUS_SUCCESS },
+        { "C:\\", NULL, STATUS_SUCCESS },
+        { "C:\\foo.", "C:\\foo\\", STATUS_SUCCESS },
+        { "C:\\.", "C:\\", STATUS_SUCCESS },
+        { "C:\\.\\", "C:\\", STATUS_SUCCESS },
+        { "C:", NULL, STATUS_OBJECT_NAME_INVALID },
+        { "", NULL, STATUS_OBJECT_NAME_INVALID },
+        { "C:\\nonexistent", NULL, STATUS_OBJECT_PATH_NOT_FOUND },
+        { "Z:\\", NULL, STATUS_OBJECT_PATH_NOT_FOUND },
+        { "\\\\.", NULL, STATUS_SUCCESS },
+        { "\\\\?", NULL, STATUS_SUCCESS },
+        { "\\\\?\\C:\\foo", NULL, STATUS_SUCCESS },
+        { "foo", NULL, STATUS_OBJECT_PATH_SYNTAX_BAD },
+        { ".\\foo", NULL, STATUS_OBJECT_PATH_SYNTAX_BAD },
+        { "..\\foo", NULL, STATUS_OBJECT_PATH_SYNTAX_BAD },
+        { "C:\\foo*", NULL, STATUS_OBJECT_NAME_INVALID },
+        { "C:\\foo?", NULL, STATUS_OBJECT_NAME_INVALID },
+        { "C:\\foo/bar", NULL, STATUS_OBJECT_NAME_INVALID },
+        { NULL, NULL, STATUS_OBJECT_NAME_INVALID }
+    };
+
+    UNICODE_STRING dirW;
+    WCHAR buffer[MAX_PATH];
+    NTSTATUS status;
+    char curdir[MAX_PATH];
+    int i;
+
+    if (!pRtlSetCurrentDirectory_U)
+    {
+        win_skip("RtlSetCurrentDirectory_U is not available\n");
+        return;
+    }
+
+    /* Save current directory to restore it later */
+    GetCurrentDirectoryA(sizeof(curdir), curdir);
+
+    for (i = 0; i < ARRAY_SIZE(tests); i++)
+    {
+        if (tests[i].path)
+        {
+            pRtlMultiByteToUnicodeN(buffer, sizeof(buffer), NULL,
+                                   tests[i].path, strlen(tests[i].path) + 1);
+            RtlInitUnicodeString(&dirW, buffer);
+        }
+        else
+        {
+            RtlInitUnicodeString(&dirW, NULL);
+        }
+
+        status = pRtlSetCurrentDirectory_U(&dirW);
+        ok(status == tests[i].expected_status,
+           "RtlSetCurrentDirectory_U(%s) returned %08lx, expected %08lx\n",
+           tests[i].path ? tests[i].path : "NULL",
+           status, tests[i].expected_status);
+
+        if (status == STATUS_SUCCESS)
+        {
+            char newdir[MAX_PATH];
+            const char *expected = tests[i].expected_path ? tests[i].expected_path : tests[i].path;
+
+            GetCurrentDirectoryA(sizeof(newdir), newdir);
+            ok(lstrcmpiA(newdir, expected) == 0,
+               "Current directory is %s, expected %s\n",
+               newdir, expected);
+        }
+    }
+
+    /* Restore original directory */
+    SetCurrentDirectoryA(curdir);
+}
+
 
 START_TEST(path)
 {
@@ -754,6 +834,8 @@ START_TEST(path)
     pRtlDosPathNameToNtPathName_U = (void *)GetProcAddress(mod, "RtlDosPathNameToNtPathName_U");
     pRtlDosPathNameToNtPathName_U_WithStatus = (void *)GetProcAddress(mod, "RtlDosPathNameToNtPathName_U_WithStatus");
     pNtOpenFile             = (void *)GetProcAddress(mod, "NtOpenFile");
+    pRtlSetCurrentDirectory_U = (void *)GetProcAddress(mod, "RtlSetCurrentDirectory_U");
+
 
     test_RtlDetermineDosPathNameType_U();
     test_RtlIsDosDeviceName_U();
@@ -761,4 +843,5 @@ START_TEST(path)
     test_RtlGetFullPathName_U();
     test_RtlDosPathNameToNtPathName_U();
     test_nt_names();
+    test_RtlSetCurrentDirectory_U();
 }

@@ -1030,6 +1030,15 @@ NTSTATUS WINAPI RtlSetCurrentDirectory_U(const UNICODE_STRING* dir)
     ptr = newdir.Buffer;
     ptr += 4;  /* skip \??\ prefix */
     size -= 4;
+
+    /* remove trailing '.' if present */
+    if (size && ptr[size - 1] == '.' &&
+        (size == 1 || ptr[size - 2] == '\\')
+        && !(size > 1 && ptr[size - 2] == '.'))
+    {
+        size--;
+    }
+
     if (size && ptr[size - 1] != '\\') ptr[size++] = '\\';
 
     /* convert \??\UNC\ path to \\ prefix */
