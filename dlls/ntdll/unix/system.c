@@ -83,6 +83,9 @@
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(ntdll);
+#if defined(__i386__) || defined(__x86_64__)
+WINE_DECLARE_DEBUG_CHANNEL(cpuid);
+#endif
 
 #pragma pack(push,1)
 
@@ -326,9 +329,32 @@ void copy_xstate( XSAVE_AREA_HEADER *dst, XSAVE_AREA_HEADER *src, UINT64 mask )
     }
 }
 
-static inline void do_cpuid( unsigned int ax, unsigned int cx, unsigned int *p )
+static inline void do_cpuid_( unsigned int ax, unsigned int cx, unsigned int *p )
 {
     __asm__ ( "cpuid" : "=a" (p[0]), "=b" (p[1]), "=c" (p[2]), "=d" (p[3]) : "a" (ax), "c" (cx) );
+}
+
+static inline void do_cpuid( unsigned int ax, unsigned int cx, unsigned int *p )
+{
+    char buf[30];
+    char *override;
+
+    memset(p, 0, sizeof(*p)*4);
+    do_cpuid_(ax, cx, p);
+    TRACE_(cpuid)("cpuid returned WINE_CPUID_%08x_%08x=%08x_%08x_%08x_%08x\n",
+          ax, cx, p[0], p[1], p[2], p[3]);
+
+    snprintf(buf, sizeof(buf), "WINE_CPUID_%08x_%08x", ax, cx);
+    override = getenv(buf);
+    if (override && strlen(override) == 35)
+    {
+        sscanf(override, "%08x", &p[0]);
+        sscanf(override+9, "%08x", &p[1]);
+        sscanf(override+18, "%08x", &p[2]);
+        sscanf(override+27, "%08x", &p[3]);
+        ERR_(cpuid)("overriding with WINE_CPUID_%08x_%08x=%08x_%08x_%08x_%08x\n",
+              ax, cx, p[0], p[1], p[2], p[3]);
+    }
 }
 
 static inline UINT64 do_xgetbv( unsigned int cx )
@@ -437,6 +463,8 @@ static void init_xstate_features( XSTATE_CONFIGURATION *xstate )
     ULONG64 supported_mask;
     unsigned int i, off, regs[4];
 
+    TRACE_(cpuid)("init_xstate_features reached.\n");
+
     do_cpuid( 0x0000000d, 0, regs );
     TRACE( "XSAVE details %#x, %#x, %#x, %#x.\n", regs[0], regs[1], regs[2], regs[3] );
     supported_mask = ((ULONG64)regs[3] << 32) | regs[0];
@@ -483,6 +511,8 @@ void init_shared_data_cpuinfo( KUSER_SHARED_DATA *data )
 {
     BOOLEAN *features = data->ProcessorFeatures;
     unsigned int regs[4];
+
+    TRACE_(cpuid)("init_shared_data_cpuinfo reached.\n");
 
     features[PF_FASTFAIL_AVAILABLE]      = TRUE;
     features[PF_COMPARE_EXCHANGE_DOUBLE] = TRUE;

@@ -3523,6 +3523,48 @@ static void test_exec_memory_writes(void)
     RtlRemoveVectoredExceptionHandler( handler );
 }
 
+static void test_cpuid_child(void)
+{
+#if defined(__x86_64__) && !defined(__arm64ec__)
+    HMODULE module = GetModuleHandleW( L"ntdll.dll" );
+    NTSTATUS (WINAPI *pNtClose)(HANDLE);
+    int val[] = {0xabcdef00, 0x12345678, 0xfedcba00, 0x87654321};
+
+    __asm__ __volatile__ ( "movaps %0,%%xmm6" : : "m" (val) );
+    /* just some call to get through __wine_syscall_dispatcher */
+    pNtClose = (void *)GetProcAddress( module, "NtClose" );
+    pNtClose(INVALID_HANDLE_VALUE);
+    __asm__ __volatile__ ( "movaps %%xmm6,%0" : "=m" (val) );
+
+    ok(val[0] == 0xabcdef00 && val[1] == 0x12345678 && val[2] == 0xfedcba00 && val[3] == 0x87654321,
+       "register xmm6 has unexpected values 0x%08x, 0x%08x, 0x%08x, 0x%08x\n", val[0], val[1], val[2], val[3]);
+#endif
+}
+
+static void test_cpuid(void)
+{
+#if defined(__x86_64__) && !defined(__aarch64__)
+    PROCESS_INFORMATION info;
+    STARTUPINFOA startup;
+    char **argv;
+    char path_name[MAX_PATH];
+    DWORD ret;
+
+    winetest_get_mainargs(&argv);
+    memset(&startup, 0, sizeof(startup));
+    startup.cb = sizeof(startup);
+    sprintf(path_name, "%s %s cpuid", argv[0], argv[1]);
+
+    ret = CreateProcessA(NULL, path_name, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &info);
+    ok(ret, "Failed to create target process.\n");
+
+    wait_child_process(info.hProcess);
+
+    CloseHandle(info.hProcess);
+    CloseHandle(info.hThread);
+#endif
+}
+
 START_TEST(virtual)
 {
     HMODULE mod;
@@ -3536,6 +3578,11 @@ START_TEST(virtual)
         if (!strcmp(argv[2], "sleep"))
         {
             Sleep(5000); /* spawned process runs for at most 5 seconds */
+            return;
+        }
+        if (!strcmp(argv[2], "cpuid"))
+        {
+            test_cpuid_child();
             return;
         }
         return;
@@ -3577,4 +3624,5 @@ START_TEST(virtual)
     test_query_region_information();
     test_query_image_information();
     test_exec_memory_writes();
+    test_cpuid();
 }
