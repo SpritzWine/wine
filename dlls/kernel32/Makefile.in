@@ -8,6 +8,9 @@ i386_EXTRADLLFLAGS = -Wl,--image-base,0x7b800000
 x86_64_EXTRADLLFLAGS = -Wl,--image-base,0x178000000
 
 SOURCES = \
+	asm_i386_exitprocess.c \
+	asm_i386_interlocked.c \
+	asm_x86_64_getprocaddress.c \
 	atom.c \
 	comm.c \
 	computername.c \

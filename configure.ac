@@ -25,6 +25,7 @@ AC_ARG_ENABLE(maintainer-mode, AS_HELP_STRING([--enable-maintainer-mode],[enable
 AC_ARG_ENABLE(sast,  AS_HELP_STRING([--enable-sast],[enable static application security testing using Clang]))
 AC_ARG_ENABLE(silent-rules, AS_HELP_STRING([--enable-silent-rules],[use silent build rules (override: "make V=1")]))
 AC_ARG_ENABLE(werror, AS_HELP_STRING([--enable-werror],[treat compilation warnings as errors]))
+AC_ARG_ENABLE(lto, AS_HELP_STRING([--enable-lto],[build with LTO (EXPERIMENTAL)]))
 
 AC_ARG_WITH(alsa,      AS_HELP_STRING([--without-alsa],[do not use the Alsa sound support]))
 AC_ARG_WITH(capi,      AS_HELP_STRING([--without-capi],[do not use CAPI (ISDN support)]))
@@ -400,6 +401,13 @@ do
   esac
 done
 
+enable_lto=yes
+
+if test "x$enable_lto" = xyes
+then
+    AS_VAR_APPEND([EXTRACFLAGS],[" -D__WINE_LTO_BUILD"])
+fi
+
 for wine_arch in $cross_archs $extra_arch
 do
     case $wine_arch in
@@ -441,6 +449,11 @@ do
     AS_VAR_COPY([CFLAGS],[${wine_arch}_CFLAGS])
     AS_VAR_COPY([LDFLAGS],[${wine_arch}_LDFLAGS])
     AS_VAR_SET([${wine_arch}_EXTRACFLAGS],["-D__WINE_PE_BUILD -Wall"])
+
+    if test "x$enable_lto" = xyes
+    then
+        AS_VAR_APPEND([${wine_arch}_EXTRACFLAGS],[" -D__WINE_LTO_BUILD"])
+    fi
 
     target=""
     set x $CC
@@ -2442,6 +2455,7 @@ AS_ECHO_N("creating Makefile rules...") >&AS_MESSAGE_FD
 
 makedep_flags=" -C"
 test "x$enable_silent_rules" = xyes && makedep_flags="$makedep_flags -S"
+test "x$enable_lto" = xyes && makedep_flags="$makedep_flags -L"
 
 wine_srcdir=
 test "$srcdir" = . || wine_srcdir="$srcdir/"

@@ -186,6 +186,7 @@ static struct strarray disabled_dirs[MAX_ARCHS];
 static unsigned int native_archs[MAX_ARCHS];
 static unsigned int hybrid_archs[MAX_ARCHS];
 static struct strarray hybrid_target_flags[MAX_ARCHS];
+static struct strarray global_lto_skip[MAX_ARCHS];
 
 struct makefile
 {
@@ -218,6 +219,8 @@ struct makefile
     int             is_win16;
     int             is_exe;
     int             disabled[MAX_ARCHS];
+    int             lto_skip[MAX_ARCHS];
+    struct strarray lto_skip_src[MAX_ARCHS];
 
     /* values generated at output time */
     struct strarray in_files;
@@ -253,6 +256,7 @@ static const char *temp_file_name;
 static char cwd[PATH_MAX];
 static int compile_commands_mode;
 static int silent_rules;
+static int with_lto = 0; /* switch */
 static int input_line;
 static int output_column;
 static FILE *output_file;
@@ -289,6 +293,10 @@ static const char Usage[] =
 
 static void fatal_error( const char *msg, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
 static void output( const char *format, ... ) __attribute__ ((__format__ (__printf__, 1, 2)));
+
+static void output_lto_flags_source( struct makefile *make, struct incl_file *source, unsigned int arch,
+                                     int prefer_env );
+static void output_lto_flags_target( struct makefile *make, unsigned int arch, int prefer_env );
 
 /*******************************************************************
  *         fatal_error
@@ -2626,6 +2634,7 @@ static void output_winegcc_command( struct makefile *make, unsigned int arch )
         output_filename( "--winebuild" );
         output_filename( winebuild );
     }
+    output_lto_flags_target( make, arch, 0 /* generic LTO flags */ );
     output_filenames( target_flags[arch] );
     if (native_archs[arch] && !make->disabled[native_archs[arch]])
         output_filenames( hybrid_target_flags[arch] );
@@ -3412,6 +3421,7 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
     output_filenames( defines );
     output_filenames( cflags );
     output_filename( var_cflags );
+    output_lto_flags_source( make, source, arch, 1 /* prefer flags from env */ );
     output( "\n" );
 
     if (make->testdll && strendswith( source->name, ".c" ) &&
@@ -3682,6 +3692,7 @@ static void output_import_lib( struct makefile *make, unsigned int arch )
     output( "\n" );
     output( "\t%s%s -w --implib -o $@", cmd_prefix( "BUILD" ), winebuild );
     if (!delay_load_flags[arch]) output_filename( "--without-dlltool" );
+    output_lto_flags_target( make, arch, 0 /* generic LTO flags */ );
     output_filenames( target_flags[hybrid_arch ? hybrid_arch : arch] );
     if (make->is_win16) output_filename( "-m16" );
     if (hybrid_arch) output_filenames( hybrid_target_flags[hybrid_arch] );
@@ -3715,6 +3726,7 @@ static void output_unix_lib( struct makefile *make )
     output( "\n" );
     output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
     output_filenames( get_expanded_make_var_array( make, "UNIXLDFLAGS" ));
+    output_lto_flags_target( make, arch, 1 /* prefer flags from env */ );
     output_filenames_obj_dir( make, make->unixobj_files );
     output_filenames( unix_libs );
     output_filename( "$(LDFLAGS)" );
@@ -3742,6 +3754,7 @@ static void output_static_lib( struct makefile *make, unsigned int arch )
     output( "\n" );
     output( "\t%s%s -w --staticlib -o $@", cmd_prefix( "BUILD" ), winebuild );
     output_filenames( target_flags[hybrid_arch ? hybrid_arch : arch] );
+    output_lto_flags_target( make, arch, 0 /* generic LTO flags */ );
     output_filenames_obj_dir( make, make->object_files[arch] );
     if (hybrid_arch) output_filenames_obj_dir( make, make->object_files[hybrid_arch] );
     if (!arch) output_filenames_obj_dir( make, make->unixobj_files );
@@ -3862,6 +3875,7 @@ static void output_programs( struct makefile *make )
         output_filenames( deps );
         output( "\n" );
         output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
+        output_lto_flags_target( make, arch, 1 /* prefer flags from env */ );
         output_filenames_obj_dir( make, objs );
         output_filenames( all_libs );
         output_filenames( ldflags );
@@ -4620,6 +4634,33 @@ static void load_sources( struct makefile *make )
 
     STRARRAY_FOR_EACH( imp, &make->delayimports )
         strarray_add_uniq( &delay_import_libs, get_base_name( imp ));
+
+    if (with_lto)
+    {
+        (void) memset( &make->lto_skip, 0, sizeof(make->lto_skip) );
+        (void) memset( &make->lto_skip_src, 0, sizeof(make->lto_skip_src) );
+
+        for (arch = 0; arch < archs.count; arch++)
+        {
+            make->lto_skip[arch] = var_to_bool(get_expanded_arch_var( make, "LTO_SKIP", arch ));
+            if (make->lto_skip[arch])
+            {
+                /* target is marked as non-LTO for all arches:
+                   break early */
+                if (!arch) break;
+
+                /* target is marked as non-LTO for specific arch:
+                   no need to parse source skiplist */
+                continue;
+            }
+
+            value = get_expanded_arch_var_array( make, "LTO_SKIP_SRC", arch );
+            STRARRAY_FOR_EACH( src, &value )
+            {
+                strarray_add( &make->lto_skip_src[arch], xstrdup( src ));
+            }
+        }
+    }
 }
 
 
@@ -4670,6 +4711,9 @@ static int parse_option( const char *opt )
     case 'S':
         silent_rules = 1;
         break;
+    case 'L':
+        with_lto = 1;
+        break;
     default:
         fprintf( stderr, "Unknown option '%s'\n%s", opt, Usage );
         exit(1);
@@ -4686,6 +4730,141 @@ static unsigned int find_pe_arch( const char *arch )
     unsigned int i;
     for (i = 1; i < archs.count; i++) if (!strcmp( archs.str[i], arch )) return i;
     return 0;
+}
+
+
+/*******************************************************************
+ *         output_lto_flags
+ */
+static void output_lto_flags( int use_lto, int prefer_env )
+{
+    struct strarray lto_flags = empty_strarray;
+    append_lto_flags( &lto_flags, use_lto, prefer_env );
+    output_filenames( lto_flags );
+}
+
+
+/*******************************************************************
+ *         parse_global_lto_skip_lists
+ */
+static void parse_global_lto_skip_lists(void)
+{
+    char *buf = NULL;
+    FILE *file = NULL;
+
+    (void) memset( &global_lto_skip, 0, sizeof(global_lto_skip) );
+
+    for (unsigned int arch = 0; arch < archs.count; arch++)
+    {
+        if (arch)
+            input_file_name = root_src_dir_path(strmake( "tools/lto-skip.%s.list", archs.str[arch] ));
+        else
+            input_file_name = root_src_dir_path( "tools/lto-skip.list" );
+
+        /* skip nonexistent files */
+        if (!(file = fopen( input_file_name, "r" )))
+        {
+            input_file_name = NULL;
+            continue;
+        }
+        input_line = 0;
+
+        while ((buf = get_line( file )))
+        {
+            buf = skip_spaces( buf );
+            if (!(buf[0])) continue; /* empty line */
+            if (buf[0] == '#') continue; /* comment */
+            strarray_add( &global_lto_skip[arch], xstrdup( buf ));
+        }
+
+        (void) fclose( file ); file = NULL;
+        input_file_name = NULL;
+        input_line = 0;
+    }
+}
+
+
+/*******************************************************************
+ *         is_lto_enabled_source
+ */
+static int is_lto_enabled_source( struct makefile *make, struct incl_file *source, unsigned int arch )
+{
+    if (!with_lto) return 0;
+    if (!make) return 0;
+    if (!source) return 0;
+
+    /* target config: any arch */
+    if (strarray_exists( make->lto_skip_src[0], source->name ))
+        return 0;
+
+    if (arch)
+    {
+        /* target config: specific arch */
+        if (strarray_exists( make->lto_skip_src[arch], source->name ))
+            return 0;
+
+        /* global config: specific arch */
+        if (strarray_exists( global_lto_skip[arch], source->filename ))
+            return 0;
+    }
+
+    /* global config: any arch */
+    if (strarray_exists( global_lto_skip[0], source->filename ))
+        return 0;
+
+    return 1;
+}
+
+
+/*******************************************************************
+ *         is_lto_enabled_target
+ */
+static int is_lto_enabled_target( struct makefile *make, unsigned int arch )
+{
+    if (!with_lto) return 0;
+    if (!make) return 0;
+
+    /* any arch */
+    if (make->lto_skip[0])
+        return 0;
+
+    /* specific arch */
+    if (arch && make->lto_skip[arch])
+        return 0;
+
+    return 1;
+}
+
+
+/*******************************************************************
+ *         output_lto_flags_source
+ */
+static void output_lto_flags_source( struct makefile *make, struct incl_file *source, unsigned int arch,
+                                     int prefer_env )
+{
+    int use_lto = 0;
+
+    if (!with_lto) return;
+    if (!make) return;
+    if (!source) return;
+
+    use_lto = is_lto_enabled_target( make, arch ) && is_lto_enabled_source( make, source, arch );
+    output_lto_flags( use_lto, prefer_env );
+}
+
+
+/*******************************************************************
+ *         output_lto_flags_target
+ */
+static void output_lto_flags_target( struct makefile *make, unsigned int arch, int prefer_env )
+{
+    int use_lto = 0;
+
+    if (!with_lto) return;
+    if (!make) return;
+
+    use_lto = is_lto_enabled_target( make, arch );
+    output_lto_flags( use_lto, prefer_env );
 }
 
 
@@ -4828,6 +5007,7 @@ int main( int argc, char *argv[] )
 
     for (i = 0; i < subdirs.count; i++) submakes[i] = parse_makefile( subdirs.str[i] );
 
+    if (with_lto) parse_global_lto_skip_lists();
     load_sources( top_makefile );
     load_sources( include_makefile );
     for (i = 0; i < subdirs.count; i++)

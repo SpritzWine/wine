@@ -34,6 +34,7 @@
 #include "build.h"
 
 int UsePIC = 0;
+int UseLTO = -1; /* tristate */
 int nb_errors = 0;
 int display_warnings = 0;
 int native_arch = -1;
@@ -187,7 +188,7 @@ static const char usage_str[] =
 "   -e, --entry=FUNC          Set the DLL entry point function (default: DllMain)\n"
 "   -E, --export=FILE         Export the symbols defined in the .spec or .def file\n"
 "       --external-symbols    Allow linking to external symbols\n"
-"   -f FLAGS                  Compiler flags (-fPIC and -fasynchronous-unwind-tables are supported)\n"
+"   -f FLAGS                  Compiler flags (-fPIC, -fasynchronous-unwind-tables and -flto are supported)\n"
 "   -F, --filename=DLLFILE    Set the DLL filename (default: from input file name)\n"
 "       --fake-module         Create a fake binary module\n"
 "   -h, --help                Display this help message\n"
@@ -412,6 +413,8 @@ static void option_callback( int optc, char *optarg )
         if (!strcmp( optarg, "PIC") || !strcmp( optarg, "pic")) UsePIC = 1;
         else if (!strcmp( optarg, "asynchronous-unwind-tables")) unwind_tables = 1;
         else if (!strcmp( optarg, "no-asynchronous-unwind-tables")) unwind_tables = 0;
+        else if (!strcmp( optarg, "lto" )) UseLTO = 1;
+        else if (!strcmp( optarg, "no-lto" )) UseLTO = 0;
         /* ignore all other flags */
         break;
     case 'h':
@@ -583,6 +586,7 @@ int main(int argc, char **argv)
     if (is_pe()) unwind_tables = 1;
 
     files = parse_options( argc, argv, short_options, long_options, 0, option_callback );
+    verbose = adjust_verbose_lto( UseLTO, verbose );
 
     atexit( cleanup );  /* make sure we remove the output file on exit */
 

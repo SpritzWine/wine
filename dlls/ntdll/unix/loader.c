@@ -633,7 +633,7 @@ BOOLEAN KeAddSystemServiceTable( ULONG_PTR *funcs, ULONG_PTR *counters, ULONG li
     return TRUE;
 }
 
-void trace_syscall( UINT id, ULONG_PTR *args, ULONG len )
+void __attribute__((used)) trace_syscall( UINT id, ULONG_PTR *args, ULONG len )
 {
     UINT idx = (id >> 12) & 3, num = id & 0xfff;
     const char **names = syscall_names[idx];
@@ -652,7 +652,7 @@ void trace_syscall( UINT id, ULONG_PTR *args, ULONG len )
     TRACE_(syscall)( ")\n" );
 }
 
-void trace_sysret( UINT id, ULONG_PTR retval )
+void __attribute__((used)) trace_sysret( UINT id, ULONG_PTR retval )
 {
     UINT idx = (id >> 12) & 3, num = id & 0xfff;
     const char **names = syscall_names[idx];
@@ -663,7 +663,7 @@ void trace_sysret( UINT id, ULONG_PTR retval )
         TRACE_(syscall)( "\1SysRet   %04x() retval=%08lx\n", id, retval );
 }
 
-void trace_usercall( UINT id, ULONG_PTR *args, ULONG len )
+void __attribute__((used)) trace_usercall( UINT id, ULONG_PTR *args, ULONG len )
 {
     if (usercall_names)
         TRACE_(syscall)("\1UserCall %s(%p,%u)\n", usercall_names[id], args, len );
@@ -671,7 +671,7 @@ void trace_usercall( UINT id, ULONG_PTR *args, ULONG len )
         TRACE_(syscall)("\1UserCall %04x(%p,%u)\n", id, args, len );
 }
 
-void trace_userret( void *ret_ptr, ULONG len, NTSTATUS status, UINT id )
+void __attribute__((used)) trace_userret( void *ret_ptr, ULONG len, NTSTATUS status, UINT id )
 {
     if (usercall_names)
         TRACE_(syscall)("\1UserRet  %s(%p,%u) retval=%08x\n", usercall_names[id], ret_ptr, len, status );

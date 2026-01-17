@@ -103,6 +103,12 @@ int output( const char *format, ... )
     return ret;
 }
 
+/* un-inline append_lto_flags() */
+static void append_lto_flags_winebuild( struct strarray *args, int with_lto, int prefer_env )
+{
+    append_lto_flags( args, with_lto, prefer_env );
+}
+
 static struct strarray get_tools_path(void)
 {
     static int done;
@@ -285,6 +291,8 @@ struct strarray get_as_command(void)
 
     if (using_cc)
     {
+        /* disable LTO for assembly */
+        append_lto_flags_winebuild( &args, (UseLTO >= 0) ? 0 : -1, 1 /* prefer flags from env */ );
         strarray_add( &args, "-xassembler" );
         strarray_add( &args, "-c" );
         if (force_pointer_size)
@@ -326,6 +334,7 @@ struct strarray get_ld_command(void)
     }
 
     strarray_addall( &args, ld_command );
+    append_lto_flags_winebuild( &args, UseLTO, 1 /* prefer flags from env */ );
 
     if (force_pointer_size)
     {
@@ -357,8 +366,28 @@ const char *get_nm_command(void)
 {
     if (!nm_command.count)
     {
-        static const char * const commands[] = { "nm", "gnm", NULL };
-        nm_command = find_tool( "nm", commands );
+        static int _init_nm = 0;
+        static const char * _env_nm = NULL;
+
+        if (!_init_nm)
+        {
+            if ((_env_nm = getenv( "WINE_NM" )))
+            {
+                /* duplicate string if non-empty; otherwise set to NULL */
+                _env_nm = (_env_nm[0]) ? xstrdup( _env_nm ) : NULL;
+            }
+            _init_nm = 1;
+        }
+        if (_env_nm)
+        {
+            const char * _cmd[2] = { _env_nm, NULL };
+            nm_command = find_tool( "nm", _cmd );
+        }
+        if (!nm_command.count)
+        {
+            static const char * const commands[] = { "nm", "gnm", NULL };
+            nm_command = find_tool( "nm", commands );
+        }
     }
     if (nm_command.count > 1)
         fatal_error( "multiple arguments in nm command not supported yet\n" );

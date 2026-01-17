@@ -2181,35 +2181,6 @@ LONG FASTCALL NTOSKRNL_InterlockedIncrement( LONG volatile *dest )
     return InterlockedIncrement( dest );
 }
 
-#ifdef __i386__
-
-/*************************************************************************
- *           RtlUshortByteSwap   (NTOSKRNL.EXE.@)
- */
-__ASM_FASTCALL_FUNC(RtlUshortByteSwap, 4,
-                    "movb %ch,%al\n\t"
-                    "movb %cl,%ah\n\t"
-                    "ret")
-
-/*************************************************************************
- *           RtlUlongByteSwap   (NTOSKRNL.EXE.@)
- */
-__ASM_FASTCALL_FUNC(RtlUlongByteSwap, 4,
-                    "movl %ecx,%eax\n\t"
-                    "bswap %eax\n\t"
-                    "ret")
-
-/*************************************************************************
- *           RtlUlonglongByteSwap   (NTOSKRNL.EXE.@)
- */
-__ASM_FASTCALL_FUNC(RtlUlonglongByteSwap, 8,
-                    "movl 4(%esp),%edx\n\t"
-                    "bswap %edx\n\t"
-                    "movl 8(%esp),%eax\n\t"
-                    "bswap %eax\n\t"
-                    "ret $8")
-
-#endif  /* __i386__ */
 
 /***********************************************************************
  *           ExAllocatePool2   (NTOSKRNL.EXE.@)
@@ -4210,29 +4181,6 @@ NTSTATUS WINAPI IoCreateFile(HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUT
     return IoCreateFileEx(handle, access, attr, io, alloc_size, attributes, sharing, disposition,
                           create_options, ea_buffer, ea_length, file_type, parameters, options, NULL);
 }
-
-/**************************************************************************
- *		__chkstk (NTOSKRNL.@)
- */
-#ifdef __x86_64__
-/* Supposed to touch all the stack pages, but we shouldn't need that. */
-__ASM_GLOBAL_FUNC( __chkstk, "ret" );
-#elif defined(__i386__)
-__ASM_GLOBAL_FUNC( _chkstk,
-                   "negl %eax\n\t"
-                   "addl %esp,%eax\n\t"
-                   "xchgl %esp,%eax\n\t"
-                   "movl 0(%eax),%eax\n\t"  /* copy return address from old location */
-                   "movl %eax,0(%esp)\n\t"
-                   "ret" )
-#elif defined(__arm__)
-/* Incoming r4 contains words to allocate, converting to bytes then return */
-__ASM_GLOBAL_FUNC( __chkstk, "lsl r4, r4, #2\n\t"
-                             "bx lr" )
-#elif defined(__aarch64__)
-/* Supposed to touch all the stack pages, but we shouldn't need that. */
-__ASM_GLOBAL_FUNC( __chkstk, "ret" );
-#endif
 
 /*********************************************************************
  *           PsAcquireProcessExitSynchronization    (NTOSKRNL.@)
