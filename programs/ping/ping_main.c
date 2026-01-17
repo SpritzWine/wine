@@ -32,6 +32,7 @@
 #include <windows.h>
 
 #include "wine/debug.h"
+#include <winerust.h>
 
 WINE_DEFAULT_DEBUG_CHANNEL(ping);
 
@@ -59,6 +60,8 @@ int __cdecl main(int argc, char** argv)
     ICMP_ECHO_REPLY *reply;
     float avg = 0;
     struct hostent *remote_host;
+
+    puts(hello_from_rs());
 
     if (argc == 1)
     {
