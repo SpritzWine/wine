@@ -12,7 +12,7 @@ AC_CONFIG_HEADERS(include/config.h)
 
 dnl Add the include path for wine_lib.h to CFLAGS early (before AC_PROG_CC)
 dnl Use actual path for configure/makedep, not Makefile variables
-CFLAGS="$CFLAGS -I$srcdir/rust"
+CFLAGS="$CFLAGS -I$srcdir/../rust"
 
 dnl Work around install-sh requirement in autoconf <= 2.69
 AC_PREREQ([2.69d],[AC_CONFIG_AUX_DIR(tools)],
@@ -226,12 +226,12 @@ esac
 AC_SUBST(RUST_TARGET)
 
 dnl Set the Rust library directory (for Makefile use)
-RUST_LIB_DIR="\$(top_srcdir)/rust/target/$RUST_TARGET/release/deps"
+RUST_LIB_DIR="\$(top_srcdir)/../rust/target/$RUST_TARGET/release/deps"
 AC_SUBST(RUST_LIB_DIR)
 
 dnl Set Wine API library linking flags with absolute rpath for runtime linking
 dnl Use $ac_pwd for absolute path during configure, and keep relative path for Makefile
-WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
+WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
 AC_SUBST(WINE_API_LDFLAGS)
 
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
@@ -3493,7 +3493,7 @@ WINE_CONFIG_MAKEFILE(dlls/wldp)
 WINE_CONFIG_MAKEFILE(dlls/wldp/tests)
 WINE_CONFIG_MAKEFILE(dlls/wmadmod)
 WINE_CONFIG_MAKEFILE(dlls/wmasf)
-WINE_CONFIG_MAKEFILE(rust)
+WINE_CONFIG_MAKEFILE(../rust)
 WINE_CONFIG_MAKEFILE(dlls/wmi)
 WINE_CONFIG_MAKEFILE(dlls/wmilib.sys)
 WINE_CONFIG_MAKEFILE(dlls/wminet_utils)
