@@ -58,6 +58,7 @@
 #include <unistd.h>
 #ifdef HAVE_MACH_MACH_H
 # include <mach/mach.h>
+# include <mach/mach_vm.h>
 #endif
 
 #include "ntstatus.h"
@@ -989,19 +990,61 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
 
 void fill_vm_counters( VM_COUNTERS_EX *pvmi, int unix_pid )
 {
-#if defined(MACH_TASK_BASIC_INFO)
-    struct mach_task_basic_info info;
-    mach_msg_type_number_t infoCount;
+#if defined(TASK_VM_INFO)
+    mach_msg_type_number_t count;
+    struct task_vm_info info;
 
     if (unix_pid != -1) return; /* FIXME: Retrieve information for other processes. */
 
-    infoCount = MACH_TASK_BASIC_INFO_COUNT;
-    if(task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &infoCount) == KERN_SUCCESS)
+    count = TASK_VM_INFO_COUNT;
+    if (task_info( mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count ) == KERN_SUCCESS)
     {
+        vm_region_submap_info_data_64_t recurse_info;
+        unsigned long long swapped_pages = 0;
+        mach_vm_address_t address = 0;
+        vm_size_t mac_host_page_size;
+        mach_vm_size_t size = 0;
+        kern_return_t result;
+        uint32_t depth = 0;
+
         pvmi->VirtualSize = info.resident_size + info.virtual_size;
-        pvmi->PagefileUsage = info.virtual_size;
+        pvmi->PagefileUsage = info.internal;
         pvmi->WorkingSetSize = info.resident_size;
-        pvmi->PeakWorkingSetSize = info.resident_size_max;
+        pvmi->PeakWorkingSetSize = info.resident_size_peak;
+
+        if (host_page_size( mach_host_self(), &mac_host_page_size ) == KERN_SUCCESS)
+        {
+            while (1)
+            {
+                count = VM_REGION_SUBMAP_INFO_COUNT_64;
+                result = mach_vm_region_recurse( mach_task_self(), &address, &size, &depth,
+                        (vm_region_recurse_info_t)&recurse_info, &count );
+                if (result != KERN_SUCCESS)
+                {
+                    if (result != KERN_INVALID_ADDRESS)
+                    {
+                        ERR("Failed to get swapped pages %#x.\n", result);
+                        swapped_pages = 0;
+                    }
+                    break;
+                }
+
+                if (recurse_info.is_submap)
+                    depth++;
+                else
+                {
+                    if (((recurse_info.share_mode == SM_PRIVATE) || (recurse_info.share_mode == SM_COW)) &&
+                            recurse_info.pages_swapped_out > 0)
+                        swapped_pages += recurse_info.pages_swapped_out;
+                    address += size;
+                }
+            }
+        }
+
+        if (swapped_pages)
+            pvmi->PagefileUsage += (swapped_pages * mac_host_page_size);
+        else
+            pvmi->PagefileUsage += info.compressed;
     }
 #endif
 }

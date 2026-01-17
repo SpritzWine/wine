@@ -1905,7 +1905,7 @@ static void test_query_process_vm(void)
     ULONG ReturnLength;
     VM_COUNTERS_EX pvi;
     HANDLE process;
-    SIZE_T prev_size;
+    SIZE_T prev_size, reserve_size;
     const SIZE_T alloc_size = 16 * 1024 * 1024;
     void *ptr;
 
@@ -2002,6 +2002,17 @@ static void test_query_process_vm(void)
     ok( pvi.VirtualSize == prev_size,
         "Expected to equal to %Iu, got %Iu\n", prev_size, pvi.VirtualSize);
     VirtualFree( ptr, 0, MEM_RELEASE);
+
+    /* Reserving memory shouldn't significantly increase PageFileUsage. */
+    status = NtQueryInformationProcess(GetCurrentProcess(), ProcessVmCounters, &pvi, sizeof(pvi), NULL);
+    ok(status == STATUS_SUCCESS, "Got %#lx.\n", status);
+    reserve_size = pvi.PagefileUsage * 2;
+    ptr = VirtualAlloc(NULL, reserve_size, MEM_RESERVE, PAGE_READWRITE);
+    ok(!!ptr, "VirtualAlloc failed: %#lx.\n", GetLastError());
+    status = NtQueryInformationProcess(GetCurrentProcess(), ProcessVmCounters, &pvi, sizeof(pvi), NULL);
+    ok(status == STATUS_SUCCESS, "Got %#lx.\n", status);
+    ok(pvi.PagefileUsage < reserve_size, "Wrong value %Iu/%Iu.\n", pvi.PagefileUsage, reserve_size );
+    VirtualFree(ptr, 0, MEM_RELEASE);
 }
 
 static void test_query_process_io(void)
