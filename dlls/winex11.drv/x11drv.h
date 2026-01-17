@@ -326,7 +326,6 @@ extern BOOL X11DRV_IsSolidColor(COLORREF color);
 extern COLORREF X11DRV_PALETTE_ToLogical(X11DRV_PDEVICE *physDev, int pixel);
 extern int X11DRV_PALETTE_ToPhysical(X11DRV_PDEVICE *physDev, COLORREF color);
 extern COLORREF X11DRV_PALETTE_GetColor( X11DRV_PDEVICE *physDev, COLORREF color );
-extern int *get_window_surface_mapping( int bpp, int *mapping );
 
 static inline const char *debugstr_color( COLORREF color )
 {

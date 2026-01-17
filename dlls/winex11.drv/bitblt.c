@@ -1811,8 +1811,11 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
 
     if (src != dst)
     {
-        int map[256], *mapping = get_window_surface_mapping( ximage->bits_per_pixel, map );
+        int *mapping = NULL;
         int width_bytes = ximage->bytes_per_line;
+
+        if (ximage->bits_per_pixel == 4 || ximage->bits_per_pixel == 8)
+            mapping = X11DRV_PALETTE_PaletteToXPixel;
 
         src += dirty->top * width_bytes;
         dst += dirty->top * width_bytes;
