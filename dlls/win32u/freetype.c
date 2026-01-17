@@ -92,6 +92,7 @@ static void *ft_handle = NULL;
 MAKE_FUNCPTR(FT_Done_Face);
 MAKE_FUNCPTR(FT_Get_Char_Index);
 MAKE_FUNCPTR(FT_Get_First_Char);
+MAKE_FUNCPTR(FT_Get_FSType_Flags);
 MAKE_FUNCPTR(FT_Get_Next_Char);
 MAKE_FUNCPTR(FT_Get_Sfnt_Name);
 MAKE_FUNCPTR(FT_Get_Sfnt_Name_Count);
@@ -1470,6 +1471,7 @@ static BOOL init_freetype(void)
     LOAD_FUNCPTR(FT_Done_Face)
     LOAD_FUNCPTR(FT_Get_Char_Index)
     LOAD_FUNCPTR(FT_Get_First_Char)
+    LOAD_FUNCPTR(FT_Get_FSType_Flags)
     LOAD_FUNCPTR(FT_Get_Next_Char)
     LOAD_FUNCPTR(FT_Get_Sfnt_Name)
     LOAD_FUNCPTR(FT_Get_Sfnt_Name_Count)
@@ -3313,7 +3315,7 @@ static BOOL face_has_symbol_charmap(FT_Face ft_face)
 static BOOL freetype_set_outline_text_metrics( struct gdi_font *font )
 {
     FT_Face ft_face = get_ft_face( font );
-    UINT needed;
+    UINT needed, ff_fsflags;
     TT_OS2 *pOS2;
     TT_HoriHeader *pHori;
     TT_Postscript *pPost;
@@ -3532,7 +3534,16 @@ static BOOL freetype_set_outline_text_metrics( struct gdi_font *font )
     if (font->fake_bold)
         font->otm.otmfsSelection |= 1 << 5;
     /* Only return valid bits that define embedding and subsetting restrictions */
-    font->otm.otmfsType = pOS2->fsType & 0x30e;
+    font->otm.otmfsType = 0; /* FT_FSTYPE_INSTALLABLE_EMBEDDING */
+    ff_fsflags = pFT_Get_FSType_Flags(ft_face);
+    if ((ff_fsflags & FT_FSTYPE_RESTRICTED_LICENSE_EMBEDDING) ||
+        (ff_fsflags & FT_FSTYPE_NO_SUBSETTING) ||
+        (ff_fsflags & FT_FSTYPE_BITMAP_EMBEDDING_ONLY))
+        font->otm.otmfsType |= 1 << 1; /* Bit 1: No-embedding flag. */
+    if (ff_fsflags & FT_FSTYPE_PREVIEW_AND_PRINT_EMBEDDING)
+        font->otm.otmfsType |= 1 << 2; /* Bit 2: Read-Only flag. */
+    if (ff_fsflags & FT_FSTYPE_EDITABLE_EMBEDDING)
+        font->otm.otmfsType |= 1 << 3; /* Bit 3: Editable flag? */
     font->otm.otmsCharSlopeRise = pHori->caret_Slope_Rise;
     font->otm.otmsCharSlopeRun = pHori->caret_Slope_Run;
     font->otm.otmItalicAngle = 0; /* POST table */
