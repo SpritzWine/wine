@@ -2351,6 +2351,7 @@ static void test_object_types(void)
         TYPE( L"Token",         TOKEN, SYNCHRONIZE, 0 ),
         TYPE( L"Type",          TYPE, SYNCHRONIZE, 0 ),
         TYPE( L"UserApcReserve", USER_APC_RESERVE, 0, 0 ),
+        TYPE( L"WaitCompletionPacket", WAIT_COMPLETION_PACKET, SYNCHRONIZE, 1),
         TYPE( L"WindowStation", WINSTA, 0, 0 ),
 #undef TYPE
     };
@@ -2412,7 +2413,8 @@ static void test_object_types(void)
             break;
         }
 
-        ok( j < ARRAY_SIZE(all_types), "type %s not found\n", debugstr_w(tests[i].name) );
+        ok( broken(!lstrcmpW(tests[i].name, L"WaitCompletionPacket") && j == ARRAY_SIZE(all_types)) /* Win7 doesn't have WaitCompletionPacket */
+            || j < ARRAY_SIZE(all_types), "type %s not found\n", debugstr_w(tests[i].name) );
     }
     for (j = 0; j < ARRAY_SIZE(all_types); j++)
     {

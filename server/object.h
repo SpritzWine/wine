@@ -117,6 +117,7 @@ struct object
     unsigned int              handle_count;/* handle count */
     const struct object_ops  *ops;
     struct list               wait_queue;
+    struct list               completion_packet_queue;
     struct object_name       *name;
     struct security_descriptor *sd;
     unsigned int              is_permanent:1;
@@ -371,6 +372,7 @@ extern struct type_descr mapping_type;
 extern struct type_descr key_type;
 extern struct type_descr apc_reserve_type;
 extern struct type_descr completion_reserve_type;
+extern struct type_descr completion_packet_type;
 
 #define KEYEDEVENT_WAIT       0x0001
 #define KEYEDEVENT_WAKE       0x0002

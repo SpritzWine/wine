@@ -3240,7 +3240,7 @@ DECL_HANDLER(add_fd_completion)
     if (fd)
     {
         if (fd->completion && (req->async || !(fd->comp_flags & FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)))
-            add_completion( fd->completion, fd->comp_key, req->cvalue, req->status, req->information );
+            add_completion( fd->completion, fd->comp_key, req->cvalue, req->status, req->information, NULL );
         release_object( fd );
     }
 }

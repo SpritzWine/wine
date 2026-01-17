@@ -1870,6 +1870,58 @@ NTSTATUS WINAPI wow64_NtCreateTransaction( UINT *args )
 
 
 /**********************************************************************
+ *           wow64_NtAssociateWaitCompletionPacket
+ */
+NTSTATUS WINAPI wow64_NtAssociateWaitCompletionPacket( UINT *args )
+{
+    HANDLE packet = get_handle( &args );
+    HANDLE completion = get_handle( &args );
+    HANDLE target = get_handle( &args );
+    void *key_context = get_ptr( &args );
+    void *apc_context = get_ptr( &args );
+    LONG io_status = get_ulong( &args );
+    ULONG_PTR io_status_information = get_ulong( &args );
+    BOOLEAN *already_signaled = get_ptr( &args );
+
+    return NtAssociateWaitCompletionPacket( packet, completion, target, key_context, apc_context,
+                                            io_status, io_status_information, already_signaled );
+}
+
+
+/**********************************************************************
+ *           wow64_NtCancelWaitCompletionPacket
+ */
+NTSTATUS WINAPI wow64_NtCancelWaitCompletionPacket( UINT *args )
+{
+    HANDLE packet = get_handle( &args );
+    BOOLEAN remove_signaled = get_ulong( &args );
+
+    return NtCancelWaitCompletionPacket( packet, remove_signaled );
+}
+
+
+/**********************************************************************
+ *           wow64_NtCreateWaitCompletionPacket
+ */
+NTSTATUS WINAPI wow64_NtCreateWaitCompletionPacket( UINT *args )
+{
+    ULONG *handle_ptr = get_ptr( &args );
+    ACCESS_MASK access = get_ulong( &args );
+    OBJECT_ATTRIBUTES32 *attr32 = get_ptr( &args );
+
+    struct object_attr64 attr;
+    HANDLE handle = 0;
+    NTSTATUS status;
+
+    *handle_ptr = 0;
+    status = NtCreateWaitCompletionPacket( &handle, access, objattr_32to64( &attr, attr32 ));
+    put_handle( handle_ptr, handle );
+
+    return status;
+}
+
+
+/**********************************************************************
  *           wow64_NtCommitTransaction
  */
 NTSTATUS WINAPI wow64_NtCommitTransaction( UINT *args )

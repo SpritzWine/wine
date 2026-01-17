@@ -1384,6 +1384,20 @@ static int select_on( const union select_op *select_op, data_size_t op_size, cli
     return 0;
 }
 
+/* check if an object is signaled for wait completion packets */
+int is_obj_signaled( struct object *obj )
+{
+    struct object *sync;
+    int signaled;
+
+    sync = obj->ops->get_sync( obj );
+    signaled = sync->ops->signaled( sync, NULL );
+    if (signaled)
+        sync->ops->satisfied( sync, NULL );
+    release_object( sync );
+    return signaled;
+}
+
 /* attempt to wake threads sleeping on the object wait queue */
 void wake_up( struct object *obj, int max )
 {
@@ -1398,6 +1412,8 @@ void wake_up( struct object *obj, int max )
         /* restart at the head of the list since a wake up can change the object wait queue */
         ptr = &obj->wait_queue;
     }
+
+    wake_up_completion_packets( obj );
 }
 
 /* return the apc queue to use for a given apc type */

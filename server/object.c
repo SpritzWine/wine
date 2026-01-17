@@ -312,6 +312,7 @@ void *alloc_object( const struct object_ops *ops )
         obj->name         = NULL;
         obj->sd           = NULL;
         list_init( &obj->wait_queue );
+        list_init( &obj->completion_packet_queue );
 #ifdef DEBUG_OBJECTS
         list_add_head( &object_list, &obj->obj_list );
 #endif

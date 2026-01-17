@@ -3688,6 +3688,80 @@ NTSTATUS WINAPI NtCreateTransaction( HANDLE *handle, ACCESS_MASK mask, OBJECT_AT
 }
 
 /***********************************************************************
+ *           NtAssociateWaitCompletionPacket (NTDLL.@)
+ */
+NTSTATUS WINAPI NtAssociateWaitCompletionPacket( HANDLE packet, HANDLE completion, HANDLE target,
+        void *key_context, void *apc_context, NTSTATUS status, ULONG_PTR information,
+        BOOLEAN *already_signaled )
+{
+    NTSTATUS ret;
+
+    TRACE( "%p, %p, %p, %p, %p, %#x, %ld, %p\n", packet, completion, target, key_context,
+           apc_context, (int)status, information, already_signaled );
+
+    SERVER_START_REQ( associate_completion_packet )
+    {
+        req->packet = wine_server_obj_handle( packet );
+        req->completion = wine_server_obj_handle( completion );
+        req->target = wine_server_obj_handle( target );
+        req->ckey = wine_server_client_ptr( key_context );
+        req->cvalue = wine_server_client_ptr( apc_context );
+        req->information = information;
+        req->status = status;
+        if (!(ret = wine_server_call( req )) && already_signaled)
+            *already_signaled = reply->already_signaled;
+    }
+    SERVER_END_REQ;
+    return ret;
+}
+
+/***********************************************************************
+ *           NtCancelWaitCompletionPacket (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCancelWaitCompletionPacket( HANDLE packet, BOOLEAN remove_signaled )
+{
+    NTSTATUS status;
+
+    TRACE( "%p, %d\n", packet, remove_signaled );
+
+    SERVER_START_REQ( cancel_completion_packet )
+    {
+        req->packet = wine_server_obj_handle( packet );
+        req->remove_signaled = remove_signaled;
+        status = wine_server_call( req );
+    }
+    SERVER_END_REQ;
+    return status;
+}
+
+
+/***********************************************************************
+ *           NtCreateWaitCompletionPacket (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateWaitCompletionPacket( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr )
+{
+    struct object_attributes *objattr;
+    unsigned int ret;
+    data_size_t len;
+
+    TRACE( "%p, %08x, %p\n", handle, (int)access, attr );
+
+    *handle = 0;
+    if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
+
+    SERVER_START_REQ( create_completion_packet )
+    {
+        req->access = access;
+        wine_server_add_data( req, objattr, len );
+        if (!(ret = wine_server_call( req )))
+            *handle = wine_server_ptr_handle( reply->handle );
+    }
+    SERVER_END_REQ;
+    free( objattr );
+    return ret;
+}
+
+/***********************************************************************
  *           NtCommitTransaction (NTDLL.@)
  */
 NTSTATUS WINAPI NtCommitTransaction( HANDLE transaction, BOOLEAN wait )

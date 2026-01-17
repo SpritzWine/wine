@@ -44,6 +44,8 @@
 #define IO_COMPLETION_ALL_ACCESS 0x001F0003
 #endif
 
+#define KEYEDEVENT_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | 0x0003)
+
 static BOOL     (WINAPI * pGetVolumePathNameW)(LPCWSTR, LPWSTR, DWORD);
 static UINT     (WINAPI *pGetSystemWow64DirectoryW)( LPWSTR, UINT );
 
@@ -53,9 +55,17 @@ static BOOL     (WINAPI *pRtlDosPathNameToNtPathName_U)( LPCWSTR, PUNICODE_STRIN
 static NTSTATUS (WINAPI *pRtlWow64EnableFsRedirectionEx)( ULONG, ULONG * );
 
 static NTSTATUS (WINAPI *pNtAllocateReserveObject)( HANDLE *, const OBJECT_ATTRIBUTES *, MEMORY_RESERVE_OBJECT_TYPE );
+static NTSTATUS (WINAPI *pNtAssociateWaitCompletionPacket)(HANDLE, HANDLE, HANDLE, PVOID, PVOID,
+                                                           NTSTATUS, ULONG_PTR, PBOOLEAN);
+static NTSTATUS (WINAPI *pNtCancelWaitCompletionPacket)(HANDLE, BOOLEAN);
+static NTSTATUS (WINAPI *pNtCreateEvent)(PHANDLE, ACCESS_MASK, const OBJECT_ATTRIBUTES *, EVENT_TYPE, BOOLEAN);
+static NTSTATUS (WINAPI *pNtCreateKeyedEvent)(HANDLE *, ACCESS_MASK, const OBJECT_ATTRIBUTES *, ULONG);
 static NTSTATUS (WINAPI *pNtCreateMailslotFile)( PHANDLE, ULONG, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK,
                                        ULONG, ULONG, ULONG, PLARGE_INTEGER );
+static NTSTATUS (WINAPI *pNtCreateMutant)(PHANDLE, ACCESS_MASK, const POBJECT_ATTRIBUTES, BOOLEAN);
+static NTSTATUS (WINAPI *pNtCreateSemaphore)(HANDLE *, ACCESS_MASK, const OBJECT_ATTRIBUTES *, LONG, LONG);
 static NTSTATUS (WINAPI *pNtCreateFile)(PHANDLE,ACCESS_MASK,POBJECT_ATTRIBUTES,PIO_STATUS_BLOCK,PLARGE_INTEGER,ULONG,ULONG,ULONG,ULONG,PVOID,ULONG);
+static NTSTATUS (WINAPI *pNtCreateWaitCompletionPacket)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
 static NTSTATUS (WINAPI *pNtOpenFile)(PHANDLE,ACCESS_MASK,POBJECT_ATTRIBUTES,PIO_STATUS_BLOCK,ULONG,ULONG);
 static NTSTATUS (WINAPI *pNtDeleteFile)(POBJECT_ATTRIBUTES ObjectAttributes);
 static NTSTATUS (WINAPI *pNtReadFile)(HANDLE hFile, HANDLE hEvent,
@@ -74,9 +84,11 @@ static NTSTATUS (WINAPI *pNtFsControlFile) (HANDLE handle, HANDLE event, PIO_APC
 
 static NTSTATUS (WINAPI *pNtCreateIoCompletion)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, ULONG);
 static NTSTATUS (WINAPI *pNtOpenIoCompletion)(PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES);
+static NTSTATUS (WINAPI *pNtPulseEvent)(HANDLE, LONG *);
 static NTSTATUS (WINAPI *pNtQueryIoCompletion)(HANDLE, IO_COMPLETION_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 static NTSTATUS (WINAPI *pNtRemoveIoCompletion)(HANDLE, PULONG_PTR, PULONG_PTR, PIO_STATUS_BLOCK, PLARGE_INTEGER);
 static NTSTATUS (WINAPI *pNtRemoveIoCompletionEx)(HANDLE,FILE_IO_COMPLETION_INFORMATION*,ULONG,ULONG*,LARGE_INTEGER*,BOOLEAN);
+static NTSTATUS (WINAPI *pNtSetEvent)(HANDLE, LONG *);
 static NTSTATUS (WINAPI *pNtSetIoCompletion)(HANDLE, ULONG_PTR, ULONG_PTR, NTSTATUS, SIZE_T);
 static NTSTATUS (WINAPI *pNtSetIoCompletionEx)(HANDLE, HANDLE, ULONG_PTR, ULONG_PTR, NTSTATUS, SIZE_T);
 static NTSTATUS (WINAPI *pNtSetInformationFile)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
@@ -7338,6 +7350,854 @@ static void test_file_map_large_size(void)
     DeleteFileA(source);
 }
 
+static void test_create_wait_completion_packet(void)
+{
+    UNICODE_STRING name = RTL_CONSTANT_STRING(L"\\BaseNamedObjects\\test_create_waitcompletionpacket");
+    HANDLE handle, handle2;
+    OBJECT_ATTRIBUTES attr;
+    NTSTATUS status;
+
+    if (!pNtCreateWaitCompletionPacket)
+    {
+        todo_wine
+        win_skip("NtCreateWaitCompletionPacket is unavailable.\n");
+        return;
+    }
+
+    InitializeObjectAttributes(&attr, &name, 0, NULL, NULL);
+
+    /* Parameter checks */
+    status = pNtCreateWaitCompletionPacket(NULL, GENERIC_ALL, &attr);
+    ok(status == STATUS_ACCESS_VIOLATION, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCreateWaitCompletionPacket(&handle, 0, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    pNtClose(handle);
+
+    status = pNtCreateWaitCompletionPacket(&handle, GENERIC_ALL, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    pNtClose(handle);
+
+    status = pNtCreateWaitCompletionPacket(&handle, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCreateWaitCompletionPacket(&handle2, GENERIC_ALL, &attr);
+    ok(status == STATUS_OBJECT_NAME_COLLISION, "Got unexpected status %#lx.\n", status);
+    pNtClose(handle);
+}
+
+struct test_wait_completion_packet_thread_info
+{
+    HANDLE client;
+    HANDLE completion;
+    HANDLE event;
+};
+
+static DWORD WINAPI test_associate_wait_completion_packet_child_thread(void *arg)
+{
+    struct test_wait_completion_packet_thread_info *info = arg;
+    ULONG_PTR key_context, apc_context;
+    LARGE_INTEGER timeout = {{0}};
+    BYTE send_buf[TEST_BUF_LEN];
+    ULONG completion_count;
+    IO_STATUS_BLOCK iosb;
+    DWORD written_bytes;
+    NTSTATUS status;
+
+    memset(send_buf, 0xc1, TEST_BUF_LEN);
+    WriteFile(info->client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+
+    timeout.QuadPart = -1000000;
+    status = pNtRemoveIoCompletion(info->completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 54, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 55, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 56, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(info->completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtSetEvent(info->event, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    return 0;
+}
+
+static void test_associate_wait_completion_packet(void)
+{
+    static const char pipe_name[] = "\\\\.\\pipe\\test_associate_wait_completion_packet";
+    UNICODE_STRING packet_name = RTL_CONSTANT_STRING(L"\\BaseNamedObjects\\test_associate_wait_completion_packet");
+    UNICODE_STRING packet_name2 = RTL_CONSTANT_STRING(L"\\BaseNamedObjects\\test_associate_wait_completion_packet2");
+    UNICODE_STRING mutant_name = RTL_CONSTANT_STRING(L"\\BaseNamedObjects\\test_associate_wait_completion_packet_mutant");
+    UNICODE_STRING keyed_event_name = RTL_CONSTANT_STRING(L"\\BaseNamedObjects\\test_associate_wait_completion_packet_keyed_event");
+    HANDLE completion, completion2, packet, packet2, server, client;
+    struct test_wait_completion_packet_thread_info thread_info;
+    HANDLE event, mutant, keyed_event, semaphore, thread;
+    BYTE send_buf[TEST_BUF_LEN], recv_buf[TEST_BUF_LEN];
+    FILE_IO_COMPLETION_NOTIFICATION_INFORMATION info;
+    ULONG_PTR key_context, apc_context;
+    DWORD read_bytes, written_bytes;
+    FILE_COMPLETION_INFORMATION fci;
+    LARGE_INTEGER timeout = {{0}};
+    OVERLAPPED overlapped = {0};
+    OBJECT_ATTRIBUTES attr;
+    ULONG completion_count;
+    IO_STATUS_BLOCK iosb;
+    BOOLEAN signaled;
+    NTSTATUS status;
+
+    if (!pNtAssociateWaitCompletionPacket)
+    {
+        win_skip("NtAssociateWaitCompletionPacket is unavailable.\n");
+        return;
+    }
+
+    status = pNtCreateIoCompletion(&completion, IO_COMPLETION_ALL_ACCESS, NULL, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    server = CreateNamedPipeA(pipe_name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                              PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 4, 1024, 1024,
+                              1000, NULL);
+    ok(server != INVALID_HANDLE_VALUE, "CreateNamedPipe failed, error %lu.\n", GetLastError());
+    client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+                         FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+    ok(client != INVALID_HANDLE_VALUE, "CreateFile failed, error %lu.\n", GetLastError());
+
+    /* Test normal NtAssociateWaitCompletionPacket() calls */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(!is_signaled(packet), "Expected packet not signaled.\n");
+    /* ReadFile() should be called before NtAssociateWaitCompletionPacket(). Otherwise, the server
+     * object stays signaled */
+    memset(send_buf, 0xa1, TEST_BUF_LEN);
+    memset(recv_buf, 0xb2, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)1, (void *)2,
+                                              STATUS_SUCCESS, (ULONG_PTR)3, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+    ok(!is_signaled(packet), "Expected packet not signaled.\n");
+
+    /* Associating an already associated wait completion packet */
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)1, (void *)2,
+                                              STATUS_SUCCESS, (ULONG_PTR)3, &signaled);
+    ok(status == STATUS_INVALID_PARAMETER_1, "Got unexpected status %#lx.\n", status);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+    ok(!is_signaled(packet), "Expected packet not signaled.\n");
+
+    /* Associating an already queued wait completion packet */
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)1, (void *)2,
+                                              STATUS_SUCCESS, (ULONG_PTR)3, &signaled);
+    ok(status == STATUS_INVALID_PARAMETER_1, "Got unexpected status %#lx.\n", status);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 1, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 2, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 3, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) did not match send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+    ok(!is_signaled(packet), "Expected packet not signaled.\n");
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == WAIT_TIMEOUT, "Got unexpected status %#lx.\n", status);
+
+    /* Associating an already removed wait completion packet */
+    memset(send_buf, 0xa2, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)4, (void *)5,
+                                              STATUS_SUCCESS, (ULONG_PTR)6, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 4, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 5, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 6, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) did not match send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* Test associating wait completion packet before setting I/O completion */
+    memset(send_buf, 0xa3, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)7, (void *)8,
+                                              STATUS_SUCCESS, (ULONG_PTR)9, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    fci.CompletionPort = completion;
+    fci.CompletionKey = CKEY_FIRST;
+    iosb.Status = 0xdeadbeef;
+    status = pNtSetInformationFile(server, &iosb, &fci, sizeof(fci), FileCompletionInformation);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx.\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 2, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 7, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 8, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 9, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) matched send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == CKEY_FIRST, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == (ULONG_PTR)&overlapped, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == TEST_BUF_LEN, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) did not match send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* Test associating wait completion packet after setting I/O completion for the same file */
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    signaled = FALSE;
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)10, (void *)11,
+                                              STATUS_SUCCESS, (ULONG_PTR)12, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == CKEY_FIRST, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == (ULONG_PTR)&overlapped, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == TEST_BUF_LEN, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) did not match send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 10, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 11, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 12, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) matched send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* Test associating wait completion packet after setting I/O completion for a new file */
+    status = pNtClose(client);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(server);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    server = CreateNamedPipeA(pipe_name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                              PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 4, 1024, 1024,
+                              1000, NULL);
+    ok(server != INVALID_HANDLE_VALUE, "CreateNamedPipe failed, error %lu.\n", GetLastError());
+    client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+                         FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+    ok(client != INVALID_HANDLE_VALUE, "CreateFile failed, error %lu.\n", GetLastError());
+
+    memset(send_buf, 0xa4, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    fci.CompletionPort = completion;
+    fci.CompletionKey = CKEY_SECOND;
+    iosb.Status = 0xdeadbeef;
+    status = pNtSetInformationFile(server, &iosb, &fci, sizeof(fci), FileCompletionInformation);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx.\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    signaled = FALSE;
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)13, (void *)14,
+                                              STATUS_SUCCESS, (ULONG_PTR)15, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == TRUE, "Got unexpected signaled %d.\n", signaled);
+
+    /* Notice the wait completion packet gets added immediately when there is a completion set, even
+     * without writing to the file */
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 13, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 14, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 15, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) matched send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == CKEY_SECOND, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == (ULONG_PTR)&overlapped, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == TEST_BUF_LEN, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) did not match send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* Test file with FILE_SKIP_SET_EVENT_ON_HANDLE set */
+    status = pNtClose(client);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(server);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    server = CreateNamedPipeA(pipe_name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                              PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 4, 1024, 1024,
+                              1000, NULL);
+    ok(server != INVALID_HANDLE_VALUE, "CreateNamedPipe failed, error %lu.\n", GetLastError());
+    client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+                         FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+    ok(client != INVALID_HANDLE_VALUE, "CreateFile failed, error %lu.\n", GetLastError());
+
+    info.Flags = FILE_SKIP_SET_EVENT_ON_HANDLE;
+    status = pNtSetInformationFile(server, &iosb, &info, sizeof(info), FileIoCompletionNotificationInformation);
+    ok(status == STATUS_SUCCESS, "expected STATUS_SUCCESS, got %08lx\n", status);
+    ok(!is_signaled(server), "Expected server not signaled\n");
+
+    memset(send_buf, 0xa4, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    signaled = FALSE;
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)16, (void *)17,
+                                              STATUS_SUCCESS, (ULONG_PTR)18, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* Test associating two wait completion packets */
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(client);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(server);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    server = CreateNamedPipeA(pipe_name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                              PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 4, 1024, 1024,
+                              1000, NULL);
+    ok(server != INVALID_HANDLE_VALUE, "CreateNamedPipe failed, error %lu.\n", GetLastError());
+    client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+                         FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+    ok(client != INVALID_HANDLE_VALUE, "CreateFile failed, error %lu.\n", GetLastError());
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    InitializeObjectAttributes(&attr, &packet_name2, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet2, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    memset(send_buf, 0xa5, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)19, (void *)20,
+                                              STATUS_SUCCESS, (ULONG_PTR)21, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtAssociateWaitCompletionPacket(packet2, completion, server, (void *)22, (void *)23,
+                                              STATUS_SUCCESS, (ULONG_PTR)24, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 2, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 19, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 20, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 21, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    ok(!memcmp(send_buf, recv_buf, TEST_BUF_LEN),
+       "Receive buffer (%02x %02x %02x) did not match send buffer (%02x %02x %02x)\n", recv_buf[0],
+       recv_buf[1], recv_buf[2], send_buf[0], send_buf[1], send_buf[2]);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 22, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 23, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 24, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(packet2);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test associating manual-reset events */
+    status = pNtCreateEvent(&event, GENERIC_ALL, NULL, NotificationEvent, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, event, (void *)25, (void *)26,
+                                              STATUS_SUCCESS, (ULONG_PTR)27, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtPulseEvent(event, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 25, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 26, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 27, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* Test closing wait completion packets before the target object is signaled */
+    status = pNtAssociateWaitCompletionPacket(packet, completion, event, (void *)28, (void *)29,
+                                              STATUS_SUCCESS, (ULONG_PTR)30, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtPulseEvent(event, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    /* Test closing wait completion packets right after the target object is signaled */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, event, (void *)31, (void *)32,
+                                              STATUS_SUCCESS, (ULONG_PTR)33, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtPulseEvent(event, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(event);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test associating auto-reset events */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCreateEvent(&event, GENERIC_ALL, NULL, SynchronizationEvent, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, event, (void *)34, (void *)35,
+                                              STATUS_SUCCESS, (ULONG_PTR)36, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtSetEvent(event, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(!is_signaled(event), "Expected event not signaled.\n");
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+    ok(!is_signaled(event), "Expected event not signaled.\n");
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 34, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 35, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 36, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(event);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test that associating semaphores */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCreateSemaphore(&semaphore, GENERIC_ALL, NULL, 1, 2);
+    ok( status == STATUS_SUCCESS, "Failed to create Semaphore(%08lx)\n", status );
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, semaphore, (void *)37, (void *)38,
+                                              STATUS_SUCCESS, (ULONG_PTR)39, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == TRUE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 37, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 38, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 39, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(semaphore);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test that associating mutexes is invalid */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, MUTANT_ALL_ACCESS, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    InitializeObjectAttributes(&attr, &mutant_name, 0, NULL, NULL);
+    status = pNtCreateMutant(&mutant, GENERIC_ALL, &attr, FALSE);
+    ok(status == STATUS_SUCCESS, "Failed to create Mutant(%08lx)\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, mutant, (void *)40, (void *)41,
+                                              STATUS_SUCCESS, (ULONG_PTR)41, &signaled);
+    ok(status == STATUS_INVALID_PARAMETER_3, "Got unexpected status %#lx.\n", status);
+
+    status = pNtClose(mutant);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test that associating owned mutexes is invalid */
+    InitializeObjectAttributes(&attr, &mutant_name, 0, NULL, NULL);
+    status = pNtCreateMutant(&mutant, MUTANT_ALL_ACCESS, &attr, TRUE);
+    ok(status == STATUS_SUCCESS, "Failed to create Mutant(%08lx)\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, mutant, (void *)42, (void *)44,
+                                              STATUS_SUCCESS, (ULONG_PTR)44, &signaled);
+    ok(status == STATUS_INVALID_PARAMETER_3, "Got unexpected status %#lx.\n", status);
+
+    status = pNtClose(mutant);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test that associating keyed events is invalid */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    InitializeObjectAttributes(&attr, &keyed_event_name, 0, NULL, NULL);
+    status = pNtCreateKeyedEvent(&keyed_event, KEYEDEVENT_ALL_ACCESS | SYNCHRONIZE, &attr, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, keyed_event, (void *)45, (void *)46,
+                                              STATUS_SUCCESS, (ULONG_PTR)47, &signaled);
+    ok(status == STATUS_INVALID_PARAMETER_3, "Got unexpected status %#lx.\n", status);
+
+    status = pNtClose(keyed_event);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test that associating completion objects is invalid */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCreateIoCompletion(&completion2, IO_COMPLETION_ALL_ACCESS, NULL, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, completion2, (void *)48, (void *)49,
+                                              STATUS_SUCCESS, (ULONG_PTR)50, &signaled);
+    ok(status == STATUS_INVALID_PARAMETER_3, "Got unexpected status %#lx.\n", status);
+
+    status = pNtClose(completion2);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Test associating two targets for two completion packets in the current thread. Then in
+     * another thread, make the second target signaled to test that the completion packet for the
+     * second target gets added to the completion object */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    InitializeObjectAttributes(&attr, &packet_name2, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet2, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCreateEvent(&event, GENERIC_ALL, NULL, NotificationEvent, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    memset(send_buf, 0xa5, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, event, (void *)51, (void *)52,
+                                              STATUS_SUCCESS, (ULONG_PTR)53, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtAssociateWaitCompletionPacket(packet2, completion, server, (void *)54, (void *)55,
+                                              STATUS_SUCCESS, (ULONG_PTR)56, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    thread_info.client = client;
+    thread_info.completion = completion;
+    thread_info.event = event;
+    thread = CreateThread(NULL, 0, test_associate_wait_completion_packet_child_thread, &thread_info, 0, NULL);
+    WaitForSingleObject(event, INFINITE);
+    WaitForSingleObject(thread, INFINITE);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 51, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 52, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 53, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == STATUS_SUCCESS, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    status = pNtClose(thread);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(event);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet2);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Parameter checks */
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(NULL, completion, server, (void *)0xa, (void *)0xb,
+                                              STATUS_SUCCESS, (ULONG_PTR)0xc, &signaled);
+    ok(status == STATUS_INVALID_HANDLE, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(GetCurrentProcess(), completion, server, (void *)0xa,
+                                              (void *)0xb, STATUS_SUCCESS, (ULONG_PTR)0xc, &signaled);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, NULL, server, (void *)0xa, (void *)0xb,
+                                              STATUS_SUCCESS, (ULONG_PTR)0xc, &signaled);
+    ok(status == STATUS_INVALID_HANDLE, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, GetCurrentProcess(), server, (void *)0xa,
+                                              (void *)0xb, STATUS_SUCCESS, (ULONG_PTR)0xc, &signaled);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, NULL, (void *)0xa, (void *)0xb,
+                                              STATUS_SUCCESS, (ULONG_PTR)0xc, &signaled);
+    ok(status == STATUS_INVALID_HANDLE, "Got unexpected status %#lx.\n", status);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)0xa, (void *)0xb,
+                                              0xdeadbeef, (ULONG_PTR)0xc, NULL);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(key_context == 0xa, "Got unexpected completion key %Id\n", key_context);
+    ok(apc_context == 0xb, "Got unexpected completion value %Id\n", apc_context);
+    ok(iosb.Information == 0xc, "Got unexpected iosb.Information %Id\n", iosb.Information);
+    ok(iosb.Status == 0xdeadbeef, "Got unexpected iosb.Status %#lx\n", iosb.Status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Unexpected completion count %ld.\n", completion_count);
+
+    /* This test associates the wait completion packet with GetCurrentProcess(), which will never
+     * be signaled */
+    status = pNtAssociateWaitCompletionPacket(packet, completion, GetCurrentProcess(), (void *)0xa,
+                                              (void *)0xb, STATUS_SUCCESS, (ULONG_PTR)0xc, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    status = pNtRemoveIoCompletion(completion, &key_context, &apc_context, &iosb, &timeout);
+    ok(status == WAIT_TIMEOUT, "Got unexpected status %#lx.\n", status);
+
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(client);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(server);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(completion);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+}
+
+static void test_cancel_wait_completion_packet(void)
+{
+    static const char pipe_name[] = "\\\\.\\pipe\\test_cancel_wait_completion_packet";
+    UNICODE_STRING packet_name = RTL_CONSTANT_STRING(L"\\BaseNamedObjects\\test_cancel_wait_completion_packet");
+    BYTE send_buf[TEST_BUF_LEN], recv_buf[TEST_BUF_LEN];
+    HANDLE completion, packet, server, client;
+    DWORD read_bytes, written_bytes;
+    OVERLAPPED overlapped = {0};
+    OBJECT_ATTRIBUTES attr;
+    ULONG completion_count;
+    BOOLEAN signaled;
+    NTSTATUS status;
+
+    if (!pNtCancelWaitCompletionPacket)
+    {
+        win_skip("NtCancelWaitCompletionPacket is unavailable.\n");
+        return;
+    }
+
+    status = pNtCreateIoCompletion(&completion, IO_COMPLETION_ALL_ACCESS, NULL, 0);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    server = CreateNamedPipeA(pipe_name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED,
+                              PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, 4, 1024, 1024,
+                              1000, NULL);
+    ok(server != INVALID_HANDLE_VALUE, "CreateNamedPipe failed, error %lu.\n", GetLastError());
+    client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+                         FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+    ok(client != INVALID_HANDLE_VALUE, "CreateFile failed, error %lu.\n", GetLastError());
+
+    InitializeObjectAttributes(&attr, &packet_name, 0, NULL, NULL);
+    status = pNtCreateWaitCompletionPacket(&packet, GENERIC_ALL, &attr);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    /* Remove not associated packets */
+    status = pNtCancelWaitCompletionPacket(packet, TRUE);
+    ok(status == STATUS_CANCELLED, "Got unexpected status %#lx.\n", status);
+
+    /* ReadFile() should be called before NtAssociateWaitCompletionPacket(). Otherwise, the server
+     * object stays signaled */
+    memset(send_buf, 0xa1, TEST_BUF_LEN);
+    memset(recv_buf, 0xb2, TEST_BUF_LEN);
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    /* Cancel non-signaled packets */
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)1, (void *)2,
+                                              STATUS_SUCCESS, (ULONG_PTR)3, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtCancelWaitCompletionPacket(packet, FALSE);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    /* Cancel signaled packets */
+    ReadFile(server, recv_buf, TEST_BUF_LEN, &read_bytes, &overlapped);
+
+    status = pNtAssociateWaitCompletionPacket(packet, completion, server, (void *)1, (void *)2,
+                                              STATUS_SUCCESS, (ULONG_PTR)3, &signaled);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    ok(signaled == FALSE, "Got unexpected signaled %d.\n", signaled);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    WriteFile(client, send_buf, TEST_BUF_LEN, &written_bytes, NULL);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtCancelWaitCompletionPacket(packet, FALSE);
+    ok(status == STATUS_PENDING, "Got unexpected status %#lx.\n", status);
+    completion_count = get_pending_msgs(completion);
+    ok(completion_count == 1, "Got unexpected completion count %ld.\n", completion_count);
+
+    status = pNtCancelWaitCompletionPacket(packet, TRUE);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    completion_count = get_pending_msgs(completion);
+    ok(!completion_count, "Got unexpected completion count %ld.\n", completion_count);
+
+    /* Remove already removed packets */
+    status = pNtCancelWaitCompletionPacket(packet, TRUE);
+    ok(status == STATUS_CANCELLED, "Got unexpected status %#lx.\n", status);
+
+    /* Parameter checks */
+    status = pNtCancelWaitCompletionPacket(NULL, FALSE);
+    ok(status == STATUS_INVALID_HANDLE, "Got unexpected status %#lx.\n", status);
+
+    status = pNtCancelWaitCompletionPacket(GetCurrentProcess(), FALSE);
+    ok(status == STATUS_OBJECT_TYPE_MISMATCH, "Got unexpected status %#lx.\n", status);
+
+    status = pNtClose(packet);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(client);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(server);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+    status = pNtClose(completion);
+    ok(status == STATUS_SUCCESS, "Got unexpected status %#lx.\n", status);
+}
+
 START_TEST(file)
 {
     HMODULE hkernel32 = GetModuleHandleA("kernel32.dll");
@@ -7356,8 +8216,15 @@ START_TEST(file)
     pRtlDosPathNameToNtPathName_U = (void *)GetProcAddress(hntdll, "RtlDosPathNameToNtPathName_U");
     pRtlWow64EnableFsRedirectionEx = (void *)GetProcAddress(hntdll, "RtlWow64EnableFsRedirectionEx");
     pNtAllocateReserveObject= (void *)GetProcAddress(hntdll, "NtAllocateReserveObject");
+    pNtAssociateWaitCompletionPacket = (void *)GetProcAddress(hntdll, "NtAssociateWaitCompletionPacket");
+    pNtCancelWaitCompletionPacket = (void *)GetProcAddress(hntdll, "NtCancelWaitCompletionPacket");
+    pNtCreateEvent          = (void *)GetProcAddress(hntdll, "NtCreateEvent");
+    pNtCreateKeyedEvent     = (void *)GetProcAddress(hntdll, "NtCreateKeyedEvent");
     pNtCreateMailslotFile   = (void *)GetProcAddress(hntdll, "NtCreateMailslotFile");
+    pNtCreateMutant         = (void *)GetProcAddress(hntdll, "NtCreateMutant");
+    pNtCreateSemaphore      = (void *)GetProcAddress(hntdll, "NtCreateSemaphore");
     pNtCreateFile           = (void *)GetProcAddress(hntdll, "NtCreateFile");
+    pNtCreateWaitCompletionPacket = (void *)GetProcAddress(hntdll, "NtCreateWaitCompletionPacket");
     pNtOpenFile             = (void *)GetProcAddress(hntdll, "NtOpenFile");
     pNtDeleteFile           = (void *)GetProcAddress(hntdll, "NtDeleteFile");
     pNtReadFile             = (void *)GetProcAddress(hntdll, "NtReadFile");
@@ -7368,9 +8235,11 @@ START_TEST(file)
     pNtFsControlFile        = (void *)GetProcAddress(hntdll, "NtFsControlFile");
     pNtCreateIoCompletion   = (void *)GetProcAddress(hntdll, "NtCreateIoCompletion");
     pNtOpenIoCompletion     = (void *)GetProcAddress(hntdll, "NtOpenIoCompletion");
+    pNtPulseEvent           = (void *)GetProcAddress(hntdll, "NtPulseEvent");
     pNtQueryIoCompletion    = (void *)GetProcAddress(hntdll, "NtQueryIoCompletion");
     pNtRemoveIoCompletion   = (void *)GetProcAddress(hntdll, "NtRemoveIoCompletion");
     pNtRemoveIoCompletionEx = (void *)GetProcAddress(hntdll, "NtRemoveIoCompletionEx");
+    pNtSetEvent             = (void *)GetProcAddress(hntdll, "NtSetEvent");
     pNtSetIoCompletion      = (void *)GetProcAddress(hntdll, "NtSetIoCompletion");
     pNtSetIoCompletionEx    = (void *)GetProcAddress(hntdll, "NtSetIoCompletionEx");
     pNtSetInformationFile   = (void *)GetProcAddress(hntdll, "NtSetInformationFile");
@@ -7422,4 +8291,7 @@ START_TEST(file)
     test_mailslot_name();
     test_reparse_points();
     test_file_map_large_size();
+    test_create_wait_completion_packet();
+    test_associate_wait_completion_packet();
+    test_cancel_wait_completion_packet();
 }
