@@ -261,3 +261,6 @@ HRESULT ipid_get_dispatch_params(const IPID *ipid, struct apartment **stub_apt,
         IID *iid, IUnknown **iface);
 HRESULT ipid_get_dest_context(const IPID *ipid, MSHCTX *dest_context, void **dest_context_data);
 HRESULT start_apartment_remote_unknown(struct apartment *apt);
+
+HRESULT set_error_info(IErrorInfo *error_info);
+HRESULT get_error_info(IErrorInfo **error_info);

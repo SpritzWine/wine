@@ -340,17 +340,14 @@ HRESULT WINAPI CreateErrorInfo(ICreateErrorInfo **ret)
     return S_OK;
 }
 
-/***********************************************************************
- *                GetErrorInfo    (combase.@)
- */
-HRESULT WINAPI GetErrorInfo(ULONG reserved, IErrorInfo **error_info)
+HRESULT get_error_info(IErrorInfo **error_info)
 {
     struct tlsdata *tlsdata;
     HRESULT hr;
 
-    TRACE("%lu, %p\n", reserved, error_info);
+    TRACE("%p\n", error_info);
 
-    if (reserved || !error_info)
+    if (!error_info)
         return E_INVALIDARG;
 
     if (FAILED(hr = com_get_tlsdata(&tlsdata)))
@@ -369,17 +366,20 @@ HRESULT WINAPI GetErrorInfo(ULONG reserved, IErrorInfo **error_info)
 }
 
 /***********************************************************************
- *               SetErrorInfo    (combase.@)
+ *                GetErrorInfo    (combase.@)
  */
-HRESULT WINAPI SetErrorInfo(ULONG reserved, IErrorInfo *error_info)
+HRESULT WINAPI GetErrorInfo(ULONG reserved, IErrorInfo **error_info)
+{
+    TRACE("%lu, %p\n", reserved, error_info);
+    return reserved ? E_INVALIDARG : get_error_info(error_info);
+}
+
+HRESULT set_error_info(IErrorInfo *error_info)
 {
     struct tlsdata *tlsdata;
     HRESULT hr;
 
-    TRACE("%lu, %p\n", reserved, error_info);
-
-    if (reserved)
-        return E_INVALIDARG;
+    TRACE("%p\n", error_info);
 
     if (FAILED(hr = com_get_tlsdata(&tlsdata)))
         return hr;
@@ -392,4 +392,13 @@ HRESULT WINAPI SetErrorInfo(ULONG reserved, IErrorInfo *error_info)
         IErrorInfo_AddRef(error_info);
 
     return S_OK;
+}
+
+/***********************************************************************
+ *               SetErrorInfo    (combase.@)
+ */
+HRESULT WINAPI SetErrorInfo(ULONG reserved, IErrorInfo *error_info)
+{
+    TRACE("%lu, %p\n", reserved, error_info);
+    return reserved ? E_INVALIDARG : set_error_info(error_info);
 }

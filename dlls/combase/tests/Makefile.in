@@ -1,5 +1,5 @@
 TESTDLL   = combase.dll
-IMPORTS   = combase uuid user32
+IMPORTS   = combase kernel32 oleaut32 uuid user32
 
 SOURCES = \
 	combase.rc \
