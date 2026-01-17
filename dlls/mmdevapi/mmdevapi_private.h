@@ -134,3 +134,6 @@ extern void main_loop_stop(void);
 extern const WCHAR drv_keyW[];
 
 extern HRESULT get_audio_sessions(IMMDevice *device, GUID **ret, int *ret_count);
+
+extern DWORD swmidi_mod_message(UINT dev_id, UINT msg, DWORD_PTR user, DWORD_PTR param1,
+        DWORD_PTR param2);

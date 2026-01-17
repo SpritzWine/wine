@@ -30,6 +30,7 @@
 #include "initguid.h"
 #include "ole2.h"
 #include "mmdeviceapi.h"
+#include "dmusici.h"
 #include "dshow.h"
 #include "dsound.h"
 #include "audioclient.h"

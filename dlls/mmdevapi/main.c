@@ -432,7 +432,7 @@ DWORD WINAPI midMessage( UINT id, UINT msg, DWORD_PTR user, DWORD_PTR param1, DW
     return err;
 }
 
-DWORD WINAPI modMessage( UINT id, UINT msg, DWORD_PTR user, DWORD_PTR param1, DWORD_PTR param2 )
+DWORD driver_mod_message( UINT id, UINT msg, DWORD_PTR user, DWORD_PTR param1, DWORD_PTR param2 )
 {
     struct midi_out_message_params params;
     struct notify_context notify;
@@ -451,6 +451,32 @@ DWORD WINAPI modMessage( UINT id, UINT msg, DWORD_PTR user, DWORD_PTR param1, DW
     MIDI_CALL( midi_out_message, &params );
     if (!err && notify.send_notify) notify_client( &notify );
     return err;
+}
+
+DWORD WINAPI modMessage( UINT id, UINT msg, DWORD_PTR user, DWORD_PTR param1, DWORD_PTR param2 )
+{
+    static DWORD driver_device_count;
+
+    switch (msg)
+    {
+    case DRVM_INIT:
+        swmidi_mod_message(0, DRVM_INIT, 0, 0, 0);
+        driver_mod_message(0, DRVM_INIT, 0, 0, 0);
+        driver_device_count = driver_mod_message(0, MODM_GETNUMDEVS, 0, 0, 0);
+        return MMSYSERR_NOERROR;
+
+    case DRVM_EXIT:
+        driver_mod_message(0, DRVM_EXIT, 0, 0, 0);
+        swmidi_mod_message(0, DRVM_EXIT, 0, 0, 0);
+        return MMSYSERR_NOERROR;
+
+    case MODM_GETNUMDEVS:
+        return driver_device_count + 1;
+    }
+
+    if (id < driver_device_count)
+        return driver_mod_message(id, msg, user, param1, param2);
+    return swmidi_mod_message(id - driver_device_count, msg, user, param1, param2);
 }
 
 DWORD WINAPI auxMessage( UINT id, UINT msg, DWORD_PTR user, DWORD_PTR param1, DWORD_PTR param2 )
