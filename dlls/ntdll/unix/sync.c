@@ -2483,35 +2483,10 @@ NTSTATUS WINAPI NtQueryPerformanceCounter( LARGE_INTEGER *counter, LARGE_INTEGER
  */
 NTSTATUS WINAPI NtQuerySystemTime( LARGE_INTEGER *time )
 {
-#ifdef HAVE_CLOCK_GETTIME
-    struct timespec ts;
-    static clockid_t clock_id = CLOCK_MONOTONIC; /* placeholder */
+    struct timeval now;
 
-    if (clock_id == CLOCK_MONOTONIC)
-    {
-#ifdef CLOCK_REALTIME_COARSE
-        struct timespec res;
-
-        /* Use CLOCK_REALTIME_COARSE if it has 1 ms or better resolution */
-        if (!clock_getres( CLOCK_REALTIME_COARSE, &res ) && res.tv_sec == 0 && res.tv_nsec <= 1000000)
-            clock_id = CLOCK_REALTIME_COARSE;
-        else
-#endif /* CLOCK_REALTIME_COARSE */
-            clock_id = CLOCK_REALTIME;
-    }
-
-    if (!clock_gettime( clock_id, &ts ))
-    {
-        time->QuadPart = ticks_from_time_t( ts.tv_sec ) + (ts.tv_nsec + 50) / 100;
-    }
-    else
-#endif /* HAVE_CLOCK_GETTIME */
-    {
-        struct timeval now;
-
-        gettimeofday( &now, 0 );
-        time->QuadPart = ticks_from_time_t( now.tv_sec ) + now.tv_usec * 10;
-    }
+    gettimeofday( &now, 0 );
+    time->QuadPart = ticks_from_time_t( now.tv_sec ) + now.tv_usec * 10;
     return STATUS_SUCCESS;
 }
 
