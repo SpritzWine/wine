@@ -31,6 +31,7 @@ SOURCES = \
 	ole2.c \
 	ole2stubs.c \
 	ole32_main.c \
+	ole32_inspectable.idl \
 	ole32_objidl.idl \
 	ole32_oleidl.idl \
 	ole32_unknwn.idl \
