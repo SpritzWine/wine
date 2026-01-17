@@ -1127,19 +1127,15 @@ static void get_path(Entry* dir, PWSTR path)
 
 	if (dir->etype == ET_SHELL)
 	{
-		SFGAOF attribs;
+		SFGAOF attribs = 0;
 		HRESULT hr = S_OK;
+		IShellFolder* parent = dir->up? dir->up->folder: Globals.iDesktop;
 
 		path[0] = '\0';
 
-		attribs = 0;
-
-		if (dir->folder)
-			hr = IShellFolder_GetAttributesOf(dir->folder, 1, (LPCITEMIDLIST*)&dir->pidl, &attribs);
+		hr = IShellFolder_GetAttributesOf(parent, 1, (LPCITEMIDLIST*)&dir->pidl, &attribs);
 
 		if (SUCCEEDED(hr) && (attribs&SFGAO_FILESYSTEM)) {
-			IShellFolder* parent = dir->up? dir->up->folder: Globals.iDesktop;
-
 			hr = path_from_pidlW(parent, dir->pidl, path, MAX_PATH);
 		}
 	}
