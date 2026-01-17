@@ -50,6 +50,9 @@
 #ifdef HAVE_SYS_UCONTEXT_H
 # include <sys/ucontext.h>
 #endif
+#ifdef HAVE_SYS_AUXV_H
+# include <sys/auxv.h>
+#endif
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -153,9 +156,9 @@ typedef struct ucontext
 #define FPUX_sig(context)    (FPU_sig(context) && !((context)->uc_mcontext.fpregs->status >> 16) ? (void *)((FLOATING_SAVE_AREA *)FPU_sig(context) + 1) : NULL)
 #define XState_sig(fpu)      (((unsigned int *)((XSAVE_FORMAT *)(fpu))->Reserved4)[12] == FP_XSTATE_MAGIC1 ? (XSAVE_AREA_HEADER *)((XSAVE_FORMAT *)(fpu) + 1) : NULL)
 
-#ifdef __ANDROID__
-/* custom signal restorer since we may have unmapped the one in vdso, and bionic doesn't check for that */
-void rt_sigreturn(void);
+#if defined(__linux__) && defined(SA_RESTORER)
+/* backup signal restorer if we have unmapped the one in vDSO, and libc doesn't supply its own restorer */
+extern void rt_sigreturn(void) DECLSPEC_HIDDEN;
 __ASM_GLOBAL_FUNC( rt_sigreturn,
                    "movl $173,%eax\n\t"  /* NR_rt_sigreturn */
                    "int $0x80" );
@@ -2405,9 +2408,18 @@ void signal_init_process(void)
 
     sig_act.sa_mask = server_block_set;
     sig_act.sa_flags = SA_SIGINFO | SA_RESTART | SA_ONSTACK;
-#ifdef __ANDROID__
-    sig_act.sa_flags |= SA_RESTORER;
-    sig_act.sa_restorer = rt_sigreturn;
+#if defined(__linux__) && defined(SA_RESTORER)
+    if (!getauxval(AT_SYSINFO_EHDR)) {
+        struct sigaction real_sig_act;
+
+        sig_act.sa_sigaction = int_handler;
+        if (sigaction( SIGINT, &sig_act, NULL ) == -1) goto error;
+        if (sigaction( SIGINT, NULL, &real_sig_act ) == -1) goto error;
+        if (!(real_sig_act.sa_flags & SA_RESTORER)) {
+            sig_act.sa_flags |= SA_RESTORER;
+            sig_act.sa_restorer = rt_sigreturn;
+        }
+    }
 #endif
     sig_act.sa_sigaction = int_handler;
     if (sigaction( SIGINT, &sig_act, NULL ) == -1) goto error;
