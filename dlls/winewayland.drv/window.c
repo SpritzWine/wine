@@ -524,7 +524,7 @@ static void wayland_configure_window(HWND hwnd)
     state = surface->processing.state;
     /* Ignore size hints if we don't have a state that requires strict
      * size adherence, in order to avoid spurious resizes. */
-    if (state)
+    if (state || surface->current.state)
     {
         width = surface->processing.width;
         height = surface->processing.height;
@@ -566,9 +566,8 @@ static void wayland_configure_window(HWND hwnd)
      * are very insistent on a particular fullscreen size (which may not match
      * the monitor size). */
     if ((surface->window.state & WAYLAND_SURFACE_CONFIG_STATE_FULLSCREEN) &&
-        wayland_surface_config_is_compatible(&surface->processing,
-                                             window_surf_width, window_surf_height,
-                                             surface->window.state))
+        window_surf_width <= surface->processing.width &&
+        window_surf_height <= surface->processing.height)
     {
         flags |= SWP_NOSIZE;
     }
