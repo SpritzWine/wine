@@ -1,4 +1,4 @@
-SplineFontDB: 3.0
+SplineFontDB: 3.2
 FontName: WineTahoma
 FullName: Tahoma
 FamilyName: Tahoma
@@ -13,6 +13,7 @@ UnderlinePosition: -170
 UnderlineWidth: 130
 Ascent: 1638
 Descent: 410
+InvalidEm: 0
 LayerCount: 2
 Layer: 0 0 "Back" 1
 Layer: 1 0 "Fore" 0
@@ -21,6 +22,8 @@ FSType: 0
 OS2Version: 2
 OS2_WeightWidthSlopeOnly: 0
 OS2_UseTypoMetrics: 1
+CreationTime: 1711961299
+ModificationTime: 1712137035
 PfmFamily: 33
 TTFWeight: 400
 TTFWidth: 5
@@ -52,23 +55,23 @@ OS2StrikeYSize: 130
 OS2StrikeYPos: 689
 OS2FamilyClass: 2048
 OS2Vendor: 'Wine'
-Lookup: 4 0 1 "'liga' Standard Ligatures in Latin lookup 0" {"'liga' Standard Ligatures in Latin lookup 0 subtable" } ['liga' ('latn' <'dflt' > ) ]
-Lookup: 4 0 0 "'frac' Diagonal Fractions in Latin lookup 1" {"'frac' Diagonal Fractions in Latin lookup 1 subtable" } ['frac' ('latn' <'dflt' > ) ]
-Lookup: 1 9 0 "'fina' Terminal Forms in Arabic lookup 8" {"'fina' Terminal Forms in Arabic lookup 8 subtable" } ['fina' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 1 9 0 "'medi' Medial Forms in Arabic lookup 10" {"'medi' Medial Forms in Arabic lookup 10 subtable" } ['medi' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 1 9 0 "'init' Initial Forms in Arabic lookup 12" {"'init' Initial Forms in Arabic lookup 12 subtable" } ['init' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 4 1 1 "'rlig' Required Ligatures in Arabic lookup 13" {"'rlig' Required Ligatures in Arabic lookup 13 subtable" } ['rlig' ('arab' <'KUR ' 'dflt' > ) ]
-Lookup: 4 1 1 "'rlig' Required Ligatures in Arabic lookup 14" {"'rlig' Required Ligatures in Arabic lookup 14 subtable" } ['rlig' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 4 9 1 "'rlig' Required Ligatures in Arabic lookup 15" {"'rlig' Required Ligatures in Arabic lookup 15 subtable" } ['rlig' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 4 9 1 "'liga' Standard Ligatures in Arabic lookup 16" {"'liga' Standard Ligatures in Arabic lookup 16 subtable" } ['liga' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 4 1 1 "'liga' Standard Ligatures in Arabic lookup 18" {"'liga' Standard Ligatures in Arabic lookup 18 subtable" } ['liga' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 258 0 0 "'kern' Horizontal Kerning in Latin lookup 0" {"'kern' Horizontal Kerning in Latin lookup 0 subtable" } ['kern' ('latn' <'dflt' > ) ]
-Lookup: 262 1 0 "'mkmk' Mark to Mark in Arabic lookup 0" {"'mkmk' Mark to Mark in Arabic lookup 0 subtable" } ['mkmk' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 262 1 0 "'mkmk' Mark to Mark in Arabic lookup 1" {"'mkmk' Mark to Mark in Arabic lookup 1 subtable" } ['mkmk' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
-Lookup: 260 1 0 "'mark' Mark Positioning lookup 9" {"'mark' Mark Positioning lookup 9 subtable" } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
-Lookup: 260 1 0 "'mark' Mark Positioning lookup 6" {"'mark' Mark Positioning lookup 6 subtable" } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
-Lookup: 261 1 0 "'mark' Mark Positioning lookup 8" {"'mark' Mark Positioning lookup 8 subtable" } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
-Lookup: 261 1 0 "'mark' Mark Positioning lookup 5" {"'mark' Mark Positioning lookup 5 subtable" } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
+Lookup: 4 0 1 "'liga' Standard Ligatures in Latin lookup 0" { "'liga' Standard Ligatures in Latin lookup 0 subtable"  } ['liga' ('latn' <'dflt' > ) ]
+Lookup: 4 0 0 "'frac' Diagonal Fractions in Latin lookup 1" { "'frac' Diagonal Fractions in Latin lookup 1 subtable"  } ['frac' ('latn' <'dflt' > ) ]
+Lookup: 1 9 0 "'fina' Terminal Forms in Arabic lookup 8" { "'fina' Terminal Forms in Arabic lookup 8 subtable"  } ['fina' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 1 9 0 "'medi' Medial Forms in Arabic lookup 10" { "'medi' Medial Forms in Arabic lookup 10 subtable"  } ['medi' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 1 9 0 "'init' Initial Forms in Arabic lookup 12" { "'init' Initial Forms in Arabic lookup 12 subtable"  } ['init' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 4 1 1 "'rlig' Required Ligatures in Arabic lookup 13" { "'rlig' Required Ligatures in Arabic lookup 13 subtable"  } ['rlig' ('arab' <'KUR ' 'dflt' > ) ]
+Lookup: 4 1 1 "'rlig' Required Ligatures in Arabic lookup 14" { "'rlig' Required Ligatures in Arabic lookup 14 subtable"  } ['rlig' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 4 9 1 "'rlig' Required Ligatures in Arabic lookup 15" { "'rlig' Required Ligatures in Arabic lookup 15 subtable"  } ['rlig' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 4 9 1 "'liga' Standard Ligatures in Arabic lookup 16" { "'liga' Standard Ligatures in Arabic lookup 16 subtable"  } ['liga' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 4 1 1 "'liga' Standard Ligatures in Arabic lookup 18" { "'liga' Standard Ligatures in Arabic lookup 18 subtable"  } ['liga' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 258 0 0 "'kern' Horizontal Kerning in Latin lookup 0" { "'kern' Horizontal Kerning in Latin lookup 0 subtable"  } ['kern' ('latn' <'dflt' > ) ]
+Lookup: 262 1 0 "'mkmk' Mark to Mark in Arabic lookup 0" { "'mkmk' Mark to Mark in Arabic lookup 0 subtable"  } ['mkmk' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 262 1 0 "'mkmk' Mark to Mark in Arabic lookup 1" { "'mkmk' Mark to Mark in Arabic lookup 1 subtable"  } ['mkmk' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > ) ]
+Lookup: 260 1 0 "'mark' Mark Positioning lookup 9" { "'mark' Mark Positioning lookup 9 subtable"  } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
+Lookup: 260 1 0 "'mark' Mark Positioning lookup 6" { "'mark' Mark Positioning lookup 6 subtable"  } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
+Lookup: 261 1 0 "'mark' Mark Positioning lookup 8" { "'mark' Mark Positioning lookup 8 subtable"  } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
+Lookup: 261 1 0 "'mark' Mark Positioning lookup 5" { "'mark' Mark Positioning lookup 5 subtable"  } ['mark' ('arab' <'KUR ' 'SND ' 'URD ' 'dflt' > 'hebr' <'dflt' > 'nko ' <'dflt' > ) ]
 DEI: 91125
 ShortTable: cvt  2
   68
@@ -111,7 +114,7 @@ NameList: Adobe Glyph List
 DisplaySize: 10
 AntiAlias: 1
 FitToEm: 1
-WinInfo: 760 40 14
+WinInfo: 9900 90 23
 BeginPrivate: 10
 BlueValues 27 [-30 0 1120 1177 1522 1522]
 OtherBlues 11 [-426 -426]
@@ -126,7 +129,7 @@ ExpansionFactor 4 0.06
 EndPrivate
 TeXData: 1 0 0 327680 163840 109226 571904 -1048576 109226 783286 444596 497025 792723 393216 433062 380633 303038 157286 324010 404750 52429 2506097 1059062 262144
 AnchorClass2: "Anchor-6" "'mark' Mark Positioning lookup 5 subtable" "Anchor-9" "'mark' Mark Positioning lookup 8 subtable" "Anchor-7" "'mark' Mark Positioning lookup 6 subtable" "Anchor-10" "'mark' Mark Positioning lookup 9 subtable" "Anchor-1" "'mkmk' Mark to Mark in Arabic lookup 1 subtable" "Anchor-0" "'mkmk' Mark to Mark in Arabic lookup 0 subtable"
-BeginChars: 65676 986
+BeginChars: 65676 989
 
 StartChar: .notdef
 Encoding: 65536 -1 0
@@ -8540,7 +8543,7 @@ SplineSet
  1071 1489 l 1
  1071 178.5 l 1
  1585.5 177 l 17
-1071 175 m 25
+1071 175 m 1049
 EndSplineSet
 EndChar
 
@@ -8570,7 +8573,7 @@ SplineSet
  1071 1489 l 1
  1071 178.5 l 1
  1586.5 177 l 17xf0
-1071 175 m 25
+1071 175 m 1049
 EndSplineSet
 EndChar
 
@@ -8596,7 +8599,7 @@ SplineSet
  350 1489 l 1
  152 1489 l 1
  152 0 l 1xe0
-350 175 m 25
+350 175 m 1049
 EndSplineSet
 EndChar
 
@@ -10337,7 +10340,7 @@ SplineSet
  1001 1120 l 1
  1001 0 l 1
  941.25 0 l 1xf4
-817.276 0 m 0
+817.276 0 m 1024
 EndSplineSet
 EndChar
 
@@ -10574,23 +10577,23 @@ VStem: 152 198<0 775 824 1489> 1016 188<-336 1>
 LayerCount: 2
 Fore
 SplineSet
-1204 -336 m 5,0,-1
-152 0 m 1,1,-1
- 152 1489 l 1,2,-1
- 350 1489 l 1,3,-1
- 350 824 l 1,4,-1
- 960 1489 l 1,5,-1
- 1201 1489 l 1,6,-1
- 586 824 l 1,7,-1
- 1060 168 l 5,8,-1
- 1204 168 l 5,9,-1
- 1204 -336 l 5,10,-1
- 1016 -336 l 5,11,-1
- 1016 1 l 5,12,-1
- 926 1 l 5,13,-1
- 350 775 l 1,14,-1
- 350 0 l 1,15,-1
- 152 0 l 1,1,-1
+1204 -336 m 1029
+152 0 m 1
+ 152 1489 l 1
+ 350 1489 l 1
+ 350 824 l 1
+ 960 1489 l 1
+ 1201 1489 l 1
+ 586 824 l 1
+ 1060 168 l 5
+ 1204 168 l 5
+ 1204 -336 l 5
+ 1016 -336 l 5
+ 1016 1 l 5
+ 926 1 l 5
+ 350 775 l 1
+ 350 0 l 1
+ 152 0 l 1
 EndSplineSet
 EndChar
 
@@ -20288,8 +20291,74 @@ Refer: 455 1615 N 1 0 0 1 0 500 2
 Ligature2: "'rlig' Required Ligatures in Arabic lookup 14 subtable" uni064F uni0654
 Ligature2: "'rlig' Required Ligatures in Arabic lookup 14 subtable" uni0654 uni064F
 EndChar
+
+StartChar: uniFF0B
+Encoding: 65291 65291 986
+Width: 1491
+Flags: W
+HStem: 572 155<158 662 830 1334>
+VStem: 662 168<67 572 727 1237>
+LayerCount: 2
+Fore
+SplineSet
+662 1237 m 1
+ 830 1237 l 1
+ 830 727 l 1
+ 1334 732 l 1
+ 1334 572 l 1
+ 830 572 l 1
+ 829 67 l 1
+ 662 67 l 1
+ 662 572 l 1
+ 158 572 l 1
+ 158 732 l 1
+ 662 727 l 1
+ 662 1237 l 1
+EndSplineSet
+EndChar
+
+StartChar: triagdn
+Encoding: 9660 9660 987
+Width: 1491
+Flags: HW
+HStem: 572 155<158 662 830 1334>
+VStem: 662 168<67 572 727 1237>
+LayerCount: 2
+Fore
+SplineSet
+1342 1171 m 1
+ 744 -27 l 1
+ 144 1171 l 1
+ 1342 1171 l 1
+EndSplineSet
+EndChar
+
+StartChar: uni2715
+Encoding: 10005 10005 988
+Width: 1014
+Flags: W
+HStem: 0 21G<15 232 796 1013> 1100 20G<10 227>
+VStem: 10 1003<1117 1120>
+LayerCount: 2
+Fore
+SplineSet
+796 1117 m 1
+ 1013 1117 l 1
+ 633 575 l 1
+ 1013 0 l 1
+ 796 0 l 1
+ 516 440 l 1
+ 232 0 l 1
+ 15 0 l 1
+ 408 586 l 1
+ 10 1120 l 1
+ 227 1120 l 1
+ 524 721 l 1
+ 796 1117 l 1
+EndSplineSet
+EndChar
 EndChars
-BitmapFont: 8 987 6 2 1
+BitmapFont: 8 990 6 2 1
 BDFChar: 0 65536 8 1 7 0 6
 IY*0'JqAFO
 BDFChar: 1 32 2 0 0 0 0
@@ -21186,8 +21255,14 @@ BDFChar: 446 1210 4 1 4 0 5
 J=uCnOH9GB
 BDFChar: 447 1211 4 1 4 0 4
 J=r!cO8o7\
+BDFChar: 986 65291 6 1 5 1 4
++S['%
+BDFChar: 987 9660 6 1 5 1 4
++S['%
+BDFChar: 988 10005 4 0 2 0 3
+TKkc8
 EndBitmapFont
-BitmapFont: 9 987 7 2 1
+BitmapFont: 9 990 7 2 1
 BDFChar: 0 65536 9 1 7 0 6
 rdo`RJqEt%
 BDFChar: 1 32 3 0 0 0 0
@@ -22084,8 +22159,14 @@ BDFChar: 446 1210 5 0 3 0 5
 J:QR>OH9GB
 BDFChar: 447 1211 5 0 3 0 4
 J:QR>O8o7\
+BDFChar: 986 65291 7 1 5 0 4
++<^G%+92BA
+BDFChar: 987 9660 7 1 5 0 4
++<^G%+92BA
+BDFChar: 988 10005 4 0 2 0 4
+TV+QCTE"rl
 EndBitmapFont
-BitmapFont: 10 987 8 2 1
+BitmapFont: 10 990 8 2 1
 BDFChar: 0 65536 10 1 8 0 7
 s+,`PJUrCP
 BDFChar: 1 32 3 0 0 0 0
@@ -22982,8 +23063,14 @@ BDFChar: 446 1210 6 0 4 0 6
 J:R-FLkpie
 BDFChar: 447 1211 6 0 4 0 6
 J:R-FLkpie
+BDFChar: 986 65291 7 1 5 1 5
++<^G%+92BA
+BDFChar: 987 9660 7 0 6 2 5
+rd6[:
+BDFChar: 988 10005 5 0 3 0 4
+OC2I(O8o7\
 EndBitmapFont
-BitmapFont: 11 987 9 2 1 FontForge
+BitmapFont: 11 990 9 2 1 FontForge
 BDFStartProperties: 36
 FONT 1 "-FontForge-Tahoma-Normal-R-Normal--11-80-96-96-P-62-ISO10646-1"
 FONTBOUNDINGBOX 1 "15 11 0 -2"
@@ -23915,8 +24002,14 @@ BDFChar: 446 1210 6 0 4 0 7
 J:N0SaG>Y.
 BDFChar: 447 1211 6 0 4 0 6
 J:N1>Lkpie
+BDFChar: 986 65291 8 0 6 0 6
+&.fEP&.fBQ
+BDFChar: 987 9660 8 0 6 0 6
+&.fEP&.fBQ
+BDFChar: 988 10005 6 0 4 0 5
+Leo3::l#)O
 EndBitmapFont
-BitmapFont: 12 987 10 2 1 FontForge
+BitmapFont: 12 990 10 2 1 FontForge
 BDFStartProperties: 36
 FONT 1 "-FontForge-Tahoma-Normal-R-Normal--12-90-96-96-P-70-ISO10646-1"
 FONTBOUNDINGBOX 1 "16 12 0 -2"
@@ -24648,8 +24741,14 @@ BDFChar: 446 1210 7 0 5 0 8
 J:N0[`.WesKE(uP
 BDFChar: 447 1211 7 0 5 0 7
 J:N0[`.Wes
+BDFChar: 986 65291 8 0 6 0 6
+&.fEP&.fBQ
+BDFChar: 987 9660 8 0 6 0 6
+&.fEP&.fBQ
+BDFChar: 988 10005 6 0 4 0 6
+Lepnj:f)rJ
 EndBitmapFont
-BitmapFont: 13 987 10 3 1 FontForge
+BitmapFont: 13 990 10 3 1 FontForge
 BDFStartProperties: 36
 FONT 1 "-FontForge-Tahoma-Normal-R-Normal--13-100-96-96-P-73-ISO10646-1"
 FONTBOUNDINGBOX 1 "15 13 0 -3"
@@ -25381,8 +25480,14 @@ BDFChar: 446 1210 7 0 5 0 8
 J:N0[`.WesKE(uP
 BDFChar: 447 1211 7 0 5 0 7
 J:N0[`.Wes
+BDFChar: 986 65291 8 0 6 1 7
+&.fEP&.fBQ
+BDFChar: 987 9660 8 0 6 1 7
+&.fEP&.fBQ
+BDFChar: 988 10005 6 0 4 0 6
+Lepnj:f)rJ
 EndBitmapFont
-BitmapFont: 15 987 12 3 1 FontForge
+BitmapFont: 15 990 12 3 1 FontForge
 BDFStartProperties: 36
 FONT 1 "-FontForge-Tahoma-Normal-R-Normal--15-110-96-96-P-85-ISO10646-1"
 FONTBOUNDINGBOX 1 "19 15 0 -3"
@@ -26114,8 +26219,14 @@ BDFChar: 446 1210 8 0 6 0 10
 J:N0#]Y]8PJqARS
 BDFChar: 447 1211 8 0 6 0 9
 J:N0#]Y]8PJq<t&
+BDFChar: 986 65291 11 1 9 0 8
+#QP,1#QP,1s*t@T#QP,1#QOi)
+BDFChar: 987 9660 11 1 9 0 8
+#QP,1#QP,1s*t@T#QP,1#QOi)
+BDFChar: 988 10005 8 0 6 0 7
+Jj_!u&1Bqu
 EndBitmapFont
-BitmapFont: 16 987 13 3 1 FontForge
+BitmapFont: 16 990 13 3 1 FontForge
 BDFStartProperties: 36
 FONT 1 "-FontForge-Tahoma-Normal-R-Normal--16-120-96-96-P-93-ISO10646-1"
 FONTBOUNDINGBOX 1 "21 16 0 -3"
@@ -26847,5 +26958,11 @@ BDFChar: 446 1210 9 0 7 0 11
 J:N0#J@raMJUrB'
 BDFChar: 447 1211 9 0 6 0 9
 J:N0#\AWuNJq<t&
+BDFChar: 986 65291 12 1 9 1 9
+#QP,1#QP,1s*t@T#QP,1#QOi)
+BDFChar: 987 9660 12 1 9 1 9
+#QP,1#QP,1s*t@T#QP,1#QOi)
+BDFChar: 988 10005 8 0 6 0 8
+Jj_"8&1AqpJcGcN
 EndBitmapFont
 EndSplineFont
