@@ -784,9 +784,31 @@ static void NSAPI nsDocumentObserver_AttributeWillChange(nsIDocumentObserver *if
 {
 }
 
+/**
+ * namespace mozilla {
+ *  namespace dom {
+ *    class Element : public FragmentOrElement
+ *    class FragmentOrElement : public nsIContent
+ *  }
+ *}
+*/
 static void NSAPI nsDocumentObserver_AttributeChanged(nsIDocumentObserver *iface, nsIDocument *aDocument,
-        void *aElement, LONG aNameSpaceID, nsIAtom *aAttribute, LONG aModType, const nsAttrValue *aOldValue)
+        /*mozilla::dom::Element*/ void *aElement, LONG aNameSpaceID, nsIAtom *aAttribute, LONG aModType, const nsAttrValue *aOldValue)
 {
+    HTMLDocumentNode *This = impl_from_nsIDocumentObserver(iface);
+    nsIDOMElement *nselem = NULL;
+    nsIContent *nselem_node;
+    nsresult nsres;
+
+    TRACE("%p, %p, %p\n", iface, This->dom_document, aElement);
+
+    if (aElement)
+    {
+        nselem_node = (nsIContent *)aElement;
+        nsres = nsIContent_QueryInterface(nselem_node, &IID_nsIDOMElement, (void **)&nselem);
+        if(NS_SUCCEEDED(nsres) && nselem)
+            check_event_attr(This, nselem);
+    }
 }
 
 static void NSAPI nsDocumentObserver_NativeAnonymousChildListChange(nsIDocumentObserver *iface, nsIDocument *aDocument,
