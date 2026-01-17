@@ -201,6 +201,10 @@ static UINT get_bitmap_info( HDC *hdc, HBITMAP *bitmap, BITMAPINFO *info )
             ((DWORD *)dib_info->bmiColors)[1] = 0x00ff00;
             ((DWORD *)dib_info->bmiColors)[2] = 0x0000ff;
             break;
+        case 1:
+            ((DWORD *)dib_info->bmiColors)[0] = 0x000000;
+            ((DWORD *)dib_info->bmiColors)[1] = 0xffffff;
+            break;    
         default:
             if (dib_info->bmiHeader.biBitCount > 8) break;
             if (!(palette = GetCurrentObject( *hdc, OBJ_PAL ))) return FALSE;
