@@ -7892,6 +7892,88 @@ static void test_font_weight(void)
     ok(bret, "got error %ld\n", GetLastError());
 }
 
+static void test_font_family(void)
+{
+    static const struct
+    {
+        LONG font_height;
+        BYTE charset;
+        BYTE family;
+        const WCHAR *expected_font;
+        BYTE todo;
+    } td[] =
+    {
+        { 6,    DEFAULT_CHARSET,    FF_SWISS,    L"Small Fonts"     },
+        { 12,   DEFAULT_CHARSET,    FF_SWISS,    L"Small Fonts"     },
+        { 16,   DEFAULT_CHARSET,    FF_SWISS,    L"MS Sans Serif"   },
+        { 24,   DEFAULT_CHARSET,    FF_SWISS,    L"MS Sans Serif"   },
+        { 32,   DEFAULT_CHARSET,    FF_SWISS,    L"Arial"           },
+        { 96,   DEFAULT_CHARSET,    FF_SWISS,    L"Arial"           },
+
+        { 6,    DEFAULT_CHARSET,    FF_ROMAN,    L"Times New Roman" },
+        { 12,   DEFAULT_CHARSET,    FF_ROMAN,    L"Times New Roman" },
+        { 16,   DEFAULT_CHARSET,    FF_ROMAN,    L"MS Serif"        },
+        { 24,   DEFAULT_CHARSET,    FF_ROMAN,    L"Times New Roman" },
+        { 32,   DEFAULT_CHARSET,    FF_ROMAN,    L"Times New Roman" },
+        { 96,   DEFAULT_CHARSET,    FF_ROMAN,    L"Times New Roman" },
+
+        /* Test font family with invalid bit */
+        { 6,    DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"Times New Roman" },
+        { 12,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Small Fonts"     },
+        { 16,   DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"MS Serif"        },
+        { 24,   DEFAULT_CHARSET,    0x80 | FF_ROMAN,    L"Times New Roman" },
+        { 32,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Arial"           },
+        { 48,   DEFAULT_CHARSET,    0x80 | FF_MODERN,   L"Courier New"     },
+        { 96,   DEFAULT_CHARSET,    0x80 | FF_SWISS,    L"Arial"           },
+    };
+    WCHAR font_name[1024] = { 0 };
+    TEXTMETRICW metric;
+    HFONT hfont, old;
+    LOGFONTW lf;
+    HDC hdc;
+    INT i;
+
+    if (system_lang_id != LANG_ENGLISH)
+    {
+        winetest_skip("Skipping font family tests on non English setups\n");
+        return;
+    }
+
+    hdc = GetDC(NULL);
+
+    memset(&lf, 0, sizeof(lf));
+
+    for (i = 0; i < ARRAY_SIZE(td); ++i)
+    {
+        lf.lfPitchAndFamily = td[i].family;
+        lf.lfHeight = td[i].font_height;
+        lf.lfCharSet = td[i].charset;
+        hfont = NULL;
+
+        hfont = CreateFontIndirectW(&lf);
+        ok(!!hfont, "Failed to create font.\n");
+
+        old = SelectObject(hdc, hfont);
+
+        memset(&metric, 0, sizeof(metric));
+        GetTextMetricsW(hdc, &metric);
+
+        todo_wine_if(td[i].todo) ok((metric.tmPitchAndFamily & 0x70) == (td[i].family & 0x70),
+            "got unexpected font family %2x, needed %2x\n", metric.tmPitchAndFamily & 0x70, td[i].family & 0x70);
+
+        memset(font_name, 0, sizeof(font_name));
+        GetTextFaceW(hdc, ARRAY_SIZE(font_name), font_name);
+
+        todo_wine ok(!wcscmp(font_name, td[i].expected_font),
+            "Got unexpected font %s for height %lu, expected %s\n", debugstr_w(font_name), td[i].font_height, debugstr_w(td[i].expected_font));
+
+        SelectObject(hdc, old);
+        DeleteObject(hfont);
+    }
+
+    ReleaseDC(0, hdc);
+}
+
 START_TEST(font)
 {
     static const char *test_names[] =
@@ -7982,6 +8064,7 @@ START_TEST(font)
     test_char_width();
     test_select_object();
     test_font_weight();
+    test_font_family();
 
     /* These tests should be last test until RemoveFontResource
      * is properly implemented.
