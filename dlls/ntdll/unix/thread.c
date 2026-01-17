@@ -63,6 +63,8 @@
 #endif
 
 #ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#include <dispatch/dispatch.h>
 #include <mach/mach.h>
 #endif
 #ifdef __FreeBSD__
@@ -1310,32 +1312,42 @@ static NTSTATUS update_attr_list( PS_ATTRIBUTE_LIST *attr, HANDLE thread, const 
     return status;
 }
 
-/***********************************************************************
- *              NtCreateThread   (NTDLL.@)
- */
-NTSTATUS WINAPI NtCreateThread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
-                                HANDLE process, CLIENT_ID *id, CONTEXT *ctx, INITIAL_TEB *teb,
-                                BOOLEAN suspended )
-{
-    FIXME( "%p %d %p %p %p %p %p %d, stub!\n",
-           handle, access, attr, process, id, ctx, teb, suspended );
-    return STATUS_NOT_IMPLEMENTED;
-}
 
 /***********************************************************************
- *              NtCreateThreadEx   (NTDLL.@)
+ *           create_pthread
  */
-NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
-                                  HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
-                                  ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
-                                  SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
+static NTSTATUS create_pthread( struct ntdll_thread_data *thread_data, TEB *teb )
+{
+    pthread_t pthread_id;
+    pthread_attr_t pthread_attr;
+    NTSTATUS status = STATUS_SUCCESS;
+
+    pthread_attr_init( &pthread_attr );
+    pthread_attr_setstack( &pthread_attr, thread_data->kernel_stack, kernel_stack_size );
+    pthread_attr_setguardsize( &pthread_attr, 0 );
+    pthread_attr_setscope( &pthread_attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
+
+    if (pthread_create( &pthread_id, &pthread_attr, (void * (*)(void *))start_thread, teb ))
+        status = STATUS_NO_MEMORY;
+
+    pthread_attr_destroy( &pthread_attr );
+    return status;
+}
+
+
+/***********************************************************************
+ *              create_thread
+ */
+static NTSTATUS create_thread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                               HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
+                               ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
+                               SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list,
+                               NTSTATUS (*thread_create)( struct ntdll_thread_data *thread_data, TEB *teb ) )
 {
     static const ULONG supported_flags = THREAD_CREATE_FLAGS_CREATE_SUSPENDED | THREAD_CREATE_FLAGS_SKIP_THREAD_ATTACH |
                                          THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT |
                                          THREAD_CREATE_FLAGS_BYPASS_PROCESS_FREEZE;
     sigset_t sigset;
-    pthread_t pthread_id;
-    pthread_attr_t pthread_attr;
     data_size_t len;
     struct object_attributes *objattr;
     struct ntdll_thread_data *thread_data;
@@ -1442,18 +1454,12 @@ NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATT
     thread_data->start = start;
     thread_data->param = param;
 
-    pthread_attr_init( &pthread_attr );
-    pthread_attr_setstack( &pthread_attr, thread_data->kernel_stack, kernel_stack_size );
-    pthread_attr_setguardsize( &pthread_attr, 0 );
-    pthread_attr_setscope( &pthread_attr, PTHREAD_SCOPE_SYSTEM ); /* force creating a kernel thread */
     InterlockedIncrement( &nb_threads );
-    if (pthread_create( &pthread_id, &pthread_attr, (void * (*)(void *))start_thread, teb ))
+    if ((status = thread_create( thread_data, teb )))
     {
         InterlockedDecrement( &nb_threads );
         virtual_free_teb( teb );
-        status = STATUS_NO_MEMORY;
     }
-    pthread_attr_destroy( &pthread_attr );
 
 done:
     pthread_sigmask( SIG_SETMASK, &sigset, NULL );
@@ -1465,6 +1471,31 @@ done:
     }
     if (attr_list) status = update_attr_list( attr_list, *handle, &teb->ClientId, teb );
     return status;
+}
+
+
+/***********************************************************************
+ *              NtCreateThread   (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateThread( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                                HANDLE process, CLIENT_ID *id, CONTEXT *ctx, INITIAL_TEB *teb,
+                                BOOLEAN suspended )
+{
+    FIXME( "%p %d %p %p %p %p %p %d, stub!\n",
+           handle, access, attr, process, id, ctx, teb, suspended );
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+/***********************************************************************
+ *              NtCreateThreadEx   (NTDLL.@)
+ */
+NTSTATUS WINAPI NtCreateThreadEx( HANDLE *handle, ACCESS_MASK access, OBJECT_ATTRIBUTES *attr,
+                                  HANDLE process, PRTL_THREAD_START_ROUTINE start, void *param,
+                                  ULONG flags, ULONG_PTR zero_bits, SIZE_T stack_commit,
+                                  SIZE_T stack_reserve, PS_ATTRIBUTE_LIST *attr_list )
+{
+    return create_thread( handle, access, attr, process, start, param, flags,
+                          zero_bits, stack_commit, stack_reserve, attr_list, create_pthread );
 }
 
 
@@ -2743,3 +2774,64 @@ NTSTATUS WINAPI NtGetNextThread( HANDLE process, HANDLE thread, ACCESS_MASK acce
     *handle = ret_handle;
     return ret;
 }
+
+
+#ifdef __APPLE__
+static dispatch_semaphore_t main_thread_transformed_semaphore;
+
+static void signal_semaphore_and_start_thread( TEB *teb )
+{
+    dispatch_semaphore_signal( main_thread_transformed_semaphore );
+    start_thread( teb );
+}
+
+
+/***********************************************************************
+ *           run_on_mac_main_thread
+ */
+static NTSTATUS run_on_mac_main_thread( struct ntdll_thread_data *thread_data, TEB *teb )
+{
+    CFRunLoopSourceContext source_context = { 0 };
+    CFRunLoopSourceRef source;
+
+    source_context.perform = (void (*)(void *))signal_semaphore_and_start_thread;
+    source_context.info = teb;
+    source = CFRunLoopSourceCreate( NULL, 0, &source_context );
+    if (!source)
+        return STATUS_NO_MEMORY;
+
+    CFRunLoopAddSource( CFRunLoopGetMain(), source, kCFRunLoopCommonModes );
+    CFRunLoopSourceSignal( source );
+    CFRunLoopWakeUp( CFRunLoopGetMain() );
+    CFRelease( source );
+    return STATUS_SUCCESS;
+}
+
+
+/***********************************************************************
+ *           transform_mac_main_thread
+ *
+ * Transform the process main thread into a Wine thread
+ */
+void transform_mac_main_thread( void )
+{
+    NTSTATUS status;
+    HANDLE handle;
+
+    main_thread_transformed_semaphore = dispatch_semaphore_create( 0 );
+
+    status = create_thread( &handle, THREAD_ALL_ACCESS, NULL, NtCurrentProcess(),
+                            p__wine_mac_run_cfrunloop, NULL,
+                            THREAD_CREATE_FLAGS_HIDE_FROM_DEBUGGER | THREAD_CREATE_FLAGS_SKIP_LOADER_INIT,
+                            0, 0, 0, NULL, run_on_mac_main_thread );
+    if (!status)
+    {
+        NtClose( handle );
+        dispatch_semaphore_wait( main_thread_transformed_semaphore, DISPATCH_TIME_FOREVER );
+    }
+    else
+        ERR("Failed to transform main thread: %x\n", status);
+
+    dispatch_release( main_thread_transformed_semaphore );
+}
+#endif

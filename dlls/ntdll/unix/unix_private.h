@@ -170,6 +170,7 @@ extern void *pKiUserEmulationDispatcher;
 extern void *pLdrInitializeThunk;
 extern void *pRtlUserThreadStart;
 extern void *p__wine_ctrl_routine;
+extern void *p__wine_mac_run_cfrunloop;
 extern SYSTEM_DLL_INIT_BLOCK *pLdrSystemDllInitBlock;
 
 struct _FILE_FS_DEVICE_INFORMATION;
@@ -261,6 +262,7 @@ extern void set_process_instrumentation_callback( void *callback );
 extern void *get_cpu_area( USHORT machine );
 extern void set_thread_id( TEB *teb, DWORD pid, DWORD tid );
 extern NTSTATUS init_thread_stack( TEB *teb, ULONG_PTR limit, SIZE_T reserve_size, SIZE_T commit_size );
+extern void transform_mac_main_thread( void );
 extern void DECLSPEC_NORETURN abort_thread( int status );
 extern void DECLSPEC_NORETURN abort_process( int status );
 extern void DECLSPEC_NORETURN exit_process( int status );
