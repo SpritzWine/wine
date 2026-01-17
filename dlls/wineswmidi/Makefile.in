@@ -1,0 +1,6 @@
+MODULE = wineswmidi.dll
+IMPORTS = uuid ole32
+DELAYIMPORTS = winmm
+
+SOURCES = \
+	swmidi.c

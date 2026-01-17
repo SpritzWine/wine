@@ -265,6 +265,8 @@ typedef void (CALLBACK *LPDRVCALLBACK)(HDRVR,UINT,DWORD_PTR,DWORD_PTR,DWORD_PTR)
 
 #define MM_PC_JOYSTICK          12      /* Joystick adapter */
 
+#define MM_MSFT_WDMAUDIO_MIDIOUT    102
+
 #define MM_CREATIVE_SBP16_WAVEOUT   104 
 
 WINMMAPI UINT WINAPI mmsystemGetVersion(void);
