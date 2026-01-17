@@ -879,6 +879,10 @@ static void test_datalink(void)
     r = IShellLinkW_QueryInterface( sl, &IID_IShellLinkDataList, (void **)&dl );
     ok( r == S_OK, "Failed to get interface, hr %#lx.\n", r);
 
+    /* test null obj case */
+    r = IShellLinkW_QueryInterface( sl, &IID_IShellLinkDataList, NULL );
+    ok(r == E_POINTER, "Unexpected hr %#lx.\n", r);
+
     flags = 0;
     r = IShellLinkDataList_GetFlags( dl, &flags );
     ok( r == S_OK, "GetFlags failed\n");
