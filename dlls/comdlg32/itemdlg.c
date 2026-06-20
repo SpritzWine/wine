@@ -2402,9 +2402,20 @@ static HRESULT set_portal_result(FileDialogImpl *This, const WCHAR *dos_path)
     IShellItemArray *psia;
     HRESULT hr;
 
+    /* SHCreateItemFromParsingName validates existence, so it fails for a
+     * brand-new Save target. Fall back to a simple pidl, which doesn't require
+     * the file to exist (mirrors on_default_action's SHSimpleIDListFromPath). */
     hr = SHCreateItemFromParsingName(dos_path, NULL, &IID_IShellItem, (void **)&psi);
     if (FAILED(hr))
-        return hr;
+    {
+        LPITEMIDLIST pidl = SHSimpleIDListFromPath(dos_path);
+        if (!pidl)
+            return hr;
+        hr = SHCreateItemFromIDList(pidl, &IID_IShellItem, (void **)&psi);
+        ILFree(pidl);
+        if (FAILED(hr))
+            return hr;
+    }
 
     hr = SHCreateShellItemArrayFromShellItem(psi, &IID_IShellItemArray, (void **)&psia);
     IShellItem_Release(psi);
