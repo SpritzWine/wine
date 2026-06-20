@@ -29,6 +29,11 @@
 extern HINSTANCE COMDLG32_hInstance;
 extern HANDLE COMDLG32_hActCtx;
 
+/* TRUE once __wine_init_unix_call() has set up the bridge to comdlg32.so (the
+ * host file-chooser portal). When FALSE, portal calls are skipped and Wine's own
+ * dialogs are used. */
+extern BOOL COMDLG32_unixlib_initialized;
+
 void	COMDLG32_SetCommDlgExtendedError(DWORD err);
 
 /* Find/Replace local definitions */
