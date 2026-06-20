@@ -2450,6 +2450,8 @@ static BOOL try_portal_dialog(FileDialogImpl *This, HRESULT *hr)
     IShellItem *folder;
     BOOL multiple = (This->options & FOS_ALLOWMULTISELECT) != 0;
     BOOL directory = (This->options & FOS_PICKFOLDERS) != 0;
+    BOOL save = This->dlg_type == ITEMDLG_TYPE_SAVE;
+    ULONG out_filter = 0;
 
     /* Custom controls can't be shown through the portal -> use Wine's dialog. */
     if (!list_empty(&This->cctrls))
@@ -2461,13 +2463,14 @@ static BOOL try_portal_dialog(FileDialogImpl *This, HRESULT *hr)
 
     filter = build_portal_filter(This);
 
-    switch (COMDLG32_RunPortalChooser(This->dlg_type == ITEMDLG_TYPE_SAVE,
-                                      multiple, directory,
+    switch (COMDLG32_RunPortalChooser(save, multiple, directory,
                                       This->custom_title, initial_dir, This->set_filename,
-                                      filter, 0,
-                                      dos, ARRAY_SIZE(dos), NULL))
+                                      filter, This->filetypeindex + 1,
+                                      dos, ARRAY_SIZE(dos), &out_filter))
     {
     case PORTAL_CHOSEN:
+        if (out_filter) This->filetypeindex = out_filter - 1;
+        if (save) COMDLG32_AppendDefaultExt(dos, This->default_ext);
         if (SUCCEEDED(set_portal_result(This, dos)) && events_OnFileOk(This) == S_OK)
             *hr = S_OK;
         else
