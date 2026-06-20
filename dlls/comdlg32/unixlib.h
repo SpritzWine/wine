@@ -36,14 +36,20 @@
  * wow64 pointer thunking is required. */
 struct file_chooser_params
 {
-    BOOL        save;          /* TRUE: Save dialog, FALSE: Open dialog */
-    const char *title;         /* dialog title, or NULL */
-    const char *initial_dir;   /* starting host directory, or NULL */
-    const char *current_name;  /* suggested name for Save, or NULL */
-    const char *filters;       /* "label\0glob;glob\0...\0\0", or NULL */
-    char       *out_path;      /* out: chosen host path, NUL-terminated UTF-8 */
-    ULONG       out_size;      /* in: capacity of out_path (bytes);
-                                * out: bytes required including the NUL */
+    BOOL        save;           /* TRUE: Save dialog, FALSE: Open dialog */
+    BOOL        multiple;       /* allow selecting multiple files */
+    BOOL        directory;      /* pick a directory rather than a file */
+    const char *title;          /* dialog title, or NULL */
+    const char *initial_dir;    /* starting host directory, or NULL */
+    const char *current_name;   /* suggested name for Save, or NULL */
+    const char *filters;        /* "label\0glob;glob\0...\0\0", or NULL */
+    ULONG       current_filter; /* 1-based index of the filter to pre-select, 0 = none */
+    char       *out_paths;      /* out: chosen host path(s), each NUL-terminated,
+                                 * the list double-NUL-terminated, UTF-8 */
+    ULONG       out_size;       /* in: capacity of out_paths (bytes);
+                                 * out: bytes required including the final NUL */
+    ULONG       out_filter;     /* out: 1-based index of the filter the user
+                                 * selected, 0 = unknown */
 };
 
 enum comdlg32_funcs
