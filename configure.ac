@@ -239,15 +239,24 @@ dnl Each dll's Makefile.in appends its own -Wl,-lwine_<dll> (e.g. ntdll links wi
 WINE_RUST_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps"
 AC_SUBST(WINE_RUST_LDFLAGS)
 
-dnl PE-side Rust: search path + link for the no_std static lib libwine_ntdll_pe.a
-dnl (rust/src_dll/ntdll_pe), linked into PE dlls that call into Rust. Unlike the
-dnl Unix-side WINE_RUST_LDFLAGS (a .so needing rpath), this is a static archive,
-dnl so no rpath -- just -L/-l. The archive is seen before the objects that
-dnl reference it, so ld would drop its members; -Wl,-u forces the crate's link
-dnl anchor, and since the crate is built with codegen-units=1 that single symbol
-dnl pulls in every entry point. A PE dll just adds this to EXTRADLLFLAGS.
-WINE_RUST_PE_LDFLAGS="-L$ac_pwd/../rust/target/$RUST_TARGET/release -lwine_ntdll_pe -Wl,-u,wine_ntdll_pe_anchor"
-AC_SUBST(WINE_RUST_PE_LDFLAGS)
+dnl PE-side Rust: per-arch search path + link for the no_std static lib
+dnl libwine_ntdll_pe.a (rust/src_dll/ntdll_pe), linked into the PE dlls that call
+dnl into Rust. Under new-WoW64 the PE dlls are built as REAL PE for each arch in
+dnl $PE_ARCHS, so we need one Rust PE staticlib per arch, built for the matching
+dnl *-pc-windows-gnullvm target (the clang/lld PE flavor of Wine's PE cross-compiler).
+dnl Unlike the Unix-side WINE_RUST_LDFLAGS (a .so needing rpath), this is a static
+dnl archive -- just -L/-l. The archive is seen before the objects that reference it,
+dnl so the linker would drop its members; lld-link's /include: directive forces the
+dnl crate's single anchor symbol (codegen-units=1 means that one symbol pulls in every
+dnl entry point). This is the COFF/PE equivalent of ELF ld's "-u SYM": the PE link
+dnl goes through clang+lld-link (MSVC flavor, via winegcc -b <arch>-windows), which
+dnl doesn't understand -u (it would treat the symbol as an input file). i386 PE
+dnl mangles C symbols with a leading underscore, x86_64 PE does not -- hence the
+dnl per-arch anchor name. A PE dll adds the matching $(<arch>_EXTRADLLFLAGS).
+WINE_RUST_PE_LDFLAGS_i386="-L$ac_pwd/../rust/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
+WINE_RUST_PE_LDFLAGS_x86_64="-L$ac_pwd/../rust/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
+AC_SUBST(WINE_RUST_PE_LDFLAGS_i386)
+AC_SUBST(WINE_RUST_PE_LDFLAGS_x86_64)
 
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
 WINE_API_DLLFLAGS="-mwinerust"
@@ -3679,7 +3688,12 @@ WINE_CONFIG_MAKEFILE(programs/ngen)
 WINE_CONFIG_MAKEFILE(programs/notepad)
 WINE_CONFIG_MAKEFILE(programs/odbcad32)
 WINE_CONFIG_MAKEFILE(programs/oleview)
-WINE_CONFIG_MAKEFILE(programs/ping)
+dnl programs/ping is the SpritzWine -mwinerust demo (a PE program that calls into
+dnl Rust via wine_api). Under new-WoW64 the program is built as REAL PE, which can't
+dnl link the ELF cdylib libwine_api.so -- so the -mwinerust path needs reworking
+dnl (wine_api as a PE library + winerust.h regenerated) before this can build. That
+dnl is the deferred Stage 3 follow-up; disabled here so the WoW64 build stays green.
+dnl WINE_CONFIG_MAKEFILE(programs/ping)
 WINE_CONFIG_MAKEFILE(programs/plugplay)
 WINE_CONFIG_MAKEFILE(programs/pnputil)
 WINE_CONFIG_MAKEFILE(programs/powershell)
