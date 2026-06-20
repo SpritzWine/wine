@@ -34,6 +34,14 @@ extern HANDLE COMDLG32_hActCtx;
  * dialogs are used. */
 extern BOOL COMDLG32_unixlib_initialized;
 
+/* portal.c: show the host's native file chooser (XDG desktop portal). Shared by
+ * the classic (filedlg.c) and Vista-style (itemdlg.c) dialogs. On PORTAL_CHOSEN,
+ * dos_out holds the chosen file as a DOS path. */
+enum portal_result { PORTAL_FALLBACK, PORTAL_CHOSEN, PORTAL_CANCELLED };
+enum portal_result COMDLG32_RunPortalChooser( BOOL save, const WCHAR *title,
+        const WCHAR *initial_dir, const WCHAR *current_name, const WCHAR *filter,
+        WCHAR *dos_out, DWORD dos_out_len );
+
 void	COMDLG32_SetCommDlgExtendedError(DWORD err);
 
 /* Find/Replace local definitions */
