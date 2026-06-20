@@ -2394,31 +2394,43 @@ static WCHAR *build_portal_filter(FileDialogImpl *This)
     return blob;
 }
 
-/* Wrap a single chosen DOS path in an IShellItemArray as This->psia_results,
- * the same shape IFileDialog::GetResult(s) read from. */
-static HRESULT set_portal_result(FileDialogImpl *This, const WCHAR *dos_path)
+/* Build This->psia_results (what GetResult/GetResults read) from a double-NUL
+ * list of full DOS paths. Uses simple pidls like on_default_action, which work
+ * for both existing files and brand-new Save targets and naturally cover
+ * multi-selection. */
+static HRESULT set_portal_result(FileDialogImpl *This, const WCHAR *list)
 {
-    IShellItem *psi;
+    IShellFolder *psf_desktop;
+    LPITEMIDLIST *pidls;
     IShellItemArray *psia;
+    const WCHAR *path;
+    UINT count = 0, i = 0;
     HRESULT hr;
 
-    /* SHCreateItemFromParsingName validates existence, so it fails for a
-     * brand-new Save target. Fall back to a simple pidl, which doesn't require
-     * the file to exist (mirrors on_default_action's SHSimpleIDListFromPath). */
-    hr = SHCreateItemFromParsingName(dos_path, NULL, &IID_IShellItem, (void **)&psi);
-    if (FAILED(hr))
-    {
-        LPITEMIDLIST pidl = SHSimpleIDListFromPath(dos_path);
-        if (!pidl)
-            return hr;
-        hr = SHCreateItemFromIDList(pidl, &IID_IShellItem, (void **)&psi);
-        ILFree(pidl);
-        if (FAILED(hr))
-            return hr;
-    }
+    for (path = list; *path; path += lstrlenW(path) + 1)
+        count++;
+    if (!count)
+        return E_FAIL;
 
-    hr = SHCreateShellItemArrayFromShellItem(psi, &IID_IShellItemArray, (void **)&psia);
-    IShellItem_Release(psi);
+    hr = SHGetDesktopFolder(&psf_desktop);
+    if (FAILED(hr))
+        return hr;
+
+    if (!(pidls = malloc(count * sizeof(*pidls))))
+    {
+        IShellFolder_Release(psf_desktop);
+        return E_OUTOFMEMORY;
+    }
+    for (path = list; *path; path += lstrlenW(path) + 1)
+        pidls[i++] = SHSimpleIDListFromPath(path);
+
+    hr = SHCreateShellItemArray(NULL, psf_desktop, count, (PCUITEMID_CHILD_ARRAY)pidls, &psia);
+
+    IShellFolder_Release(psf_desktop);
+    for (i = 0; i < count; i++)
+        ILFree(pidls[i]);
+    free(pidls);
+
     if (FAILED(hr))
         return hr;
 
@@ -2433,14 +2445,13 @@ static HRESULT set_portal_result(FileDialogImpl *This, const WCHAR *dos_path)
  * to fall back to Wine's own dialog. */
 static BOOL try_portal_dialog(FileDialogImpl *This, HRESULT *hr)
 {
-    WCHAR dos[4096];
+    WCHAR dos[8192];
     WCHAR *filter, *initial_dir = NULL;
     IShellItem *folder;
+    BOOL multiple = (This->options & FOS_ALLOWMULTISELECT) != 0;
+    BOOL directory = (This->options & FOS_PICKFOLDERS) != 0;
 
-    /* Customization the portal can't represent -> use Wine's dialog. Folder
-     * picking and multi-select are deferred to a later iteration. */
-    if (This->options & (FOS_ALLOWMULTISELECT | FOS_PICKFOLDERS))
-        return FALSE;
+    /* Custom controls can't be shown through the portal -> use Wine's dialog. */
     if (!list_empty(&This->cctrls))
         return FALSE;
 
@@ -2451,7 +2462,7 @@ static BOOL try_portal_dialog(FileDialogImpl *This, HRESULT *hr)
     filter = build_portal_filter(This);
 
     switch (COMDLG32_RunPortalChooser(This->dlg_type == ITEMDLG_TYPE_SAVE,
-                                      FALSE, FALSE,
+                                      multiple, directory,
                                       This->custom_title, initial_dir, This->set_filename,
                                       filter, 0,
                                       dos, ARRAY_SIZE(dos), NULL))
