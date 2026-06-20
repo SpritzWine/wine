@@ -323,38 +323,52 @@ static BOOL fill_ofn_result_multi( FileOpenDlgInfos *info, const WCHAR *list )
     return ok;
 }
 
+void COMDLG32_AppendDefaultExt( WCHAR *path, const WCHAR *defext )
+{
+    if (!defext || !*defext) return;
+    if (*PathFindExtensionW( path )) return; /* already has an extension */
+    lstrcatW( path, L"." );
+    lstrcatW( path, defext );
+    path[ lstrlenW( path ) + 1 ] = 0;        /* re-terminate the single-entry list */
+}
+
 BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
 {
     DWORD flags = info->ofnInfos->Flags;
     BOOL multiple = (flags & OFN_ALLOWMULTISELECT) != 0;
+    BOOL save = (info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) != 0;
     const WCHAR *current_name;
     WCHAR dos[8192];
+    ULONG out_filter = 0;
 
     /* Customization we can't express through the portal -> use Wine's dialog. */
     if (flags & (OFN_ENABLEHOOK | OFN_ENABLETEMPLATE | OFN_ENABLETEMPLATEHANDLE))
         return FALSE;
 
-    current_name = ((info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) && info->filename)
-                   ? PathFindFileNameW( info->filename ) : NULL;
+    current_name = (save && info->filename) ? PathFindFileNameW( info->filename ) : NULL;
 
-    switch (COMDLG32_RunPortalChooser( (info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) != 0,
-                                       multiple, FALSE,
+    switch (COMDLG32_RunPortalChooser( save, multiple, FALSE,
                                        info->title, info->initdir, current_name,
-                                       info->filter, 0,
-                                       dos, ARRAY_SIZE(dos), NULL ))
+                                       info->filter, info->ofnInfos->nFilterIndex,
+                                       dos, ARRAY_SIZE(dos), &out_filter ))
     {
     case PORTAL_CHOSEN:
+        if (out_filter) info->ofnInfos->nFilterIndex = out_filter;
         if (multiple)
             *result = fill_ofn_result_multi( info, dos );
-        else if (info->ofnInfos->lpstrFile && (UINT)lstrlenW( dos ) >= info->ofnInfos->nMaxFile)
-        {
-            COMDLG32_SetCommDlgExtendedError( FNERR_BUFFERTOOSMALL );
-            *result = FALSE;
-        }
         else
         {
-            fill_ofn_result( info, dos );
-            *result = TRUE;
+            if (save) COMDLG32_AppendDefaultExt( dos, info->defext );
+            if (info->ofnInfos->lpstrFile && (UINT)lstrlenW( dos ) >= info->ofnInfos->nMaxFile)
+            {
+                COMDLG32_SetCommDlgExtendedError( FNERR_BUFFERTOOSMALL );
+                *result = FALSE;
+            }
+            else
+            {
+                fill_ofn_result( info, dos );
+                *result = TRUE;
+            }
         }
         return TRUE;
 
