@@ -242,10 +242,11 @@ AC_SUBST(WINE_RUST_LDFLAGS)
 dnl PE-side Rust: search path + link for the no_std static lib libwine_ntdll_pe.a
 dnl (rust/src_dll/ntdll_pe), linked into PE dlls that call into Rust. Unlike the
 dnl Unix-side WINE_RUST_LDFLAGS (a .so needing rpath), this is a static archive,
-dnl so no rpath -- just -L/-l. A PE dll adds this to EXTRADLLFLAGS plus a
-dnl -Wl,-u,<sym> for each Rust entry point it uses (the archive is seen before the
-dnl objects, so the symbols must be forced undefined to pull the members in).
-WINE_RUST_PE_LDFLAGS="-L$ac_pwd/../rust/target/$RUST_TARGET/release -lwine_ntdll_pe"
+dnl so no rpath -- just -L/-l. The archive is seen before the objects that
+dnl reference it, so ld would drop its members; -Wl,-u forces the crate's link
+dnl anchor, and since the crate is built with codegen-units=1 that single symbol
+dnl pulls in every entry point. A PE dll just adds this to EXTRADLLFLAGS.
+WINE_RUST_PE_LDFLAGS="-L$ac_pwd/../rust/target/$RUST_TARGET/release -lwine_ntdll_pe -Wl,-u,wine_ntdll_pe_anchor"
 AC_SUBST(WINE_RUST_PE_LDFLAGS)
 
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
