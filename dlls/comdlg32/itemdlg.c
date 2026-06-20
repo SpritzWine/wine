@@ -2451,8 +2451,10 @@ static BOOL try_portal_dialog(FileDialogImpl *This, HRESULT *hr)
     filter = build_portal_filter(This);
 
     switch (COMDLG32_RunPortalChooser(This->dlg_type == ITEMDLG_TYPE_SAVE,
+                                      FALSE, FALSE,
                                       This->custom_title, initial_dir, This->set_filename,
-                                      filter, dos, ARRAY_SIZE(dos)))
+                                      filter, 0,
+                                      dos, ARRAY_SIZE(dos), NULL))
     {
     case PORTAL_CHOSEN:
         if (SUCCEEDED(set_portal_result(This, dos)) && events_OnFileOk(This) == S_OK)
