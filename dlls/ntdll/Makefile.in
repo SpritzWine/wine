@@ -7,7 +7,7 @@ EXTRAINCL = $(SYMCRYPT_PE_CFLAGS) $(ZLIB_PE_CFLAGS)
 UNIX_CFLAGS  = $(HWLOC_CFLAGS)
 UNIX_LIBS    = $(IOKIT_LIBS) $(COREFOUNDATION_LIBS) $(CORESERVICES_LIBS) $(RT_LIBS) $(PTHREAD_LIBS) $(I386_LIBS) $(PROCSTAT_LIBS) $(HWLOC_LIBS) $(WINE_RUST_LDFLAGS) -Wl,-lwine_ntdll
 
-EXTRADLLFLAGS = -nodefaultlibs -L../rust/target/i686-unknown-linux-gnu/release -lwine_ntdll_pe
+EXTRADLLFLAGS = -nodefaultlibs -L../rust/target/i686-unknown-linux-gnu/release -lwine_ntdll_pe -Wl,-u,rs_rtl_lznt1_compress -Wl,-u,rs_rtl_lznt1_decompress_chunk
 i386_EXTRADLLFLAGS = -Wl,--image-base,0x7bc00000
 x86_64_EXTRADLLFLAGS = -Wl,--image-base,0x170000000
 
