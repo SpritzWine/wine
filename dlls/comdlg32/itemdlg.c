@@ -2364,6 +2364,105 @@ static INT_PTR CALLBACK itemdlg_dlgproc(HWND hwnd, UINT umessage, WPARAM wparam,
     return FALSE;
 }
 
+/* Build a "name\0spec\0...\0\0" wide filter blob from the dialog's filterspecs,
+ * matching the form COMDLG32_RunPortalChooser expects. */
+static WCHAR *build_portal_filter(FileDialogImpl *This)
+{
+    WCHAR *blob, *p;
+    SIZE_T len = 1; /* trailing terminator */
+    UINT i;
+
+    if (!This->filterspec_count)
+        return NULL;
+
+    for (i = 0; i < This->filterspec_count; i++)
+        len += lstrlenW(This->filterspecs[i].pszName) + 1
+             + lstrlenW(This->filterspecs[i].pszSpec) + 1;
+
+    if (!(blob = malloc(len * sizeof(WCHAR))))
+        return NULL;
+
+    p = blob;
+    for (i = 0; i < This->filterspec_count; i++)
+    {
+        lstrcpyW(p, This->filterspecs[i].pszName);
+        p += lstrlenW(p) + 1;
+        lstrcpyW(p, This->filterspecs[i].pszSpec);
+        p += lstrlenW(p) + 1;
+    }
+    *p = 0;
+    return blob;
+}
+
+/* Wrap a single chosen DOS path in an IShellItemArray as This->psia_results,
+ * the same shape IFileDialog::GetResult(s) read from. */
+static HRESULT set_portal_result(FileDialogImpl *This, const WCHAR *dos_path)
+{
+    IShellItem *psi;
+    IShellItemArray *psia;
+    HRESULT hr;
+
+    hr = SHCreateItemFromParsingName(dos_path, NULL, &IID_IShellItem, (void **)&psi);
+    if (FAILED(hr))
+        return hr;
+
+    hr = SHCreateShellItemArrayFromShellItem(psi, &IID_IShellItemArray, (void **)&psia);
+    IShellItem_Release(psi);
+    if (FAILED(hr))
+        return hr;
+
+    if (This->psia_results)
+        IShellItemArray_Release(This->psia_results);
+    This->psia_results = psia;
+    return S_OK;
+}
+
+/* Offer the host's native file chooser for the Vista-style dialog. Returns TRUE
+ * if it handled the dialog (with *hr = the value Show() should return), or FALSE
+ * to fall back to Wine's own dialog. */
+static BOOL try_portal_dialog(FileDialogImpl *This, HRESULT *hr)
+{
+    WCHAR dos[4096];
+    WCHAR *filter, *initial_dir = NULL;
+    IShellItem *folder;
+
+    /* Customization the portal can't represent -> use Wine's dialog. Folder
+     * picking and multi-select are deferred to a later iteration. */
+    if (This->options & (FOS_ALLOWMULTISELECT | FOS_PICKFOLDERS))
+        return FALSE;
+    if (!list_empty(&This->cctrls))
+        return FALSE;
+
+    folder = This->psi_setfolder ? This->psi_setfolder : This->psi_defaultfolder;
+    if (folder)
+        IShellItem_GetDisplayName(folder, SIGDN_FILESYSPATH, &initial_dir);
+
+    filter = build_portal_filter(This);
+
+    switch (COMDLG32_RunPortalChooser(This->dlg_type == ITEMDLG_TYPE_SAVE,
+                                      This->custom_title, initial_dir, This->set_filename,
+                                      filter, dos, ARRAY_SIZE(dos)))
+    {
+    case PORTAL_CHOSEN:
+        if (SUCCEEDED(set_portal_result(This, dos)) && events_OnFileOk(This) == S_OK)
+            *hr = S_OK;
+        else
+            *hr = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+        break;
+    case PORTAL_CANCELLED:
+        *hr = HRESULT_FROM_WIN32(ERROR_CANCELLED);
+        break;
+    default: /* PORTAL_FALLBACK */
+        free(filter);
+        CoTaskMemFree(initial_dir);
+        return FALSE;
+    }
+
+    free(filter);
+    CoTaskMemFree(initial_dir);
+    return TRUE;
+}
+
 static HRESULT create_dialog(FileDialogImpl *This, HWND parent)
 {
     ULONG_PTR ctx_cookie = 0;
@@ -2522,9 +2621,15 @@ static ULONG WINAPI IFileDialog2_fnRelease(IFileDialog2 *iface)
 static HRESULT WINAPI IFileDialog2_fnShow(IFileDialog2 *iface, HWND hwndOwner)
 {
     FileDialogImpl *This = impl_from_IFileDialog2(iface);
+    HRESULT portal_hr;
     TRACE("%p (%p)\n", iface, hwndOwner);
 
     This->opendropdown_has_selection = FALSE;
+
+    /* Offer the host's native file chooser first; it falls back here when no
+     * portal is available or the app needs Wine's own UI. */
+    if (try_portal_dialog(This, &portal_hr))
+        return portal_hr;
 
     return create_dialog(This, hwndOwner);
 }
