@@ -162,30 +162,30 @@ static void fill_ofn_result( FileOpenDlgInfos *info, const WCHAR *path )
     }
 }
 
-BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
+/* Shared core: marshal the request, make the unix call to the portal client,
+ * and translate the chosen host path back to a DOS path. Used by both the
+ * classic and Vista-style dialogs. */
+enum portal_result COMDLG32_RunPortalChooser( BOOL save, const WCHAR *title,
+        const WCHAR *initial_dir, const WCHAR *current_name, const WCHAR *filter,
+        WCHAR *dos_out, DWORD dos_out_len )
 {
     struct file_chooser_params params = { 0 };
     char out_path[4096];
-    char *initial_dir = NULL;
-    WCHAR *dos = NULL;
+    char *initial_dir8 = NULL;
     NTSTATUS status;
-    DWORD flags = info->ofnInfos->Flags;
-    BOOL handled = FALSE;
+    WCHAR *dos;
+    enum portal_result ret;
 
-    /* Customization we can't express through the portal -> use Wine's dialog.
-     * Multi-select is deferred to a later iteration. */
-    if (flags & (OFN_ENABLEHOOK | OFN_ENABLETEMPLATE | OFN_ENABLETEMPLATEHANDLE | OFN_ALLOWMULTISELECT))
-        return FALSE;
     if (!COMDLG32_unixlib_initialized || portal_disabled() || !load_path_funcs())
-        return FALSE;
+        return PORTAL_FALLBACK;
 
-    params.save  = (info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) != 0;
-    params.title = utf8_dup( info->title );
-    if (info->initdir && *info->initdir)
-        params.initial_dir = initial_dir = p_wine_get_unix_file_name( info->initdir );
-    if (params.save)
-        params.current_name = utf8_dup( PathFindFileNameW( info->filename ) );
-    params.filters  = serialize_filters( info->filter );
+    params.save  = save;
+    params.title = utf8_dup( title );
+    if (initial_dir && *initial_dir)
+        params.initial_dir = initial_dir8 = p_wine_get_unix_file_name( initial_dir );
+    if (save && current_name && *current_name)
+        params.current_name = utf8_dup( current_name );
+    params.filters  = serialize_filters( filter );
     params.out_path = out_path;
     params.out_size = sizeof(out_path);
 
@@ -195,6 +195,7 @@ BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
     free( (void *)params.title );
     free( (void *)params.current_name );
     free( (void *)params.filters );
+    if (initial_dir8) HeapFree( GetProcessHeap(), 0, initial_dir8 );
 
     switch (status)
     {
@@ -204,10 +205,42 @@ BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
         {
             /* Chosen file is outside every mapped drive; report as a cancel
              * rather than re-show Wine's dialog over the user's pick. */
-            *result = FALSE;
-            handled = TRUE;
+            ret = PORTAL_CANCELLED;
             break;
         }
+        lstrcpynW( dos_out, dos, dos_out_len );
+        HeapFree( GetProcessHeap(), 0, dos );
+        ret = PORTAL_CHOSEN;
+        break;
+    case STATUS_CANCELLED:
+        ret = PORTAL_CANCELLED;
+        break;
+    default: /* STATUS_NOT_SUPPORTED or anything unexpected -> fall back */
+        ret = PORTAL_FALLBACK;
+        break;
+    }
+    return ret;
+}
+
+BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
+{
+    DWORD flags = info->ofnInfos->Flags;
+    const WCHAR *current_name;
+    WCHAR dos[4096];
+
+    /* Customization we can't express through the portal -> use Wine's dialog.
+     * Multi-select is deferred to a later iteration. */
+    if (flags & (OFN_ENABLEHOOK | OFN_ENABLETEMPLATE | OFN_ENABLETEMPLATEHANDLE | OFN_ALLOWMULTISELECT))
+        return FALSE;
+
+    current_name = ((info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) && info->filename)
+                   ? PathFindFileNameW( info->filename ) : NULL;
+
+    switch (COMDLG32_RunPortalChooser( (info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) != 0,
+                                       info->title, info->initdir, current_name,
+                                       info->filter, dos, ARRAY_SIZE(dos) ))
+    {
+    case PORTAL_CHOSEN:
         if (info->ofnInfos->lpstrFile && (UINT)lstrlenW( dos ) >= info->ofnInfos->nMaxFile)
         {
             COMDLG32_SetCommDlgExtendedError( FNERR_BUFFERTOOSMALL );
@@ -218,20 +251,13 @@ BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
             fill_ofn_result( info, dos );
             *result = TRUE;
         }
-        HeapFree( GetProcessHeap(), 0, dos );
-        handled = TRUE;
-        break;
+        return TRUE;
 
-    case STATUS_CANCELLED:
+    case PORTAL_CANCELLED:
         *result = FALSE;
-        handled = TRUE;
-        break;
+        return TRUE;
 
-    default: /* STATUS_NOT_SUPPORTED and anything unexpected -> fall back */
-        handled = FALSE;
-        break;
+    default: /* PORTAL_FALLBACK */
+        return FALSE;
     }
-
-    if (initial_dir) HeapFree( GetProcessHeap(), 0, initial_dir );
-    return handled;
 }
