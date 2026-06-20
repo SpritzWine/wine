@@ -819,6 +819,7 @@ RUNTESTFLAGS
 wine64dir
 toolsdir
 toolsext
+WINE_RUST_PE_LDFLAGS
 WINE_RUST_LDFLAGS
 WINE_API_DLLFLAGS
 WINE_API_LDFLAGS
@@ -6715,6 +6716,9 @@ WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -W
 
 
 WINE_RUST_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps"
+
+
+WINE_RUST_PE_LDFLAGS="-L$ac_pwd/../rust/target/$RUST_TARGET/release -lwine_ntdll_pe"
 
 
 WINE_API_DLLFLAGS="-mwinerust"
@@ -24535,6 +24539,7 @@ RUST_TARGET = $RUST_TARGET
 RUST_LIB_DIR = $RUST_LIB_DIR
 WINE_API_LDFLAGS = $WINE_API_LDFLAGS
 WINE_RUST_LDFLAGS = $WINE_RUST_LDFLAGS
+WINE_RUST_PE_LDFLAGS = $WINE_RUST_PE_LDFLAGS
 WINE_API_DLLFLAGS = $WINE_API_DLLFLAGS
 toolsdir = $toolsdir
 wine64dir = $wine64dir
