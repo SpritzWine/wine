@@ -23,6 +23,7 @@ SOURCES = \
 	finddlg.c \
 	fontdlg.c \
 	itemdlg.c \
+	portal.c \
 	pd32_collate.svg \
 	pd32_landscape.svg \
 	pd32_nocollate.svg \
