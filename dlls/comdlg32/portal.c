@@ -163,31 +163,39 @@ static void fill_ofn_result( FileOpenDlgInfos *info, const WCHAR *path )
 }
 
 /* Shared core: marshal the request, make the unix call to the portal client,
- * and translate the chosen host path back to a DOS path. Used by both the
- * classic and Vista-style dialogs. */
-enum portal_result COMDLG32_RunPortalChooser( BOOL save, const WCHAR *title,
-        const WCHAR *initial_dir, const WCHAR *current_name, const WCHAR *filter,
-        WCHAR *dos_out, DWORD dos_out_len )
+ * and translate the chosen host path(s) back to DOS paths. Used by both the
+ * classic and Vista-style dialogs. dos_out receives a double-NUL-terminated
+ * list of DOS paths. */
+enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL directory,
+        const WCHAR *title, const WCHAR *initial_dir, const WCHAR *current_name,
+        const WCHAR *filter, ULONG current_filter,
+        WCHAR *dos_out, DWORD dos_out_len, ULONG *out_filter )
 {
     struct file_chooser_params params = { 0 };
-    char out_path[4096];
+    char out_paths[8192];
     char *initial_dir8 = NULL;
+    const char *host;
+    WCHAR *w = dos_out;
+    DWORD remaining = dos_out_len;
     NTSTATUS status;
-    WCHAR *dos;
     enum portal_result ret;
 
+    if (out_filter) *out_filter = 0;
     if (!COMDLG32_unixlib_initialized || portal_disabled() || !load_path_funcs())
         return PORTAL_FALLBACK;
 
-    params.save  = save;
-    params.title = utf8_dup( title );
+    params.save      = save;
+    params.multiple  = multiple;
+    params.directory = directory;
+    params.title     = utf8_dup( title );
     if (initial_dir && *initial_dir)
         params.initial_dir = initial_dir8 = p_wine_get_unix_file_name( initial_dir );
     if (save && current_name && *current_name)
         params.current_name = utf8_dup( current_name );
-    params.filters  = serialize_filters( filter );
-    params.out_path = out_path;
-    params.out_size = sizeof(out_path);
+    params.filters        = serialize_filters( filter );
+    params.current_filter = current_filter;
+    params.out_paths      = out_paths;
+    params.out_size       = sizeof(out_paths);
 
     status = COMDLG32_CALL( file_chooser, &params );
     TRACE( "portal file chooser returned %#lx\n", status );
@@ -200,16 +208,33 @@ enum portal_result COMDLG32_RunPortalChooser( BOOL save, const WCHAR *title,
     switch (status)
     {
     case STATUS_SUCCESS:
-        dos = p_wine_get_dos_file_name( out_path );
-        if (!dos)
+        /* out_paths is a double-NUL list of UTF-8 host paths; translate each to
+         * a DOS path and build a double-NUL WCHAR list in dos_out. */
+        for (host = out_paths; *host; host += strlen(host) + 1)
         {
-            /* Chosen file is outside every mapped drive; report as a cancel
+            WCHAR *dos = p_wine_get_dos_file_name( host );
+            DWORD len;
+
+            if (!dos) continue; /* outside every mapped drive: skip */
+            len = lstrlenW( dos ) + 1;
+            if (len < remaining)
+            {
+                memcpy( w, dos, len * sizeof(WCHAR) );
+                w += len;
+                remaining -= len;
+            }
+            HeapFree( GetProcessHeap(), 0, dos );
+        }
+        *w = 0; /* final terminator */
+
+        if (w == dos_out)
+        {
+            /* Nothing usable (all outside mapped drives); report as a cancel
              * rather than re-show Wine's dialog over the user's pick. */
             ret = PORTAL_CANCELLED;
             break;
         }
-        lstrcpynW( dos_out, dos, dos_out_len );
-        HeapFree( GetProcessHeap(), 0, dos );
+        if (out_filter) *out_filter = params.out_filter;
         ret = PORTAL_CHOSEN;
         break;
     case STATUS_CANCELLED:
@@ -237,10 +262,13 @@ BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
                    ? PathFindFileNameW( info->filename ) : NULL;
 
     switch (COMDLG32_RunPortalChooser( (info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) != 0,
+                                       FALSE, FALSE,
                                        info->title, info->initdir, current_name,
-                                       info->filter, dos, ARRAY_SIZE(dos) ))
+                                       info->filter, 0,
+                                       dos, ARRAY_SIZE(dos), NULL ))
     {
     case PORTAL_CHOSEN:
+        /* single-select: dos holds the chosen path (first list entry) */
         if (info->ofnInfos->lpstrFile && (UINT)lstrlenW( dos ) >= info->ofnInfos->nMaxFile)
         {
             COMDLG32_SetCommDlgExtendedError( FNERR_BUFFERTOOSMALL );
