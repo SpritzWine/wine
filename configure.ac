@@ -239,6 +239,15 @@ dnl Each dll's Makefile.in appends its own -Wl,-lwine_<dll> (e.g. ntdll links wi
 WINE_RUST_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps"
 AC_SUBST(WINE_RUST_LDFLAGS)
 
+dnl PE-side Rust: search path + link for the no_std static lib libwine_ntdll_pe.a
+dnl (rust/src_dll/ntdll_pe), linked into PE dlls that call into Rust. Unlike the
+dnl Unix-side WINE_RUST_LDFLAGS (a .so needing rpath), this is a static archive,
+dnl so no rpath -- just -L/-l. A PE dll adds this to EXTRADLLFLAGS plus a
+dnl -Wl,-u,<sym> for each Rust entry point it uses (the archive is seen before the
+dnl objects, so the symbols must be forced undefined to pull the members in).
+WINE_RUST_PE_LDFLAGS="-L$ac_pwd/../rust/target/$RUST_TARGET/release -lwine_ntdll_pe"
+AC_SUBST(WINE_RUST_PE_LDFLAGS)
+
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
 WINE_API_DLLFLAGS="-mwinerust"
 AC_SUBST(WINE_API_DLLFLAGS)
