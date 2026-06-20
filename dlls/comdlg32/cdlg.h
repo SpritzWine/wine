@@ -36,11 +36,14 @@ extern BOOL COMDLG32_unixlib_initialized;
 
 /* portal.c: show the host's native file chooser (XDG desktop portal). Shared by
  * the classic (filedlg.c) and Vista-style (itemdlg.c) dialogs. On PORTAL_CHOSEN,
- * dos_out holds the chosen file as a DOS path. */
+ * dos_out holds a double-NUL-terminated list of chosen DOS paths (one entry for
+ * a single-selection dialog). out_filter (may be NULL) receives the 1-based
+ * index of the filter the user had active, or 0 if unknown. */
 enum portal_result { PORTAL_FALLBACK, PORTAL_CHOSEN, PORTAL_CANCELLED };
-enum portal_result COMDLG32_RunPortalChooser( BOOL save, const WCHAR *title,
-        const WCHAR *initial_dir, const WCHAR *current_name, const WCHAR *filter,
-        WCHAR *dos_out, DWORD dos_out_len );
+enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL directory,
+        const WCHAR *title, const WCHAR *initial_dir, const WCHAR *current_name,
+        const WCHAR *filter, ULONG current_filter,
+        WCHAR *dos_out, DWORD dos_out_len, ULONG *out_filter );
 
 void	COMDLG32_SetCommDlgExtendedError(DWORD err);
 
