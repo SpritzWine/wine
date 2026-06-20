@@ -31,9 +31,9 @@
 #include "winternl.h"
 #include "wine/unixlib.h"
 
-/* Request/response for unix_file_chooser. All strings are UTF-8. This is a
- * 32-bit-only project, so the PE and Unix sides share one address space and no
- * wow64 pointer thunking is required. */
+/* Request/response for unix_file_chooser. All strings are UTF-8. In a same-width
+ * build (pure 32- or 64-bit) the PE and Unix sides share one address space; the
+ * 32-bit-PE-on-64-bit-unix (wow64) case is handled by a thunk in unixlib.c. */
 struct file_chooser_params
 {
     BOOL        save;           /* TRUE: Save dialog, FALSE: Open dialog */
