@@ -4496,6 +4496,9 @@ static NTSTATUS fill_battery_state( SYSTEM_BATTERY_STATE *bs )
 
 #endif
 
+/* Implemented in Rust (rust/src_dll/ntdll -> libwine_ntdll), linked via the unix lib. */
+extern NTSTATUS rs_nt_system_power_information( void *output, ULONG out_size );
+
 /******************************************************************************
  *              NtPowerInformation  (NTDLL.@)
  */
@@ -4674,6 +4677,9 @@ NTSTATUS WINAPI NtPowerInformation( POWER_INFORMATION_LEVEL level, void *input, 
         }
         return STATUS_SUCCESS;
     }
+
+    case SystemPowerInformation:
+        return rs_nt_system_power_information( output, out_size );
 
     default:
         /* FIXME: Needed by .NET Framework */

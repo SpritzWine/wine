@@ -234,6 +234,11 @@ dnl Use $ac_pwd for absolute path during configure, and keep relative path for M
 WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
 AC_SUBST(WINE_API_LDFLAGS)
 
+dnl Shared rpath/search-path flags for the per-dll Rust crates under rust/src_dll.
+dnl Each dll's Makefile.in appends its own -Wl,-lwine_<dll> (e.g. ntdll links wine_ntdll).
+WINE_RUST_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps"
+AC_SUBST(WINE_RUST_LDFLAGS)
+
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
 WINE_API_DLLFLAGS="-mwinerust"
 AC_SUBST(WINE_API_DLLFLAGS)
