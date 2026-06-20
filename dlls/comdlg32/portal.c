@@ -247,29 +247,106 @@ enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL dir
     return ret;
 }
 
+/* Fill an OFN_ALLOWMULTISELECT result from a double-NUL list of full DOS paths.
+ * Win32 returns one full path for a single file, or "dir\0name1\0name2\0\0" for
+ * several (the directory is taken from the first entry). Honors the A/W flavor.
+ * Returns FALSE (and sets FNERR_BUFFERTOOSMALL) when it doesn't fit. */
+static BOOL fill_ofn_result_multi( FileOpenDlgInfos *info, const WCHAR *list )
+{
+    OPENFILENAMEW *ofnW = info->ofnInfos;
+    WCHAR dir[MAX_PATH], *blob, *p;
+    const WCHAR *path;
+    SIZE_T wlen = 1; /* final terminator */
+    UINT count = 0, dirlen;
+    BOOL ok = TRUE;
+
+    for (path = list; *path; path += lstrlenW(path) + 1) count++;
+    if (count <= 1)
+    {
+        /* Single selection: plain full path, as the single-select API. */
+        if (ofnW->lpstrFile && (UINT)lstrlenW(list) >= ofnW->nMaxFile)
+        {
+            COMDLG32_SetCommDlgExtendedError(FNERR_BUFFERTOOSMALL);
+            return FALSE;
+        }
+        fill_ofn_result(info, list);
+        return TRUE;
+    }
+
+    lstrcpynW(dir, list, MAX_PATH);
+    PathRemoveFileSpecW(dir);
+    dirlen = lstrlenW(dir);
+
+    wlen += dirlen + 1;
+    for (path = list; *path; path += lstrlenW(path) + 1)
+        wlen += lstrlenW(PathFindFileNameW(path)) + 1;
+
+    if (!(blob = malloc(wlen * sizeof(WCHAR)))) return FALSE;
+    p = blob;
+    lstrcpyW(p, dir);
+    p += dirlen + 1;
+    for (path = list; *path; path += lstrlenW(path) + 1)
+    {
+        lstrcpyW(p, PathFindFileNameW(path));
+        p += lstrlenW(p) + 1;
+    }
+    *p = 0;
+
+    if (ofnW->lpstrFile)
+    {
+        if (info->unicode)
+        {
+            if (wlen > ofnW->nMaxFile) ok = FALSE;
+            else
+            {
+                memcpy(ofnW->lpstrFile, blob, wlen * sizeof(WCHAR));
+                ofnW->nFileOffset = dirlen + 1;
+            }
+        }
+        else
+        {
+            OPENFILENAMEA *ofnA = (OPENFILENAMEA *)info->ofnInfos;
+            int alen = WideCharToMultiByte(CP_ACP, 0, blob, wlen, NULL, 0, NULL, NULL);
+            if ((UINT)alen > ofnA->nMaxFile) ok = FALSE;
+            else
+            {
+                WideCharToMultiByte(CP_ACP, 0, blob, wlen, ofnA->lpstrFile, ofnA->nMaxFile, NULL, NULL);
+                /* byte offset of the first name = length of the A directory + NUL */
+                ofnW->nFileOffset = WideCharToMultiByte(CP_ACP, 0, dir, -1, NULL, 0, NULL, NULL);
+            }
+        }
+    }
+    ofnW->nFileExtension = 0;
+    free(blob);
+
+    if (!ok) COMDLG32_SetCommDlgExtendedError(FNERR_BUFFERTOOSMALL);
+    return ok;
+}
+
 BOOL COMDLG32_TryPortalFileDialog( FileOpenDlgInfos *info, BOOL *result )
 {
     DWORD flags = info->ofnInfos->Flags;
+    BOOL multiple = (flags & OFN_ALLOWMULTISELECT) != 0;
     const WCHAR *current_name;
-    WCHAR dos[4096];
+    WCHAR dos[8192];
 
-    /* Customization we can't express through the portal -> use Wine's dialog.
-     * Multi-select is deferred to a later iteration. */
-    if (flags & (OFN_ENABLEHOOK | OFN_ENABLETEMPLATE | OFN_ENABLETEMPLATEHANDLE | OFN_ALLOWMULTISELECT))
+    /* Customization we can't express through the portal -> use Wine's dialog. */
+    if (flags & (OFN_ENABLEHOOK | OFN_ENABLETEMPLATE | OFN_ENABLETEMPLATEHANDLE))
         return FALSE;
 
     current_name = ((info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) && info->filename)
                    ? PathFindFileNameW( info->filename ) : NULL;
 
     switch (COMDLG32_RunPortalChooser( (info->DlgInfos.dwDlgProp & FODPROP_SAVEDLG) != 0,
-                                       FALSE, FALSE,
+                                       multiple, FALSE,
                                        info->title, info->initdir, current_name,
                                        info->filter, 0,
                                        dos, ARRAY_SIZE(dos), NULL ))
     {
     case PORTAL_CHOSEN:
-        /* single-select: dos holds the chosen path (first list entry) */
-        if (info->ofnInfos->lpstrFile && (UINT)lstrlenW( dos ) >= info->ofnInfos->nMaxFile)
+        if (multiple)
+            *result = fill_ofn_result_multi( info, dos );
+        else if (info->ofnInfos->lpstrFile && (UINT)lstrlenW( dos ) >= info->ofnInfos->nMaxFile)
         {
             COMDLG32_SetCommDlgExtendedError( FNERR_BUFFERTOOSMALL );
             *result = FALSE;
