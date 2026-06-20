@@ -45,6 +45,10 @@ enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL dir
         const WCHAR *filter, ULONG current_filter,
         WCHAR *dos_out, DWORD dos_out_len, ULONG *out_filter );
 
+/* Append ".<defext>" to a single chosen save path that has no extension,
+ * matching Windows' lpstrDefExt behavior. Keeps the list double-NUL terminated. */
+void COMDLG32_AppendDefaultExt( WCHAR *path, const WCHAR *defext );
+
 void	COMDLG32_SetCommDlgExtendedError(DWORD err);
 
 /* Find/Replace local definitions */
