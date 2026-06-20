@@ -4323,84 +4323,14 @@ static ULONG mhz_from_cpuinfo(void)
     return cmz;
 }
 
-static const char * get_sys_str(const char *dirname, const char *basename, char *s)
-{
-    char path[64];
-    FILE *f;
-    const char *ret = NULL;
-
-    if (snprintf(path, sizeof(path), "%s/%s", dirname, basename) >= sizeof(path)) return NULL;
-    if ((f = fopen(path, "r")))
-    {
-        if (fgets(s, 16, f)) ret = s;
-        fclose(f);
-    }
-    return ret;
-}
-
-static int get_sys_int(const char *dirname, const char *basename)
-{
-    char s[16];
-    return get_sys_str(dirname, basename, s) ? atoi(s) : 0;
-}
+/* SystemBatteryState is implemented in Rust (rust/src_dll/ntdll -> libwine_ntdll),
+ * linked via the unix lib; it reads /sys/class/power_supply exactly as this C
+ * version did. */
+extern NTSTATUS rs_nt_fill_battery_state( void *output, ULONG out_size );
 
 static NTSTATUS fill_battery_state( SYSTEM_BATTERY_STATE *bs )
 {
-    DIR *d = opendir("/sys/class/power_supply");
-    struct dirent *de;
-    char s[16], path[64];
-    BOOL found_ac = FALSE;
-    LONG64 voltage; /* microvolts */
-
-    bs->AcOnLine = TRUE;
-    if (!d) return STATUS_SUCCESS;
-
-    while ((de = readdir(d)))
-    {
-        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
-        if (snprintf(path, sizeof(path), "/sys/class/power_supply/%s", de->d_name) >= sizeof(path)) continue;
-        if (get_sys_str(path, "scope", s) && strcmp(s, "Device\n") == 0) continue;
-        if (!get_sys_str(path, "type", s)) continue;
-
-        if (strcmp(s, "Mains\n") == 0)
-        {
-            if (!get_sys_str(path, "online", s)) continue;
-            if (found_ac)
-            {
-                FIXME("Multiple mains found, only reporting on the first\n");
-            }
-            else
-            {
-                bs->AcOnLine = atoi(s);
-                found_ac = TRUE;
-            }
-        }
-        else if (strcmp(s, "Battery\n") == 0)
-        {
-            if (!get_sys_str(path, "status", s)) continue;
-            if (bs->BatteryPresent)
-            {
-                FIXME("Multiple batteries found, only reporting on the first\n");
-            }
-            else
-            {
-                bs->Charging = (strcmp(s, "Charging\n") == 0);
-                bs->Discharging = (strcmp(s, "Discharging\n") == 0);
-                bs->BatteryPresent = TRUE;
-                voltage = get_sys_int(path, "voltage_now");
-                bs->MaxCapacity = get_sys_int(path, "charge_full") * voltage / 1e9;
-                bs->RemainingCapacity = get_sys_int(path, "charge_now") * voltage / 1e9;
-                bs->Rate = -get_sys_int(path, "current_now") * voltage / 1e9;
-                if (!bs->Charging && (LONG)bs->Rate < 0)
-                    bs->EstimatedTime = 3600 * bs->RemainingCapacity / -(LONG)bs->Rate;
-                else
-                    bs->EstimatedTime = ~0u;
-            }
-        }
-    }
-
-    closedir(d);
-    return STATUS_SUCCESS;
+    return rs_nt_fill_battery_state( bs, sizeof(*bs) );
 }
 
 #elif defined(__APPLE__)
