@@ -220,6 +220,7 @@ struct makefile
     bool            data_only;
     bool            external;
     bool            is_external;  /* SpritzWine (from Proton): winelib-component reuse build -- lenient like external, but still wine code (keeps -D__WINESRC__) */
+    bool            has_cxx;      /* SpritzWine (from Proton): a unix source is C++ -> link the unixlib (.so) with CXX for libstdc++ */
     bool            is_win16;
     bool            is_exe;
     bool            disabled[MAX_ARCHS];
@@ -3698,7 +3699,10 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
     strarray_add( targets, obj_name );
 
     if (source->file->flags & FLAG_C_UNIX)
+    {
         strarray_add( &make->unixobj_files, obj_name );
+        if (source->file->flags & FLAG_C_CXX) make->has_cxx = 1;  /* SpritzWine: link the .so with CXX */
+    }
     else if (source->file->flags & FLAG_C_IMPLIB)
         strarray_add( &make->implib_files[arch], obj_name );
     else if (!(source->file->flags & FLAG_TESTDLL))
@@ -4081,7 +4085,8 @@ static void output_unix_lib( struct makefile *make )
     output_filenames_obj_dir( make, make->unixobj_files );
     output_filenames( unix_deps );
     output( "\n" );
-    output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
+    if (make->has_cxx) output( "\t%s$(CXX) -o $@", cmd_prefix( "CCLD" ));
+    else output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
     output_filenames( get_expanded_make_var_array( make, "UNIXLDFLAGS" ));
     output_filenames_obj_dir( make, make->unixobj_files );
     output_filenames( unix_libs );
