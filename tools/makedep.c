@@ -5219,8 +5219,14 @@ int main( int argc, char *argv[] )
 
     /* SpritzWine (from Proton): the component reuse build omits the "include" subdir from SUBDIRS, so
        include_makefile is never set -- parse it explicitly from the source tree so global_includes is
-       populated with wine's headers (and load_sources below doesn't dereference a NULL). */
-    if (!include_makefile) include_makefile = parse_makefile( root_src_dir_path( "include" ) );
+       populated with wine's headers (and load_sources below doesn't dereference a NULL). Mark it
+       external: we only mine it for global_includes, so its own unresolved deps (e.g. cdosys.idl's
+       importlib("stdole2.tlb"), which a full build satisfies from dlls/) must not abort makedep. */
+    if (!include_makefile)
+    {
+        include_makefile = parse_makefile( root_src_dir_path( "include" ) );
+        include_makefile->external = 1;
+    }
 
     load_sources( top_makefile );
     load_sources( include_makefile );
