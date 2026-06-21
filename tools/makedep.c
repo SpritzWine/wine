@@ -5196,7 +5196,10 @@ int main( int argc, char *argv[] )
     for (i = 0; i < subdirs.count; i++) submakes[i] = parse_makefile( subdirs.str[i] );
 
     load_sources( top_makefile );
-    load_sources( include_makefile );
+    /* SpritzWine: include_makefile is only set when an "include" subdir is parsed. Proton's winelib
+       component build (lsteamclient/vrclient/steamexe/wineopenxr) reuses the wine Makefile with
+       SUBDIRS pointing only at the component source, so there's no "include" -> guard the NULL. */
+    if (include_makefile) load_sources( include_makefile );
     for (i = 0; i < subdirs.count; i++)
         if (submakes[i] != include_makefile) load_sources( submakes[i] );
 
