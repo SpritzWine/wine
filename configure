@@ -6707,17 +6707,23 @@ case "$HOST_ARCH" in
 esac
 
 
+if test -n "$SPRITZWINE_RUST_DIR"; then
+    RUST_BASE="$SPRITZWINE_RUST_DIR"
+else
+    RUST_BASE="$ac_pwd/../rust"
+fi
+
 RUST_LIB_DIR="\$(top_srcdir)/../rust/target/$RUST_TARGET/release/deps"
 
 
-WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
+WINE_API_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
 
 
-WINE_RUST_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps"
+WINE_RUST_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps"
 
 
-WINE_RUST_PE_LDFLAGS_i386="-L$ac_pwd/../rust/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
-WINE_RUST_PE_LDFLAGS_x86_64="-L$ac_pwd/../rust/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
+WINE_RUST_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
+WINE_RUST_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
 
 
 
