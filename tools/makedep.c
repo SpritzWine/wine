@@ -219,6 +219,7 @@ struct makefile
     const char     *unixlib;
     bool            data_only;
     bool            external;
+    bool            is_external;  /* SpritzWine (from Proton): winelib-component reuse build -- lenient like external, but still wine code (keeps -D__WINESRC__) */
     bool            is_win16;
     bool            is_exe;
     bool            disabled[MAX_ARCHS];
@@ -1701,7 +1702,7 @@ static struct file *open_include_file( const struct makefile *make, struct incl_
     if ((file = open_file_same_dir( source->included_by, source->name, &source->filename ))) return file;
 
     /* ignore missing files in external libs */
-    if (make->external) return NULL;
+    if (make->external || make->is_external) return NULL;
     if (source->included_by && is_external_header( source->included_by )) return NULL;
 
     fprintf( stderr, "%s:%d: error: ", source->included_by->file->name, source->included_line );
@@ -1811,7 +1812,7 @@ static struct incl_file *add_src_file( struct makefile *make, const char *name )
     memset( file, 0, sizeof(*file) );
     file->name = xstrdup(name);
     file->use_msvcrt = is_using_msvcrt( make );
-    file->is_external = make->external;
+    file->is_external = make->external || make->is_external;
     list_add_tail( &make->sources, &file->entry );
     if (make == include_makefile)
     {
@@ -2365,7 +2366,7 @@ static struct strarray add_unix_libraries( const struct makefile *make, struct s
     struct strarray ret = empty_strarray;
     struct strarray all_libs = empty_strarray;
 
-    if (strcmp( make->unixlib, "ntdll.so" )) strarray_add( &all_libs, "-lntdll" );
+    if (strcmp( make->unixlib, "ntdll.so" ) && !make->is_external) strarray_add( &all_libs, "-lntdll" );
     strarray_addall( &all_libs, get_expanded_make_var_array( make, "UNIX_LIBS" ));
 
     STRARRAY_FOR_EACH( file, &all_libs )
@@ -2522,7 +2523,7 @@ static struct strarray add_import_libs( const struct makefile *make, struct stra
             continue;
         }
         if (submake) continue;  /* ignore disabled lib */
-        if (make->external)
+        if (make->external || make->is_external)
         {
             /* SpritzWine (from Proton): winelib component built against the installed wine -- the import
                lib isn't part of this build, so pass -l to the linker, which resolves it via -L into
@@ -4935,7 +4936,7 @@ static void load_sources( struct makefile *make )
         for (arch = 1; arch < archs.count; arch++)
             make->disabled[arch] = make->disabled[0] || strarray_exists( disabled_dirs[arch], make->obj_dir );
     }
-    make->external   = make->external || (make->obj_dir && strarray_exists( external_dirs, make->obj_dir ));
+    make->external   = make->obj_dir && strarray_exists( external_dirs, make->obj_dir );
     make->is_win16   = strarray_exists( make->extradllflags, "-m16" );
     make->data_only  = strarray_exists( make->extradllflags, "-Wb,--data-only" );
     make->is_exe     = strarray_exists( make->extradllflags, "-mconsole" ) ||
@@ -5214,7 +5215,7 @@ int main( int argc, char *argv[] )
         if (*(tmp = subdirs.str[i]) == '/')
         {
             tmp = strmake( "dlls%s", strrchr( tmp, '/' ));
-            submakes[i]->external = 1;
+            submakes[i]->is_external = 1;
         }
         submakes[i]->obj_dir = subdirs.str[i] = tmp;
     }
@@ -5227,7 +5228,7 @@ int main( int argc, char *argv[] )
     if (!include_makefile)
     {
         include_makefile = parse_makefile( root_src_dir_path( "include" ) );
-        include_makefile->external = 1;
+        include_makefile->is_external = 1;
     }
 
     load_sources( top_makefile );
