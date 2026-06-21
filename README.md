@@ -1,18 +1,7 @@
-# One hands the Spritzwine!
-
-## what's that?
-This branch will contain all modifications and integrations of [Spritzwine](https://codeberg.org/SpritzWine/SpritzWine) on the [Wine](https://gitlab.winehq.org/wine/wine)-project part.<br>
-[Wine](https://gitlab.winehq.org/wine/wine) is not mine, but everything I built, broke and fixed about it, is here.
-
-## intention
-Nothing modified on this branch has any intention of getting upstreamed per se.<br> 
-If something is useful upstream, feel free to cherry-pick - LGPL do your thing.
-
-<br>
-<br>
-<br>
-
----
+> _This is the **`spritzwine`** branch of [Wine](https://gitlab.winehq.org/wine/wine), used by
+> [SpritzWine](https://codeberg.org/SpritzWine/SpritzWine) — see that project's README for what's
+> changed and why. Wine itself is © its authors, released under the GNU LGPL; see the `LICENSE`
+> file._
 
 ## INTRODUCTION
 
