@@ -3515,7 +3515,11 @@ WINE_CONFIG_MAKEFILE(dlls/wldp)
 WINE_CONFIG_MAKEFILE(dlls/wldp/tests)
 WINE_CONFIG_MAKEFILE(dlls/wmadmod)
 WINE_CONFIG_MAKEFILE(dlls/wmasf)
-WINE_CONFIG_MAKEFILE(../rust)
+dnl SpritzWine: register ../rust as a wine build subdir only for the in-tree build. An out-of-tree
+dnl build (the proton-ge-custom/Prater fork, SPRITZWINE_RUST_DIR set) pre-builds the crates and links
+dnl them via the *_LDFLAGS; ../rust isn't reachable from the obj dir there, and registering it makes
+dnl makedep fail ("could not create Makefile").
+AS_IF([test -z "$SPRITZWINE_RUST_DIR"],[WINE_CONFIG_MAKEFILE(../rust)])
 WINE_CONFIG_MAKEFILE(dlls/wmi)
 WINE_CONFIG_MAKEFILE(dlls/wmilib.sys)
 WINE_CONFIG_MAKEFILE(dlls/wminet_utils)

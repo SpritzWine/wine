@@ -23338,7 +23338,10 @@ wine_fn_config_makefile dlls/wldp enable_wldp
 wine_fn_config_makefile dlls/wldp/tests enable_tests
 wine_fn_config_makefile dlls/wmadmod enable_wmadmod
 wine_fn_config_makefile dlls/wmasf enable_wmasf
-wine_fn_config_makefile ../rust enable_rust
+if test -z "$SPRITZWINE_RUST_DIR"
+then :
+  wine_fn_config_makefile ../rust enable_rust
+fi
 wine_fn_config_makefile dlls/wmi enable_wmi
 wine_fn_config_makefile dlls/wmilib.sys enable_wmilib_sys
 wine_fn_config_makefile dlls/wminet_utils enable_wminet_utils
