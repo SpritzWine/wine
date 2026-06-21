@@ -4970,6 +4970,12 @@ static void load_sources( struct makefile *make )
         strarray_add( &make->include_args, strmake( "-I%s", src_dir_path( make, make->parent_dir )));
     strarray_add( &make->include_args, "-Iinclude" );
     if (root_src_dir) strarray_add( &make->include_args, strmake( "-I%s", root_src_dir_path( "include" )));
+    /* SpritzWine: also expose wine's global include dir to makedep's own dependency search, not just
+       the compiler's -I. Proton's winelib-component reuse build (lsteamclient / vrclient / steamexe /
+       wineopenxr) runs makedep with SUBDIRS pointing only at the component source, so the "include"
+       subdir is never parsed and global_includes stays empty -- without this the components' wine
+       headers ("windef.h", "ntstatus.h", ...) can't be resolved and makedep aborts. */
+    if (root_src_dir) strarray_add_uniq( &make->include_paths, root_src_dir_path( "include" ));
 
     list_init( &make->sources );
     list_init( &make->includes );
