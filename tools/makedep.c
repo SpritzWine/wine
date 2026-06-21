@@ -2520,6 +2520,14 @@ static struct strarray add_import_libs( const struct makefile *make, struct stra
             continue;
         }
         if (submake) continue;  /* ignore disabled lib */
+        if (make->external)
+        {
+            /* SpritzWine (from Proton): winelib component built against the installed wine -- the import
+               lib isn't part of this build, so pass -l to the linker, which resolves it via -L into
+               wine's lib dir rather than aborting here. */
+            strarray_add( &ret, strmake( "-l%s", basename ));
+            continue;
+        }
         input_file_name = src_dir_path( make, "Makefile.in" );
         fatal_error( "library %s not found\n", basename );
 
@@ -4925,7 +4933,7 @@ static void load_sources( struct makefile *make )
         for (arch = 1; arch < archs.count; arch++)
             make->disabled[arch] = make->disabled[0] || strarray_exists( disabled_dirs[arch], make->obj_dir );
     }
-    make->external   = make->obj_dir && strarray_exists( external_dirs, make->obj_dir );
+    make->external   = make->external || (make->obj_dir && strarray_exists( external_dirs, make->obj_dir ));
     make->is_win16   = strarray_exists( make->extradllflags, "-m16" );
     make->data_only  = strarray_exists( make->extradllflags, "-Wb,--data-only" );
     make->is_exe     = strarray_exists( make->extradllflags, "-mconsole" ) ||
@@ -4970,12 +4978,6 @@ static void load_sources( struct makefile *make )
         strarray_add( &make->include_args, strmake( "-I%s", src_dir_path( make, make->parent_dir )));
     strarray_add( &make->include_args, "-Iinclude" );
     if (root_src_dir) strarray_add( &make->include_args, strmake( "-I%s", root_src_dir_path( "include" )));
-    /* SpritzWine: also expose wine's global include dir to makedep's own dependency search, not just
-       the compiler's -I. Proton's winelib-component reuse build (lsteamclient / vrclient / steamexe /
-       wineopenxr) runs makedep with SUBDIRS pointing only at the component source, so the "include"
-       subdir is never parsed and global_includes stays empty -- without this the components' wine
-       headers ("windef.h", "ntstatus.h", ...) can't be resolved and makedep aborts. */
-    if (root_src_dir) strarray_add_uniq( &make->include_paths, root_src_dir_path( "include" ));
 
     list_init( &make->sources );
     list_init( &make->includes );
@@ -5199,13 +5201,29 @@ int main( int argc, char *argv[] )
     subdirs = get_expanded_make_var_array( top_makefile, "SUBDIRS" );
     submakes = xmalloc( subdirs.count * sizeof(*submakes) );
 
-    for (i = 0; i < subdirs.count; i++) submakes[i] = parse_makefile( subdirs.str[i] );
+    for (i = 0; i < subdirs.count; i++)
+    {
+        const char *tmp;
+        submakes[i] = parse_makefile( subdirs.str[i] );
+        /* SpritzWine (from Proton): a SUBDIRS entry given as an absolute path is a winelib component
+           (lsteamclient / vrclient / steamexe / wineopenxr) built against the already-installed wine
+           via the reused wine Makefile. Re-root its obj dir under dlls/ and mark it external, so makedep
+           treats wine's headers and import libs as externally provided instead of aborting on them. */
+        if (*(tmp = subdirs.str[i]) == '/')
+        {
+            tmp = strmake( "dlls%s", strrchr( tmp, '/' ));
+            submakes[i]->external = 1;
+        }
+        submakes[i]->obj_dir = subdirs.str[i] = tmp;
+    }
+
+    /* SpritzWine (from Proton): the component reuse build omits the "include" subdir from SUBDIRS, so
+       include_makefile is never set -- parse it explicitly from the source tree so global_includes is
+       populated with wine's headers (and load_sources below doesn't dereference a NULL). */
+    if (!include_makefile) include_makefile = parse_makefile( root_src_dir_path( "include" ) );
 
     load_sources( top_makefile );
-    /* SpritzWine: include_makefile is only set when an "include" subdir is parsed. Proton's winelib
-       component build (lsteamclient/vrclient/steamexe/wineopenxr) reuses the wine Makefile with
-       SUBDIRS pointing only at the component source, so there's no "include" -> guard the NULL. */
-    if (include_makefile) load_sources( include_makefile );
+    load_sources( include_makefile );
     for (i = 0; i < subdirs.count; i++)
         if (submakes[i] != include_makefile) load_sources( submakes[i] );
 
