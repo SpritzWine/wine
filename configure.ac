@@ -225,18 +225,28 @@ case "$HOST_ARCH" in
 esac
 AC_SUBST(RUST_TARGET)
 
+dnl SpritzWine: absolute override of the rust/ workspace location (the dir that contains
+dnl target/). Defaults to the in-tree sibling that build.sh uses ($ac_pwd/../rust). An
+dnl out-of-tree build -- e.g. the proton-ge-custom fork, where Wine is configured in a
+dnl separate obj dir -- sets SPRITZWINE_RUST_DIR to the absolute path of the prebuilt crates.
+if test -n "$SPRITZWINE_RUST_DIR"; then
+    RUST_BASE="$SPRITZWINE_RUST_DIR"
+else
+    RUST_BASE="$ac_pwd/../rust"
+fi
+
 dnl Set the Rust library directory (for Makefile use)
 RUST_LIB_DIR="\$(top_srcdir)/../rust/target/$RUST_TARGET/release/deps"
 AC_SUBST(RUST_LIB_DIR)
 
 dnl Set Wine API library linking flags with absolute rpath for runtime linking
 dnl Use $ac_pwd for absolute path during configure, and keep relative path for Makefile
-WINE_API_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
+WINE_API_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-lwine_api"
 AC_SUBST(WINE_API_LDFLAGS)
 
 dnl Shared rpath/search-path flags for the per-dll Rust crates under rust/src_dll.
 dnl Each dll's Makefile.in appends its own -Wl,-lwine_<dll> (e.g. ntdll links wine_ntdll).
-WINE_RUST_LDFLAGS="-Wl,-rpath,$ac_pwd/../rust/target/$RUST_TARGET/release/deps -Wl,-L$ac_pwd/../rust/target/$RUST_TARGET/release/deps"
+WINE_RUST_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps"
 AC_SUBST(WINE_RUST_LDFLAGS)
 
 dnl PE-side Rust: per-arch search path + link for the no_std static lib
@@ -253,8 +263,8 @@ dnl goes through clang+lld-link (MSVC flavor, via winegcc -b <arch>-windows), wh
 dnl doesn't understand -u (it would treat the symbol as an input file). i386 PE
 dnl mangles C symbols with a leading underscore, x86_64 PE does not -- hence the
 dnl per-arch anchor name. A PE dll adds the matching $(<arch>_EXTRADLLFLAGS).
-WINE_RUST_PE_LDFLAGS_i386="-L$ac_pwd/../rust/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
-WINE_RUST_PE_LDFLAGS_x86_64="-L$ac_pwd/../rust/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
+WINE_RUST_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
+WINE_RUST_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
 AC_SUBST(WINE_RUST_PE_LDFLAGS_i386)
 AC_SUBST(WINE_RUST_PE_LDFLAGS_x86_64)
 
