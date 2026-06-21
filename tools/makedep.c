@@ -2869,7 +2869,10 @@ static const char *cmd_prefix( const char *cmd )
 static void output_winegcc_command( struct makefile *make, unsigned int arch )
 {
     output( "\t%s%s -o $@", cmd_prefix( "CCLD" ), winegcc );
-    output_filename( "--wine-objdir ." );
+    /* SpritzWine (from Proton): a Proton winelib component reuses the wine Makefile but builds in its
+       own obj dir (cwd != wine obj root), so "." is wrong -- point winegcc at the wine obj tree (where
+       the builtin import libs live) via tools_dir. For a normal native build tools_dir is NULL -> ".". */
+    output_filename( strmake( "--wine-objdir %s", tools_dir ? tools_dir : "." ));
     if (tools_dir)
     {
         output_filename( "--winebuild" );
