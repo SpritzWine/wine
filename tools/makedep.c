@@ -74,6 +74,7 @@ struct incl_file
     enum incl_type     type;          /* type of include */
     unsigned int       arch;          /* architecture for multi-arch files, otherwise 0 */
     bool               use_msvcrt;    /* put msvcrt headers in the search path? */
+    bool               is_external;   /* SpritzWine (from Proton): source belongs to an external makefile (winelib component) */
     struct incl_file  *owner;
     struct array       files;         /* array of struct incl_file* */
     struct strarray    dependencies;  /* file dependencies */
@@ -1810,6 +1811,7 @@ static struct incl_file *add_src_file( struct makefile *make, const char *name )
     memset( file, 0, sizeof(*file) );
     file->name = xstrdup(name);
     file->use_msvcrt = is_using_msvcrt( make );
+    file->is_external = make->external;
     list_add_tail( &make->sources, &file->entry );
     if (make == include_makefile)
     {
@@ -2243,7 +2245,7 @@ static void get_dependencies( struct incl_file *file, struct incl_file *source )
 
         /* sanity checks */
         if (!strcmp( file->filename, "include/config.h" ) &&
-            file != *ARRAY_ENTRY( &source->files, 0, struct incl_file * ))
+            file != *ARRAY_ENTRY( &source->files, 0, struct incl_file * ) && !source->is_external)
         {
             input_file_name = source->filename;
             input_line = 0;
