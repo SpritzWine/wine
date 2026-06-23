@@ -1837,30 +1837,19 @@ static void set_int_reg( CONTEXT *context, KNONVOLATILE_CONTEXT_POINTERS *ctx_pt
     if (ctx_ptr) ctx_ptr->IntegerContext[reg] = val;
 }
 
-static void set_float_reg( CONTEXT *context, KNONVOLATILE_CONTEXT_POINTERS *ctx_ptr, int reg, M128A *val )
-{
-    /* Use a memcpy() to avoid issues if val is misaligned. */
-    memcpy(&context->Xmm0 + reg, val, sizeof(*val));
-    if (ctx_ptr) ctx_ptr->FloatingContext[reg] = val;
-}
-
-static int get_opcode_size( struct opcode op )
-{
-    switch (op.code)
-    {
-    case UWOP_ALLOC_LARGE:
-        return 2 + (op.info != 0);
-    case UWOP_SAVE_NONVOL:
-    case UWOP_SAVE_XMM128:
-    case UWOP_EPILOG:
-        return 2;
-    case UWOP_SAVE_NONVOL_FAR:
-    case UWOP_SAVE_XMM128_FAR:
-        return 3;
-    default:
-        return 1;
-    }
-}
+/* SpritzWine: the x86_64 UNWIND_INFO opcode interpreter is implemented in Rust
+ * (rust/src_dll/ntdll_pe/src/unwind.rs) -- bounds-checked opcode parsing plus the
+ * stack-limit support RtlVirtualUnwind2's C version lacked (it ignored the limits
+ * and faulted on a wild read for a frame whose .pdata didn't match its stack).
+ * The per-opcode register writes (formerly set_float_reg) and opcode-size logic
+ * (get_opcode_size) moved there too. `int_regs` is &context->Rax, `xmm_regs` is
+ * &context->Xmm0; returns STATUS_BAD_FUNCTION_TABLE on a bad read / malformed stream. */
+extern NTSTATUS rs_rtl_unwind_run_codes( ULONG64 *int_regs, BYTE *xmm_regs,
+                                         ULONG64 **ctx_int, BYTE **ctx_float,
+                                         const BYTE *unwind_info, ULONG64 frame,
+                                         ULONG prolog_offset, const ULONG64 *limit_low,
+                                         const ULONG64 *limit_high, ULONG64 *frame_ret,
+                                         int *mach_frame );
 
 static void *get_main_function_start( const RUNTIME_FUNCTION *f, ULONG_PTR base )
 {
@@ -2061,9 +2050,9 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
                                    PEXCEPTION_ROUTINE *handler_ret, ULONG flags )
 {
     union handler_data *handler_data;
-    ULONG64 frame, off;
+    ULONG64 frame;
     struct UNWIND_INFO *info;
-    unsigned int i, prolog_offset;
+    unsigned int prolog_offset;
     BOOL mach_frame = FALSE, chained = FALSE;
 
 #ifdef __arm64ec__
@@ -2142,75 +2131,23 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
             }
         }
 
-        for (i = 0; i < info->count; i += get_opcode_size(info->opcodes[i]))
         {
-            if (prolog_offset < info->opcodes[i].offset) continue; /* skip it */
-
-            switch (info->opcodes[i].code)
-            {
-            case UWOP_PUSH_NONVOL:  /* pushq %reg */
-                if (UNWIND_BAD_STACK( context->Rsp )) return STATUS_BAD_FUNCTION_TABLE;
-                set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)context->Rsp );
-                context->Rsp += sizeof(ULONG64);
-                break;
-            case UWOP_ALLOC_LARGE:  /* subq $nn,%rsp */
-                if (info->opcodes[i].info) context->Rsp += *(DWORD *)&info->opcodes[i+1];
-                else context->Rsp += *(USHORT *)&info->opcodes[i+1] * 8;
-                break;
-            case UWOP_ALLOC_SMALL:  /* subq $n,%rsp */
-                context->Rsp += (info->opcodes[i].info + 1) * 8;
-                break;
-            case UWOP_SET_FPREG:  /* leaq nn(%rsp),%framereg */
-                context->Rsp = *frame_ret = frame;
-                break;
-            case UWOP_SAVE_NONVOL:  /* movq %reg,n(%rsp) */
-                off = frame + *(USHORT *)&info->opcodes[i+1] * 8;
-                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
-                set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)off );
-                break;
-            case UWOP_SAVE_NONVOL_FAR:  /* movq %reg,nn(%rsp) */
-                off = frame + *(DWORD *)&info->opcodes[i+1];
-                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
-                set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)off );
-                break;
-            case UWOP_SAVE_XMM128:  /* movaps %xmmreg,n(%rsp) */
-                off = frame + *(USHORT *)&info->opcodes[i+1] * 16;
-                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
-                set_float_reg( context, ctx_ptr, info->opcodes[i].info, (M128A *)off );
-                break;
-            case UWOP_SAVE_XMM128_FAR:  /* movaps %xmmreg,nn(%rsp) */
-                off = frame + *(DWORD *)&info->opcodes[i+1];
-                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
-                set_float_reg( context, ctx_ptr, info->opcodes[i].info, (M128A *)off );
-                break;
-            case UWOP_PUSH_MACHFRAME:
-                if (info->flags & UNW_FLAG_CHAININFO)
-                {
-                    FIXME("PUSH_MACHFRAME with chained unwind info.\n");
-                    break;
-                }
-                if (i + get_opcode_size(info->opcodes[i]) < info->count )
-                {
-                    FIXME("PUSH_MACHFRAME is not the last opcode.\n");
-                    break;
-                }
-
-                if (info->opcodes[i].info)
-                    context->Rsp += 0x8;
-
-                if (UNWIND_BAD_STACK( context->Rsp ) || UNWIND_BAD_STACK( context->Rsp + 24 ))
-                    return STATUS_BAD_FUNCTION_TABLE;
-                context->Rip = *(ULONG64 *)context->Rsp;
-                context->Rsp = *(ULONG64 *)(context->Rsp + 24);
-                mach_frame = TRUE;
-                break;
-            case UWOP_EPILOG:
-                if (info->version == 2)
-                    break; /* nothing to do */
-            default:
-                FIXME( "unknown code %u\n", info->opcodes[i].code );
-                break;
-            }
+            /* SpritzWine: the UNWIND_INFO opcode interpreter -- the attacker-facing
+             * parser that walks the opcode stream and dereferences stack slots to
+             * restore the caller's registers -- lives in Rust now (task #35). It does
+             * bounds-checked opcode parsing and honors the stack limits the C version
+             * ignored (the FIXME), so a corrupt/foreign frame aborts the unwind
+             * cleanly instead of faulting on a wild read. See
+             * rust/src_dll/ntdll_pe/src/unwind.rs. */
+            int rs_mach = 0;
+            NTSTATUS rs_status = rs_rtl_unwind_run_codes(
+                &context->Rax, (BYTE *)&context->Xmm0,
+                ctx_ptr ? ctx_ptr->IntegerContext : NULL,
+                ctx_ptr ? (BYTE **)ctx_ptr->FloatingContext : NULL,
+                (const BYTE *)info, frame, prolog_offset, limit_low, limit_high,
+                frame_ret, &rs_mach );
+            if (rs_status) return rs_status;
+            if (rs_mach) mach_frame = TRUE;
         }
 
         if (!(info->flags & UNW_FLAG_CHAININFO)) break;
