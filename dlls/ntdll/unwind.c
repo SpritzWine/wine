@@ -2084,12 +2084,21 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
 #endif
 
     TRACE( "type %lx base %I64x rip %I64x rva %I64x rsp %I64x\n", type, base, pc, pc - base, context->Rsp );
-    if (limit_low || limit_high) FIXME( "limits not supported\n" );
+
+    /* SpritzWine: honor the stack limits when the caller supplies them (the exception dispatcher
+     * now does) so a corrupt/foreign frame aborts the unwind cleanly instead of reading a wild
+     * stack address and faulting INSIDE the unwinder -- which, during exception dispatch, re-enters
+     * dispatch and recurses to a stack overflow (observed with VMProtect-virtualized code whose
+     * .pdata does not match its VM stack). Interim guard; the full Windows-semantics limit support
+     * (all callers, fibers, validation of frame_ret) is tracked to be implemented in the Rust ntdll. */
+#define UNWIND_BAD_STACK(addr) (limit_low && limit_high && \
+    ((ULONG_PTR)(addr) < *limit_low || (ULONG_PTR)(addr) >= *limit_high))
 
     frame = *frame_ret = context->Rsp;
 
     if (!function)  /* leaf function */
     {
+        if (UNWIND_BAD_STACK( context->Rsp )) return STATUS_BAD_FUNCTION_TABLE;
         context->Rip = *(ULONG64 *)context->Rsp;
         context->Rsp += sizeof(ULONG64);
         if (type) *data = NULL;
@@ -2140,6 +2149,7 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
             switch (info->opcodes[i].code)
             {
             case UWOP_PUSH_NONVOL:  /* pushq %reg */
+                if (UNWIND_BAD_STACK( context->Rsp )) return STATUS_BAD_FUNCTION_TABLE;
                 set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)context->Rsp );
                 context->Rsp += sizeof(ULONG64);
                 break;
@@ -2155,18 +2165,22 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
                 break;
             case UWOP_SAVE_NONVOL:  /* movq %reg,n(%rsp) */
                 off = frame + *(USHORT *)&info->opcodes[i+1] * 8;
+                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
                 set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)off );
                 break;
             case UWOP_SAVE_NONVOL_FAR:  /* movq %reg,nn(%rsp) */
                 off = frame + *(DWORD *)&info->opcodes[i+1];
+                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
                 set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)off );
                 break;
             case UWOP_SAVE_XMM128:  /* movaps %xmmreg,n(%rsp) */
                 off = frame + *(USHORT *)&info->opcodes[i+1] * 16;
+                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
                 set_float_reg( context, ctx_ptr, info->opcodes[i].info, (M128A *)off );
                 break;
             case UWOP_SAVE_XMM128_FAR:  /* movaps %xmmreg,nn(%rsp) */
                 off = frame + *(DWORD *)&info->opcodes[i+1];
+                if (UNWIND_BAD_STACK( off )) return STATUS_BAD_FUNCTION_TABLE;
                 set_float_reg( context, ctx_ptr, info->opcodes[i].info, (M128A *)off );
                 break;
             case UWOP_PUSH_MACHFRAME:
@@ -2184,6 +2198,8 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
                 if (info->opcodes[i].info)
                     context->Rsp += 0x8;
 
+                if (UNWIND_BAD_STACK( context->Rsp ) || UNWIND_BAD_STACK( context->Rsp + 24 ))
+                    return STATUS_BAD_FUNCTION_TABLE;
                 context->Rip = *(ULONG64 *)context->Rsp;
                 context->Rsp = *(ULONG64 *)(context->Rsp + 24);
                 mach_frame = TRUE;
@@ -2205,6 +2221,7 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
     if (!mach_frame)
     {
         /* now pop return address */
+        if (UNWIND_BAD_STACK( context->Rsp )) return STATUS_BAD_FUNCTION_TABLE;
         context->Rip = *(ULONG64 *)context->Rsp;
         context->Rsp += sizeof(ULONG64);
     }
@@ -2217,6 +2234,7 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
     if (handler_ret) *handler_ret = (PEXCEPTION_ROUTINE)((char *)base + handler_data->handler);
     *data = &handler_data->handler + 1;
     return STATUS_SUCCESS;
+#undef UNWIND_BAD_STACK
 }
 
 
