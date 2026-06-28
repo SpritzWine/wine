@@ -268,6 +268,14 @@ WINE_RUST_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/relea
 AC_SUBST(WINE_RUST_PE_LDFLAGS_i386)
 AC_SUBST(WINE_RUST_PE_LDFLAGS_x86_64)
 
+dnl PE-side Rust for avrt.dll (MMCSS): libwine_avrt_pe.a (rust/src_dll/avrt_pe),
+dnl same scheme as ntdll above (per-arch -L/-l + the anchor forced via /include:,
+dnl underscore-prefixed on i386). avrt/Makefile.in adds the matching flags.
+WINE_RUST_AVRT_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_avrt_pe -Wl,/include:_wine_avrt_pe_anchor"
+WINE_RUST_AVRT_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_avrt_pe -Wl,/include:wine_avrt_pe_anchor"
+AC_SUBST(WINE_RUST_AVRT_PE_LDFLAGS_i386)
+AC_SUBST(WINE_RUST_AVRT_PE_LDFLAGS_x86_64)
+
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
 WINE_API_DLLFLAGS="-mwinerust"
 AC_SUBST(WINE_API_DLLFLAGS)
