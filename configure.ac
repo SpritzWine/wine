@@ -249,32 +249,25 @@ dnl Each dll's Makefile.in appends its own -Wl,-lwine_<dll> (e.g. ntdll links wi
 WINE_RUST_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps"
 AC_SUBST(WINE_RUST_LDFLAGS)
 
-dnl PE-side Rust: per-arch search path + link for the no_std static lib
-dnl libwine_ntdll_pe.a (rust/src_dll/ntdll_pe), linked into the PE dlls that call
-dnl into Rust. Under new-WoW64 the PE dlls are built as REAL PE for each arch in
-dnl $PE_ARCHS, so we need one Rust PE staticlib per arch, built for the matching
-dnl *-pc-windows-gnullvm target (the clang/lld PE flavor of Wine's PE cross-compiler).
-dnl Unlike the Unix-side WINE_RUST_LDFLAGS (a .so needing rpath), this is a static
-dnl archive -- just -L/-l. The archive is seen before the objects that reference it,
-dnl so the linker would drop its members; lld-link's /include: directive forces the
-dnl crate's single anchor symbol (codegen-units=1 means that one symbol pulls in every
-dnl entry point). This is the COFF/PE equivalent of ELF ld's "-u SYM": the PE link
-dnl goes through clang+lld-link (MSVC flavor, via winegcc -b <arch>-windows), which
-dnl doesn't understand -u (it would treat the symbol as an input file). i386 PE
-dnl mangles C symbols with a leading underscore, x86_64 PE does not -- hence the
-dnl per-arch anchor name. A PE dll adds the matching $(<arch>_EXTRADLLFLAGS).
-WINE_RUST_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
-WINE_RUST_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
-AC_SUBST(WINE_RUST_PE_LDFLAGS_i386)
-AC_SUBST(WINE_RUST_PE_LDFLAGS_x86_64)
-
-dnl PE-side Rust for avrt.dll (MMCSS): libwine_avrt_pe.a (rust/src_dll/avrt_pe),
-dnl same scheme as ntdll above (per-arch -L/-l + the anchor forced via /include:,
-dnl underscore-prefixed on i386). avrt/Makefile.in adds the matching flags.
-WINE_RUST_AVRT_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_avrt_pe -Wl,/include:_wine_avrt_pe_anchor"
-WINE_RUST_AVRT_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_avrt_pe -Wl,/include:wine_avrt_pe_anchor"
-AC_SUBST(WINE_RUST_AVRT_PE_LDFLAGS_i386)
-AC_SUBST(WINE_RUST_AVRT_PE_LDFLAGS_x86_64)
+dnl PE-side Rust: per-arch search path for the no_std static libs under
+dnl rust/src_dll/<dll>_pe (e.g. ntdll_pe -> libwine_ntdll_pe.a, avrt_pe ->
+dnl libwine_avrt_pe.a), each linked into its dll's PE image. Under new-WoW64 the PE
+dnl dlls are built as REAL PE for each arch in $PE_ARCHS, so each crate is built for
+dnl the matching *-pc-windows-gnullvm target (the clang/lld PE flavor of Wine's PE
+dnl cross-compiler). These are static archives -- just -L (and -l per dll). The
+dnl archive is seen before the objects that reference it, so the linker would drop its
+dnl members; a dll forces the crate's single anchor symbol with lld-link's /include:
+dnl (codegen-units=1 means that one symbol pulls in every entry point) -- the COFF/PE
+dnl equivalent of ELF ld's "-u SYM" (the PE link goes through clang+lld-link, which
+dnl doesn't understand -u). The naming is uniform, so a converted dll opts in from its
+dnl OWN Makefile.in with two self-contained lines (no per-crate var here), e.g.:
+dnl   i386_EXTRADLLFLAGS   = -L$(WINE_RUST_PE_DIR_i386) -lwine_<dll>_pe -Wl,/include:_wine_<dll>_pe_anchor
+dnl   x86_64_EXTRADLLFLAGS = -L$(WINE_RUST_PE_DIR_x86_64) -lwine_<dll>_pe -Wl,/include:wine_<dll>_pe_anchor
+dnl (i386 PE mangles C symbols with a leading underscore, x86_64 PE does not).
+WINE_RUST_PE_DIR_i386="$RUST_BASE/target/i686-pc-windows-gnullvm/release"
+WINE_RUST_PE_DIR_x86_64="$RUST_BASE/target/x86_64-pc-windows-gnullvm/release"
+AC_SUBST(WINE_RUST_PE_DIR_i386)
+AC_SUBST(WINE_RUST_PE_DIR_x86_64)
 
 dnl Set Wine API DLL flags variable that programs can use with -mwinerust
 WINE_API_DLLFLAGS="-mwinerust"
