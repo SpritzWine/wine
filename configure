@@ -819,10 +819,8 @@ RUNTESTFLAGS
 wine64dir
 toolsdir
 WINE_API_DLLFLAGS
-WINE_RUST_AVRT_PE_LDFLAGS_x86_64
-WINE_RUST_AVRT_PE_LDFLAGS_i386
-WINE_RUST_PE_LDFLAGS_x86_64
-WINE_RUST_PE_LDFLAGS_i386
+WINE_RUST_PE_DIR_x86_64
+WINE_RUST_PE_DIR_i386
 WINE_RUST_LDFLAGS
 WINE_API_LDFLAGS
 RUST_LIB_DIR
@@ -6724,13 +6722,8 @@ WINE_API_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$
 WINE_RUST_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps"
 
 
-WINE_RUST_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:_wine_ntdll_pe_anchor"
-WINE_RUST_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_ntdll_pe -Wl,/include:wine_ntdll_pe_anchor"
-
-
-
-WINE_RUST_AVRT_PE_LDFLAGS_i386="-L$RUST_BASE/target/i686-pc-windows-gnullvm/release -lwine_avrt_pe -Wl,/include:_wine_avrt_pe_anchor"
-WINE_RUST_AVRT_PE_LDFLAGS_x86_64="-L$RUST_BASE/target/x86_64-pc-windows-gnullvm/release -lwine_avrt_pe -Wl,/include:wine_avrt_pe_anchor"
+WINE_RUST_PE_DIR_i386="$RUST_BASE/target/i686-pc-windows-gnullvm/release"
+WINE_RUST_PE_DIR_x86_64="$RUST_BASE/target/x86_64-pc-windows-gnullvm/release"
 
 
 
@@ -24531,10 +24524,8 @@ RUST_TARGET = $RUST_TARGET
 RUST_LIB_DIR = $RUST_LIB_DIR
 WINE_API_LDFLAGS = $WINE_API_LDFLAGS
 WINE_RUST_LDFLAGS = $WINE_RUST_LDFLAGS
-WINE_RUST_PE_LDFLAGS_i386 = $WINE_RUST_PE_LDFLAGS_i386
-WINE_RUST_PE_LDFLAGS_x86_64 = $WINE_RUST_PE_LDFLAGS_x86_64
-WINE_RUST_AVRT_PE_LDFLAGS_i386 = $WINE_RUST_AVRT_PE_LDFLAGS_i386
-WINE_RUST_AVRT_PE_LDFLAGS_x86_64 = $WINE_RUST_AVRT_PE_LDFLAGS_x86_64
+WINE_RUST_PE_DIR_i386 = $WINE_RUST_PE_DIR_i386
+WINE_RUST_PE_DIR_x86_64 = $WINE_RUST_PE_DIR_x86_64
 WINE_API_DLLFLAGS = $WINE_API_DLLFLAGS
 toolsdir = $toolsdir
 wine64dir = $wine64dir
