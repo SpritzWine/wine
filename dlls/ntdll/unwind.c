@@ -1866,6 +1866,9 @@ extern NTSTATUS rs_rtl_unwind_pop_return( ULONG64 *int_regs, const ULONG64 *limi
 extern NTSTATUS rs_rtl_interpret_epilog( ULONG64 *int_regs, ULONG64 **ctx_int, const BYTE *pc,
                                          const ULONG64 *limit_low, const ULONG64 *limit_high,
                                          struct unwind_reject *reject );
+/* validate a SEH SCOPE_TABLE is in-module before __C_specific_handler dispatches it */
+extern NTSTATUS rs_seh_validate_scope_table( const BYTE *table, ULONG64 table_addr, ULONG64 base,
+                                             ULONG64 image_size, struct unwind_reject *reject );
 
 /* Log a rejected frame on the `unwind` channel. Names the offending module
  * (so you can tell at a glance whose .pdata is corrupt -- the game's own
@@ -2221,6 +2224,28 @@ EXCEPTION_DISPOSITION WINAPI __C_specific_handler( EXCEPTION_RECORD *rec, void *
 
     TRACE( "%p %p %p %p pc %Ix\n", rec, frame, context, dispatch, pc );
     if (TRACE_ON(unwind)) DUMP_SCOPE_TABLE( base, table );
+
+    /* SpritzWine: validate the scope table lies inside the module before we dispatch it, so a
+     * corrupt/foreign table (e.g. VMProtect) can't make us call a wild filter/__finally or unwind
+     * to a wild target. Best-effort: only when pc resolves to the module at `base` (skips dynamic
+     * function tables, whose base isn't a loaded image). On a bad table we log and decline the
+     * handler (ExceptionContinueSearch) rather than calling into garbage. */
+    {
+        LDR_DATA_TABLE_ENTRY *mod;
+        if (!LdrFindEntryForAddress( (void *)pc, &mod ) && base == (ULONG_PTR)mod->DllBase)
+        {
+            struct unwind_reject reject = { 0 };
+            if (rs_seh_validate_scope_table( (const BYTE *)table, (ULONG64)(ULONG_PTR)table,
+                                             base, mod->SizeOfImage, &reject ))
+            {
+                WARN( "__C_specific_handler: corrupt scope table in %s (base+%I64x): record #%x "
+                      "targets %I64x outside the module -- declining handler\n",
+                      debugstr_w(mod->BaseDllName.Buffer), (ULONG64)(pc - base),
+                      (unsigned int)reject.opcode_index, reject.addr );
+                return ExceptionContinueSearch;
+            }
+        }
+    }
 
     if (rec->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND))
     {
