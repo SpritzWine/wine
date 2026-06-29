@@ -70,6 +70,13 @@ extern DWORD EXC_CallHandler( EXCEPTION_RECORD *record, EXCEPTION_REGISTRATION_R
                               CONTEXT *context, EXCEPTION_REGISTRATION_RECORD **dispatcher,
                               PEXCEPTION_HANDLER handler, PEXCEPTION_HANDLER nested_handler );
 
+/* SpritzWine: validate one i386 SEH registration frame as the chain is walked --
+ * catches a cyclic/backward chain (would spin forever) and a handler pointing into
+ * the stack (SEH overwrite), with a diagnostic. See rust/src_dll/ntdll_pe/src/unwind.rs. */
+extern NTSTATUS rs_seh_i386_chain_check( ULONG frame, ULONG prev_frame, ULONG handler,
+                                         ULONG stack_low, ULONG stack_high,
+                                         struct unwind_reject *reject );
+
 
 #undef SYSCALL_ENTRY_NtQueryInformationProcess
 #define SYSCALL_ENTRY_NtQueryInformationProcess(id,name,args) \
@@ -126,7 +133,9 @@ static DWORD unwind_handler( EXCEPTION_RECORD *rec, EXCEPTION_REGISTRATION_RECOR
  */
 NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *context )
 {
-    EXCEPTION_REGISTRATION_RECORD *frame, *dispatch, *nested_frame;
+    EXCEPTION_REGISTRATION_RECORD *frame, *dispatch, *nested_frame, *prev_frame = NULL;
+    ULONG_PTR stack_low = (ULONG_PTR)NtCurrentTeb()->Tib.StackLimit;
+    ULONG_PTR stack_high = (ULONG_PTR)NtCurrentTeb()->Tib.StackBase;
     DWORD res;
 
     frame = NtCurrentTeb()->Tib.ExceptionList;
@@ -136,8 +145,28 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *context )
         /* Check frame address */
         if (!is_valid_frame( (ULONG_PTR)frame ))
         {
+            WARN( "corrupt SEH chain: frame %p outside the stack [%p,%p) or misaligned"
+                  " -- stopping dispatch\n", frame, (void *)stack_low, (void *)stack_high );
             rec->ExceptionFlags |= EXCEPTION_STACK_INVALID;
             break;
+        }
+
+        /* SpritzWine: the frame address is in-stack; now reject a cyclic/backward chain
+         * or a handler that lives on the stack (SEH overwrite) before we call it. */
+        {
+            struct unwind_reject reject = { 0 };
+            if (rs_seh_i386_chain_check( (ULONG)(ULONG_PTR)frame, (ULONG)(ULONG_PTR)prev_frame,
+                                         (ULONG)(ULONG_PTR)frame->Handler,
+                                         (ULONG)stack_low, (ULONG)stack_high, &reject ))
+            {
+                WARN( "corrupt SEH chain at frame %p (handler %p): %s -- stopping dispatch\n",
+                      frame, frame->Handler,
+                      reject.reason == UNWIND_REJECT_SEH_CYCLE
+                          ? "cyclic/backward Prev pointer"
+                          : "handler points into the stack (SEH overwrite)" );
+                rec->ExceptionFlags |= EXCEPTION_STACK_INVALID;
+                break;
+            }
         }
 
         /* Call handler */
@@ -167,6 +196,7 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *context )
         default:
             return STATUS_INVALID_DISPOSITION;
         }
+        prev_frame = frame;
         frame = frame->Prev;
     }
     return STATUS_UNHANDLED_EXCEPTION;

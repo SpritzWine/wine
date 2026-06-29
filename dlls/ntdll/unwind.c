@@ -1838,20 +1838,8 @@ static ULONG64 get_int_reg( CONTEXT *context, int reg )
  * The per-opcode register writes (formerly set_float_reg) and opcode-size logic
  * (get_opcode_size) moved there too. `int_regs` is &context->Rax, `xmm_regs` is
  * &context->Xmm0; returns STATUS_BAD_FUNCTION_TABLE on a bad read / malformed stream. */
-/* Diagnostic the Rust unwinder fills on an aborted frame, so we can log *why*
- * and *where* it bailed -- the line that was missing when triaging the
- * VMProtect/Denuvo crashes (AFOP 2840770, WDL 2239550). Mirrors `UnwindReject`
- * in rust/src_dll/ntdll_pe/src/unwind.rs (field order kept padding-free). */
-struct unwind_reject
-{
-    ULONG64 addr;          /* offending stack address (for OOB reads), else 0 */
-    ULONG   reason;        /* UNWIND_REJECT_* below */
-    ULONG   opcode_index;  /* opcode slot at the failure, or ~0 */
-};
-#define UNWIND_REJECT_NONE           0
-#define UNWIND_REJECT_OOB_READ       1
-#define UNWIND_REJECT_MALFORMED      2
-#define UNWIND_REJECT_UNKNOWN_OPCODE 3
+/* struct unwind_reject + the UNWIND_REJECT_* codes are shared via ntdll_misc.h
+ * (also used by signal_i386.c for the i386 SEH chain). */
 
 extern NTSTATUS rs_rtl_unwind_run_codes( ULONG64 *int_regs, BYTE *xmm_regs,
                                          ULONG64 **ctx_int, BYTE **ctx_float,
