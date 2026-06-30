@@ -1728,7 +1728,17 @@ static HRESULT hid_joystick_device_try_open( WCHAR *path, HANDLE *device, PHIDP_
      * controller collection; treat it as a joystick so it enumerates instead of being dropped. The type
      * is refined below (driving/flight via simulation usages, supplemental if it has no X/Y axes). */
     case MAKELONG( HID_USAGE_GENERIC_MULTI_AXIS_CONTROLLER, HID_USAGE_PAGE_GENERIC ): type = DI8DEVTYPE_JOYSTICK; break;
-    default: FIXME( "device usage %04x:%04x not implemented!\n", caps->UsagePage, caps->Usage); goto failed;
+    default:
+        /* SpritzWine: vendor-defined top-level collections (usage page >= 0xff00) are not generic
+         * dinput devices -- they're the raw interfaces of XInput controllers (handled via winexinput),
+         * device-configuration endpoints, etc. Skip them quietly instead of spamming a FIXME (observed
+         * 58x ff00:0001 + 15x ff00:0002 per Risk of Rain 2 launch). Keep the FIXME for genuinely
+         * unexpected generic-desktop usages, which may be a real gap. */
+        if (caps->UsagePage >= 0xff00)
+            TRACE( "ignoring vendor-defined device usage %04x:%04x.\n", caps->UsagePage, caps->Usage );
+        else
+            FIXME( "device usage %04x:%04x not implemented!\n", caps->UsagePage, caps->Usage );
+        goto failed;
     }
 
     if (!HidD_GetProductString( device_file, instance->tszInstanceName, MAX_PATH * sizeof(WCHAR) )) goto failed;
