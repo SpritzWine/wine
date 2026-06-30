@@ -249,20 +249,23 @@ dnl Each dll's Makefile.in appends its own -Wl,-lwine_<dll> (e.g. ntdll links wi
 WINE_RUST_LDFLAGS="-Wl,-rpath,$RUST_BASE/target/$RUST_TARGET/release/deps -Wl,-L$RUST_BASE/target/$RUST_TARGET/release/deps"
 AC_SUBST(WINE_RUST_LDFLAGS)
 
-dnl PE-side Rust: per-arch search path for the no_std static libs under
-dnl rust/src_dll/<dll>_pe (e.g. ntdll_pe -> libwine_ntdll_pe.a, avrt_pe ->
-dnl libwine_avrt_pe.a), each linked into its dll's PE image. Under new-WoW64 the PE
-dnl dlls are built as REAL PE for each arch in $PE_ARCHS, so each crate is built for
-dnl the matching *-pc-windows-gnullvm target (the clang/lld PE flavor of Wine's PE
-dnl cross-compiler). These are static archives -- just -L (and -l per dll). The
-dnl archive is seen before the objects that reference it, so the linker would drop its
-dnl members; a dll forces the crate's single anchor symbol with lld-link's /include:
-dnl (codegen-units=1 means that one symbol pulls in every entry point) -- the COFF/PE
-dnl equivalent of ELF ld's "-u SYM" (the PE link goes through clang+lld-link, which
-dnl doesn't understand -u). The naming is uniform, so a converted dll opts in from its
-dnl OWN Makefile.in with two self-contained lines (no per-crate var here), e.g.:
-dnl   i386_EXTRADLLFLAGS   = -L$(WINE_RUST_PE_DIR_i386) -lwine_<dll>_pe -Wl,/include:_wine_<dll>_pe_anchor
-dnl   x86_64_EXTRADLLFLAGS = -L$(WINE_RUST_PE_DIR_x86_64) -lwine_<dll>_pe -Wl,/include:wine_<dll>_pe_anchor
+dnl PE-side Rust: per-arch search path for the no_std static libs. A crate
+dnl <name>_pe builds libwine_<name>_pe.a, linked into the Wine PE module dlls/<name>
+dnl regardless of its kind: user DLLs live under rust/src_dll/<name>_pe (e.g. ntdll_pe
+dnl -> ntdll.dll, avrt_pe -> avrt.dll; process-heap backed), kernel drivers under
+dnl rust/src_sys/<name>_pe (e.g. hidparse_pe -> hidparse.sys; kernel-pool backed).
+dnl Under new-WoW64 the PE modules are built as REAL PE for each arch in $PE_ARCHS, so
+dnl each crate is built for the matching *-pc-windows-gnullvm target (the clang/lld PE
+dnl flavor of Wine's PE cross-compiler). These are static archives -- just -L (and -l
+dnl per module). The archive is seen before the objects that reference it, so the
+dnl linker would drop its members; the module forces the crate's single anchor symbol
+dnl with lld-link's /include: (codegen-units=1 means that one symbol pulls in every
+dnl entry point) -- the COFF/PE equivalent of ELF ld's "-u SYM" (the PE link goes
+dnl through clang+lld-link, which doesn't understand -u). The naming is uniform, so a
+dnl converted module opts in from its OWN Makefile.in with two self-contained lines
+dnl (no per-crate var here), e.g.:
+dnl   i386_EXTRADLLFLAGS   = -L$(WINE_RUST_PE_DIR_i386) -lwine_<name>_pe -Wl,/include:_wine_<name>_pe_anchor
+dnl   x86_64_EXTRADLLFLAGS = -L$(WINE_RUST_PE_DIR_x86_64) -lwine_<name>_pe -Wl,/include:wine_<name>_pe_anchor
 dnl (i386 PE mangles C symbols with a leading underscore, x86_64 PE does not).
 WINE_RUST_PE_DIR_i386="$RUST_BASE/target/i686-pc-windows-gnullvm/release"
 WINE_RUST_PE_DIR_x86_64="$RUST_BASE/target/x86_64-pc-windows-gnullvm/release"
