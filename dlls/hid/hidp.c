@@ -35,6 +35,26 @@
 
 WINE_DEFAULT_DEBUG_CHANNEL(hid);
 
+/* The HidP_* value engine -- the bit-field read/write over the untrusted, live
+ * HID report buffer -- lives in Rust (rust/src_dll/hid_pe -> libwine_hid_pe.a,
+ * linked via EXTRADLLFLAGS). It bounds every report access against report_len,
+ * which the hand-rolled C copy_bits did not. The HidP_*UsageValue* wrappers
+ * below marshal straight to it. */
+extern NTSTATUS rs_hidp_get_usage_value( UINT report_type, USAGE usage_page, USHORT collection, USAGE usage,
+                                         ULONG *value_out, const void *preparsed, const void *report, ULONG report_len );
+extern NTSTATUS rs_hidp_get_scaled_usage_value( UINT report_type, USAGE usage_page, USHORT collection, USAGE usage,
+                                                LONG *value_out, const void *preparsed, const void *report, ULONG report_len );
+extern NTSTATUS rs_hidp_get_usage_value_array( UINT report_type, USAGE usage_page, USHORT collection, USAGE usage,
+                                               void *value_buf, USHORT value_len, const void *preparsed,
+                                               const void *report, ULONG report_len );
+extern NTSTATUS rs_hidp_set_usage_value( UINT report_type, USAGE usage_page, USHORT collection, USAGE usage,
+                                         ULONG value, const void *preparsed, void *report, ULONG report_len );
+extern NTSTATUS rs_hidp_set_scaled_usage_value( UINT report_type, USAGE usage_page, USHORT collection, USAGE usage,
+                                                LONG value, const void *preparsed, void *report, ULONG report_len );
+extern NTSTATUS rs_hidp_set_usage_value_array( UINT report_type, USAGE usage_page, USHORT collection, USAGE usage,
+                                               const void *value_buf, USHORT value_len, const void *preparsed,
+                                               void *report, ULONG report_len );
+
 static NTSTATUS get_value_caps_range( struct hid_preparsed_data *preparsed, HIDP_REPORT_TYPE report_type, ULONG report_len,
                                       const struct hid_value_caps **caps, const struct hid_value_caps **caps_end )
 {
@@ -122,44 +142,6 @@ static NTSTATUS enum_value_caps( struct hid_preparsed_data *preparsed, HIDP_REPO
     return HIDP_STATUS_SUCCESS;
 }
 
-/* copy count bits from src, starting at (-shift) bit if < 0, to dst starting at (shift) bit if > 0 */
-static void copy_bits( unsigned char *dst, const unsigned char *src, int count, int shift )
-{
-    unsigned char bits, mask;
-    size_t src_shift = shift < 0 ? (-shift & 7) : 0;
-    size_t dst_shift = shift > 0 ? (shift & 7) : 0;
-    if (shift < 0) src += -shift / 8;
-    if (shift > 0) dst += shift / 8;
-
-    if (src_shift == 0 && dst_shift == 0)
-    {
-        memcpy( dst, src, count / 8 );
-        dst += count / 8;
-        src += count / 8;
-        count &= 7;
-    }
-
-    if (!count) return;
-
-    bits = *dst << (8 - dst_shift);
-    count += dst_shift;
-
-    while (count > 8)
-    {
-        *dst = bits >> (8 - dst_shift);
-        bits = *(unsigned short *)src++ >> src_shift;
-        *dst++ |= bits << dst_shift;
-        count -= 8;
-    }
-
-    bits >>= (8 - dst_shift);
-    if (count <= 8 - src_shift) bits |= (*src >> src_shift) << dst_shift;
-    else bits |= (*(unsigned short *)src >> src_shift) << dst_shift;
-
-    mask = (1 << count) - 1;
-    *dst = (bits & mask) | (*dst & ~mask);
-}
-
 NTSTATUS WINAPI HidP_GetButtonCaps( HIDP_REPORT_TYPE report_type, HIDP_BUTTON_CAPS *caps, USHORT *caps_count,
                                     PHIDP_PREPARSED_DATA preparsed_data )
 {
@@ -224,118 +206,35 @@ NTSTATUS WINAPI HidP_GetCaps( PHIDP_PREPARSED_DATA preparsed_data, HIDP_CAPS *ca
     return HIDP_STATUS_SUCCESS;
 }
 
-struct usage_value_params
-{
-    BOOL array;
-    USAGE usage;
-    void *value_buf;
-    USHORT value_len;
-    void *report_buf;
-};
-
-static LONG sign_extend( ULONG value, const struct hid_value_caps *caps )
-{
-    UINT sign = 1 << (caps->bit_size - 1);
-    if (sign <= 1 || caps->logical_min >= 0) return value;
-    return value - ((value & sign) << 1);
-}
-
-static NTSTATUS get_usage_value( const struct hid_value_caps *caps, void *user )
-{
-    unsigned char *report_buf, start_bit = caps->start_bit;
-    ULONG bit_count = caps->bit_size, bit_offset = 0;
-    struct usage_value_params *params = user;
-
-    if (params->array) bit_count *= caps->report_count;
-    else bit_offset = (params->usage - caps->usage_min) * caps->bit_size;
-
-    if ((bit_count + 7) / 8 > params->value_len) return HIDP_STATUS_BUFFER_TOO_SMALL;
-    memset( params->value_buf, 0, params->value_len );
-
-    report_buf = (unsigned char *)params->report_buf + caps->start_byte + bit_offset / 8;
-    copy_bits( params->value_buf, report_buf, bit_count, -(start_bit + bit_offset % 8) );
-
-    return HIDP_STATUS_NULL;
-}
-
-static NTSTATUS get_scaled_usage_value( const struct hid_value_caps *caps, void *user )
-{
-    struct usage_value_params *params = user;
-    LONG signed_value, *value = params->value_buf;
-    ULONG unsigned_value = 0;
-    NTSTATUS status;
-
-    params->value_buf = &unsigned_value;
-    params->value_len = sizeof(unsigned_value);
-    if ((status = get_usage_value( caps, params )) != HIDP_STATUS_NULL) return status;
-
-    if (sizeof(LONG) > params->value_len) return HIDP_STATUS_BUFFER_TOO_SMALL;
-    signed_value = sign_extend( unsigned_value, caps );
-
-    if (caps->logical_min > caps->logical_max || caps->physical_min > caps->physical_max)
-        return HIDP_STATUS_BAD_LOG_PHY_VALUES;
-    if (caps->logical_min > signed_value || caps->logical_max < signed_value)
-        return HIDP_STATUS_VALUE_OUT_OF_RANGE;
-
-    if (!caps->physical_min && !caps->physical_max) *value = signed_value;
-    else *value = caps->physical_min + MulDiv( signed_value - caps->logical_min, caps->physical_max - caps->physical_min,
-                                               caps->logical_max - caps->logical_min );
-    return HIDP_STATUS_NULL;
-}
-
 NTSTATUS WINAPI HidP_GetScaledUsageValue( HIDP_REPORT_TYPE report_type, USAGE usage_page, USHORT collection,
                                           USAGE usage, LONG *value, PHIDP_PREPARSED_DATA preparsed_data,
                                           char *report_buf, ULONG report_len )
 {
-    struct usage_value_params params = {.usage = usage, .value_buf = value, .value_len = sizeof(*value), .report_buf = report_buf};
-    struct hid_preparsed_data *preparsed = (struct hid_preparsed_data *)preparsed_data;
-    struct caps_filter filter = {.values = TRUE, .usage_page = usage_page, .collection = collection, .usage = usage };
-    USHORT count = 1;
-
     TRACE( "report_type %d, usage_page %u, collection %u, usage %u, value %p, preparsed_data %p, report_buf %p, report_len %lu.\n",
            report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 
-    *value = 0;
-    if (!report_len) return HIDP_STATUS_INVALID_REPORT_LENGTH;
-
-    filter.report_id = report_buf[0];
-    return enum_value_caps( preparsed, report_type, report_len, &filter, get_scaled_usage_value, &params, &count );
+    return rs_hidp_get_scaled_usage_value( report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 }
 
 NTSTATUS WINAPI HidP_GetUsageValue( HIDP_REPORT_TYPE report_type, USAGE usage_page, USHORT collection, USAGE usage,
                                     ULONG *value, PHIDP_PREPARSED_DATA preparsed_data, char *report_buf, ULONG report_len )
 {
-    struct usage_value_params params = {.usage = usage, .value_buf = value, .value_len = sizeof(*value), .report_buf = report_buf};
-    struct hid_preparsed_data *preparsed = (struct hid_preparsed_data *)preparsed_data;
-    struct caps_filter filter = {.values = TRUE, .usage_page = usage_page, .collection = collection, .usage = usage};
-    USHORT count = 1;
-
     TRACE( "report_type %d, usage_page %u, collection %u, usage %u, value %p, preparsed_data %p, report_buf %p, report_len %lu.\n",
            report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 
-    if (!report_len) return HIDP_STATUS_INVALID_REPORT_LENGTH;
-
-    filter.report_id = report_buf[0];
-    return enum_value_caps( preparsed, report_type, report_len, &filter, get_usage_value, &params, &count );
+    return rs_hidp_get_usage_value( report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 }
 
 NTSTATUS WINAPI HidP_GetUsageValueArray( HIDP_REPORT_TYPE report_type, USAGE usage_page, USHORT collection,
                                          USAGE usage, char *value_buf, USHORT value_len,
                                          PHIDP_PREPARSED_DATA preparsed_data, char *report_buf, ULONG report_len )
 {
-    struct usage_value_params params = {.array = TRUE, .usage = usage, .value_buf = value_buf, .value_len = value_len, .report_buf = report_buf};
-    struct hid_preparsed_data *preparsed = (struct hid_preparsed_data *)preparsed_data;
-    struct caps_filter filter = {.values = TRUE, .array = TRUE, .usage_page = usage_page, .collection = collection, .usage = usage};
-    USHORT count = 1;
-
     TRACE( "report_type %d, usage_page %u, collection %u, usage %u, value_buf %p, value_len %u, "
            "preparsed_data %p, report_buf %p, report_len %lu.\n",
            report_type, usage_page, collection, usage, value_buf, value_len, preparsed_data, report_buf, report_len );
 
-    if (!report_len) return HIDP_STATUS_INVALID_REPORT_LENGTH;
-
-    filter.report_id = report_buf[0];
-    return enum_value_caps( preparsed, report_type, report_len, &filter, get_usage_value, &params, &count );
+    return rs_hidp_get_usage_value_array( report_type, usage_page, collection, usage, value_buf, value_len,
+                                          preparsed_data, report_buf, report_len );
 }
 
 
@@ -453,102 +352,35 @@ ULONG WINAPI HidP_MaxUsageListLength( HIDP_REPORT_TYPE report_type, USAGE usage_
     return count;
 }
 
-static NTSTATUS set_usage_value( const struct hid_value_caps *caps, void *user )
-{
-    unsigned char *report_buf, start_bit = caps->start_bit;
-    ULONG bit_count = caps->bit_size, bit_offset = 0;
-    struct usage_value_params *params = user;
-
-    if (params->array) bit_count *= caps->report_count;
-    else bit_offset = (params->usage - caps->usage_min) * caps->bit_size;
-
-    if ((bit_count + 7) / 8 > params->value_len) return HIDP_STATUS_BUFFER_TOO_SMALL;
-
-    report_buf = (unsigned char *)params->report_buf + caps->start_byte + bit_offset / 8;
-    copy_bits( report_buf, params->value_buf, bit_count, start_bit + bit_offset % 8 );
-
-    return HIDP_STATUS_NULL;
-}
-
-static NTSTATUS set_scaled_usage_value( const struct hid_value_caps *caps, void *user )
-{
-    struct usage_value_params *params = user;
-    LONG value, log_range, phy_range;
-
-    if (caps->logical_min > caps->logical_max) return HIDP_STATUS_BAD_LOG_PHY_VALUES;
-    if (caps->physical_min > caps->physical_max) return HIDP_STATUS_BAD_LOG_PHY_VALUES;
-
-    if (sizeof(LONG) > params->value_len) return HIDP_STATUS_BUFFER_TOO_SMALL;
-    value = *(LONG *)params->value_buf;
-
-    if (caps->physical_min || caps->physical_max)
-    {
-        /* testing shows that this is what the function does, including all
-         * the overflows and rounding errors... */
-        log_range = (caps->logical_max - caps->logical_min + 1) / 2;
-        phy_range = (caps->physical_max - caps->physical_min + 1) / 2;
-        value = value - caps->physical_min;
-        value = (log_range * value) / phy_range;
-        value = caps->logical_min + value;
-    }
-
-    params->value_buf = &value;
-    params->value_len = sizeof(value);
-    return set_usage_value( caps, params );
-}
-
 NTSTATUS WINAPI HidP_SetScaledUsageValue( HIDP_REPORT_TYPE report_type, USAGE usage_page, USHORT collection,
                                           USAGE usage, LONG value, PHIDP_PREPARSED_DATA preparsed_data,
                                           char *report_buf, ULONG report_len )
 {
-    struct usage_value_params params = {.usage = usage, .value_buf = &value, .value_len = sizeof(value), .report_buf = report_buf};
-    struct hid_preparsed_data *preparsed = (struct hid_preparsed_data *)preparsed_data;
-    struct caps_filter filter = {.values = TRUE, .usage_page = usage_page, .collection = collection, .usage = usage };
-    USHORT count = 1;
-
     TRACE( "report_type %d, usage_page %u, collection %u, usage %u, value %ld, preparsed_data %p, report_buf %p, report_len %lu.\n",
            report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 
-    if (!report_len) return HIDP_STATUS_INVALID_REPORT_LENGTH;
-
-    filter.report_id = report_buf[0];
-    return enum_value_caps( preparsed, report_type, report_len, &filter, set_scaled_usage_value, &params, &count );
+    return rs_hidp_set_scaled_usage_value( report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 }
 
 NTSTATUS WINAPI HidP_SetUsageValue( HIDP_REPORT_TYPE report_type, USAGE usage_page, USHORT collection, USAGE usage,
                                     ULONG value, PHIDP_PREPARSED_DATA preparsed_data, char *report_buf, ULONG report_len )
 {
-    struct usage_value_params params = {.usage = usage, .value_buf = &value, .value_len = sizeof(value), .report_buf = report_buf};
-    struct hid_preparsed_data *preparsed = (struct hid_preparsed_data *)preparsed_data;
-    struct caps_filter filter = {.values = TRUE, .usage_page = usage_page, .collection = collection, .usage = usage};
-    USHORT count = 1;
-
     TRACE( "report_type %d, usage_page %u, collection %u, usage %u, value %lu, preparsed_data %p, report_buf %p, report_len %lu.\n",
            report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 
-    if (!report_len) return HIDP_STATUS_INVALID_REPORT_LENGTH;
-
-    filter.report_id = report_buf[0];
-    return enum_value_caps( preparsed, report_type, report_len, &filter, set_usage_value, &params, &count );
+    return rs_hidp_set_usage_value( report_type, usage_page, collection, usage, value, preparsed_data, report_buf, report_len );
 }
 
 NTSTATUS WINAPI HidP_SetUsageValueArray( HIDP_REPORT_TYPE report_type, USAGE usage_page, USHORT collection,
                                          USAGE usage, char *value_buf, USHORT value_len,
                                          PHIDP_PREPARSED_DATA preparsed_data, char *report_buf, ULONG report_len )
 {
-    struct usage_value_params params = {.array = TRUE, .usage = usage, .value_buf = value_buf, .value_len = value_len, .report_buf = report_buf};
-    struct hid_preparsed_data *preparsed = (struct hid_preparsed_data *)preparsed_data;
-    struct caps_filter filter = {.values = TRUE, .array = TRUE, .usage_page = usage_page, .collection = collection, .usage = usage};
-    USHORT count = 1;
-
     TRACE( "report_type %d, usage_page %u, collection %u, usage %u, value_buf %p, value_len %u, "
            "preparsed_data %p, report_buf %p, report_len %lu.\n",
            report_type, usage_page, collection, usage, value_buf, value_len, preparsed_data, report_buf, report_len );
 
-    if (!report_len) return HIDP_STATUS_INVALID_REPORT_LENGTH;
-
-    filter.report_id = report_buf[0];
-    return enum_value_caps( preparsed, report_type, report_len, &filter, set_usage_value, &params, &count );
+    return rs_hidp_set_usage_value_array( report_type, usage_page, collection, usage, value_buf, value_len,
+                                          preparsed_data, report_buf, report_len );
 }
 
 struct set_usage_params
@@ -909,6 +741,46 @@ ULONG WINAPI HidP_MaxDataListLength( HIDP_REPORT_TYPE report_type, PHIDP_PREPARS
 
     enum_value_caps( preparsed, report_type, 0, &filter, count_data, &count, &limit );
     return count;
+}
+
+/* copy count bits from src, starting at (-shift) bit if < 0, to dst starting at (shift) bit if > 0.
+ * Still used by the HidP_GetData / HidP_SetData paths below; the HidP_*UsageValue* functions use the
+ * bounds-checked Rust engine (wine_hid_pe) instead. Migrating GetData/SetData is the next increment. */
+static void copy_bits( unsigned char *dst, const unsigned char *src, int count, int shift )
+{
+    unsigned char bits, mask;
+    size_t src_shift = shift < 0 ? (-shift & 7) : 0;
+    size_t dst_shift = shift > 0 ? (shift & 7) : 0;
+    if (shift < 0) src += -shift / 8;
+    if (shift > 0) dst += shift / 8;
+
+    if (src_shift == 0 && dst_shift == 0)
+    {
+        memcpy( dst, src, count / 8 );
+        dst += count / 8;
+        src += count / 8;
+        count &= 7;
+    }
+
+    if (!count) return;
+
+    bits = *dst << (8 - dst_shift);
+    count += dst_shift;
+
+    while (count > 8)
+    {
+        *dst = bits >> (8 - dst_shift);
+        bits = *(unsigned short *)src++ >> src_shift;
+        *dst++ |= bits << dst_shift;
+        count -= 8;
+    }
+
+    bits >>= (8 - dst_shift);
+    if (count <= 8 - src_shift) bits |= (*src >> src_shift) << dst_shift;
+    else bits |= (*(unsigned short *)src >> src_shift) << dst_shift;
+
+    mask = (1 << count) - 1;
+    *dst = (bits & mask) | (*dst & ~mask);
 }
 
 struct find_all_data_params
