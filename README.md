@@ -1,3 +1,8 @@
+> _This is the **`spritzwine`** branch of [Wine](https://gitlab.winehq.org/wine/wine), used by
+> [SpritzWine](https://codeberg.org/SpritzWine/SpritzWine) — see that project's README for what's
+> changed and why. Wine itself is © its authors, released under the GNU LGPL; see the `LICENSE`
+> file._
+
 ## INTRODUCTION
 
 Wine is a program which allows running Microsoft Windows programs
