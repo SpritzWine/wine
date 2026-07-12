@@ -2442,7 +2442,6 @@ static void test_RtlCompressBuffer(void)
                                buf1, sizeof(buf1), 4096, &final_size, workspace);
     ok(status == STATUS_SUCCESS, "got wrong status 0x%08lx\n", status);
     ok((*(WORD *)buf1 & 0x7000) == 0x3000, "no chunk signature found %04x\n", *(WORD *)buf1);
-    todo_wine
     ok(final_size < sizeof(test_buffer), "got wrong final_size %lu\n", final_size);
 
     /* test decompression */
