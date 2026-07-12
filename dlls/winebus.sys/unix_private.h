@@ -269,4 +269,11 @@ extern void hid_device_drop_report(struct unix_device *iface);
 
 extern void hid_device_set_effect_state(struct unix_device *iface, BYTE index, BYTE flags);
 
+/* the generic haptics / PID report dispatchers, calling into iface->hid_vtbl;
+ * shared with hybrid passthrough devices (hidraw Sony pads) that splice the
+ * synthetic reports into the device's own descriptor */
+extern void hid_device_set_output_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io);
+extern void hid_device_get_feature_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io);
+extern void hid_device_set_feature_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io);
+
 #endif /* __WINEBUS_UNIX_PRIVATE_H */
