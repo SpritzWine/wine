@@ -17,15 +17,18 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+/* The MMCSS entry points (AvSetMmThreadCharacteristicsW & friends) are
+ * implemented in Rust -- the no_std PE staticlib rust/src_dll/avrt_pe, linked in
+ * via EXTRADLLFLAGS (see Makefile.in). What remains here is just the ANSI->wide
+ * shims, which widen the task name and forward to those W functions. */
+
 #include <stdarg.h>
+#include <stdlib.h>
 
 #include "windef.h"
 #include "winbase.h"
 #include "winnls.h"
-#include "wine/debug.h"
 #include "avrt.h"
-
-WINE_DEFAULT_DEBUG_CHANNEL(avrt);
 
 static inline WCHAR *strdupAW(const char *src)
 {
@@ -54,43 +57,6 @@ HANDLE WINAPI AvSetMmThreadCharacteristicsA(const char *name, DWORD *index)
     return ret;
 }
 
-HANDLE WINAPI AvSetMmThreadCharacteristicsW(const WCHAR *name, DWORD *index)
-{
-    FIXME("(%s,%p): stub\n", debugstr_w(name), index);
-
-    if (!name)
-    {
-        SetLastError(ERROR_INVALID_TASK_NAME);
-        return NULL;
-    }
-
-    if (!index)
-    {
-        SetLastError(ERROR_INVALID_HANDLE);
-        return NULL;
-    }
-
-    return (HANDLE)0x12345678;
-}
-
-BOOL WINAPI AvQuerySystemResponsiveness(HANDLE AvrtHandle, ULONG *value)
-{
-    FIXME("(%p, %p): stub\n", AvrtHandle, value);
-    return FALSE;
-}
-
-BOOL WINAPI AvRevertMmThreadCharacteristics(HANDLE AvrtHandle)
-{
-    FIXME("(%p): stub\n", AvrtHandle);
-    return TRUE;
-}
-
-BOOL WINAPI AvSetMmThreadPriority(HANDLE AvrtHandle, AVRT_PRIORITY prio)
-{
-    FIXME("(%p)->(%u) stub\n", AvrtHandle, prio);
-    return TRUE;
-}
-
 HANDLE WINAPI AvSetMmMaxThreadCharacteristicsA(const char *task1, const char *task2, DWORD *index)
 {
     WCHAR *task1W = NULL, *task2W = NULL;
@@ -104,6 +70,7 @@ HANDLE WINAPI AvSetMmMaxThreadCharacteristicsA(const char *task1, const char *ta
 
     if (task2 && !(task2W = strdupAW(task2)))
     {
+        free(task1W);
         SetLastError(ERROR_OUTOFMEMORY);
         return NULL;
     }
@@ -113,23 +80,4 @@ HANDLE WINAPI AvSetMmMaxThreadCharacteristicsA(const char *task1, const char *ta
     free(task2W);
     free(task1W);
     return ret;
-}
-
-HANDLE WINAPI AvSetMmMaxThreadCharacteristicsW(const WCHAR *task1, const WCHAR *task2, DWORD *index)
-{
-    FIXME("(%s,%s,%p): stub\n", debugstr_w(task1), debugstr_w(task2), index);
-
-    if (!task1 || task2)
-    {
-        SetLastError(ERROR_INVALID_TASK_NAME);
-        return NULL;
-    }
-
-    if (!index)
-    {
-        SetLastError(ERROR_INVALID_HANDLE);
-        return NULL;
-    }
-
-    return (HANDLE)0x12345678;
 }
