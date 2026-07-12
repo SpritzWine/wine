@@ -339,6 +339,12 @@ static BOOL GetFileName95(FileOpenDlgInfos *fodInfos)
     HRSRC hRes;
     HANDLE hDlgTmpl = 0;
     WORD templateid;
+    BOOL portal_result = FALSE;
+
+    /* Offer the host's native file chooser (XDG desktop portal) first; it falls
+     * back here when no portal is available or the app needs Wine's own UI. */
+    if (COMDLG32_TryPortalFileDialog(fodInfos, &portal_result))
+        return portal_result;
 
     /* test for missing functionality */
     if (fodInfos->ofnInfos->Flags & UNIMPLEMENTED_FLAGS)

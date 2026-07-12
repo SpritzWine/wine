@@ -49,6 +49,17 @@ static struct list dce_list = LIST_INIT(dce_list);
 
 #define DCE_CACHE_SIZE 64
 
+/* SpritzWine: hard cap on the number of cached DCEs. Windows' common-DC cache is
+ * bounded; Wine's is not — an app that leaks display DCs (GetDC without the
+ * matching ReleaseDC) makes NtUserGetDCEx mint a fresh DCE (a GDI DC handle plus
+ * its clip region) on every call, until the 0x10000-entry GDI handle table is
+ * exhausted and the whole process crashes ("out of GDI object handles"). Past
+ * this cap we recycle the least-recently-used cache DCE instead of allocating a
+ * new one, so a leaking app degrades to a bounded, self-limiting cache the way
+ * it would on Windows. Sized far above any legitimate concurrent common-DC use
+ * (native tops out in the low dozens) and far below the handle-table ceiling. */
+#define MAX_DCE_CACHE 256
+
 static struct list window_surfaces = LIST_INIT( window_surfaces );
 static pthread_mutex_t surfaces_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1314,7 +1325,7 @@ HDC WINAPI NtUserGetDCEx( HWND hwnd, HRGN clip_rgn, DWORD flags )
 
     if ((flags & DCX_CACHE) || !(dce = get_window_dce( hwnd )))
     {
-        struct dce *dceEmpty = NULL, *dceUnused = NULL, *found = NULL;
+        struct dce *dceEmpty = NULL, *dceUnused = NULL, *dceReclaim = NULL, *found = NULL;
         unsigned int count = 0;
 
         /* Strategy: First, we attempt to find a non-empty but unused DCE with
@@ -1326,7 +1337,13 @@ HDC WINAPI NtUserGetDCEx( HWND hwnd, HRGN clip_rgn, DWORD flags )
         {
             if (!(dce->flags & DCX_CACHE)) break;
             count++;
-            if (dce->count) continue;
+            if (dce->count)
+            {
+                /* newest first, so this ends up the least-recently-used in-use
+                 * cache DCE — the reclaim candidate if the cap is hit */
+                dceReclaim = dce;
+                continue;
+            }
             dceUnused = dce;
             if (!dce->hwnd) dceEmpty = dce;
             else if ((dce->hwnd == hwnd) && !((dce->flags ^ flags) & clip_flags))
@@ -1339,6 +1356,15 @@ HDC WINAPI NtUserGetDCEx( HWND hwnd, HRGN clip_rgn, DWORD flags )
         }
         if (!found) found = dceEmpty;
         if (!found && count >= DCE_CACHE_SIZE) found = dceUnused;
+        if (!found && count >= MAX_DCE_CACHE && dceReclaim)
+        {
+            /* SpritzWine: an app is leaking display DCs; rather than grow the GDI
+             * handle table until it is exhausted, recycle the LRU cache DCE. This
+             * also frees its clip region, keeping the leak bounded in lockstep. */
+            WARN( "DCE cache at %u entries, recycling %p (app leaking DCs?)\n", count, dceReclaim->hdc );
+            release_dce( dceReclaim );
+            found = dceReclaim;
+        }
 
         dce = found;
         if (dce)
