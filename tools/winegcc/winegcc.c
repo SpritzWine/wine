@@ -191,6 +191,7 @@ static bool strip;
 static bool compile_only;
 static bool skip_link;
 static bool no_default_config;
+static bool use_winerust;
 static int force_pointer_size;
 
 static const char *image_base;
@@ -1397,6 +1398,24 @@ static void build(struct strarray input_files, const char *output)
 	strarray_add(&link_args, "-lc");
     }
 
+    if (use_winerust)
+    {
+        const char *rust_target = getenv("RUST_TARGET");
+        const char *wine_objdir_env = getenv("WINE_OBJDIR");
+        const char *rust_lib_path;
+        
+        if (!rust_target) rust_target = "i686-unknown-linux-gnu";  /* default */
+        if (wine_objdir_env && wine_objdir_env[0])
+            rust_lib_path = strmake("%s/../rust/target/%s/release/deps", wine_objdir_env, rust_target);
+        else if (wine_objdir)
+            rust_lib_path = strmake("%s/../rust/target/%s/release/deps", wine_objdir, rust_target);
+        else
+            rust_lib_path = strmake("/..rust/target/%s/release/deps", rust_target);
+        
+        strarray_add(&link_args, strmake("-Wl,-rpath,%s", rust_lib_path));
+        strarray_add(&link_args, strmake("-L%s", rust_lib_path));
+        strarray_add(&link_args, "-lwine_api");
+    }
     atexit( cleanup_output_files );
 
     spawn(link_args, 0);
@@ -1733,6 +1752,11 @@ int main(int argc, char **argv)
 		    else if (strcmp("-mconsole", args.str[i]) == 0)
                     {
 			is_gui_app = false;
+                        raw_compiler_arg = 0;
+                    }
+		    else if (strcmp("-mwinerust", args.str[i]) == 0)
+                    {
+			use_winerust = true;
                         raw_compiler_arg = 0;
                     }
 		    else if (strcmp("-municode", args.str[i]) == 0)
