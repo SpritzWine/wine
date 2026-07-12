@@ -416,23 +416,29 @@ struct product_name_overrides
 {
     const WCHAR *id;
     const WCHAR *product;
+    const WCHAR *container_id;
 };
 
 static const struct product_name_overrides product_name_overrides[] =
 {
-    /* Sony controllers */
-    { .id = L"VID_054C&PID_0CE6", .product = L"Wireless Controller" },
-    { .id = L"VID_054C&PID_0DF2", .product = L"Wireless Controller" },
+    /* Sony controllers: the container ID pairs the audio endpoint with the
+     * matching HID device (same fixed GUID, see bus_create_hid_device in
+     * dlls/winebus.sys/main.c) so games with native DualSense support can
+     * drive the pad's haptics audio sink. */
+    { .id = L"VID_054C&PID_0CE6", .product = L"Wireless Controller",
+      .container_id = L"{0CE6054C-4453-3548-6170-746963732100}" },
+    { .id = L"VID_054C&PID_0DF2", .product = L"Wireless Controller",
+      .container_id = L"{0DF2054C-4453-3548-6170-746963732100}" },
 };
 
-static const WCHAR *find_product_name_override(const WCHAR *device_id)
+static const struct product_name_overrides *find_product_name_override(const WCHAR *device_id)
 {
     const WCHAR *match_id = wcschr( device_id, '\\' ) + 1;
     DWORD i;
 
     for (i = 0; i < ARRAY_SIZE(product_name_overrides); ++i)
         if (!wcsnicmp( product_name_overrides[i].id, match_id, 17 ))
-            return product_name_overrides[i].product;
+            return &product_name_overrides[i];
 
     return NULL;
 }
@@ -496,36 +502,41 @@ static MMDevice *MMDevice_Create(const WCHAR *name, GUID *id, EDataFlow flow, DW
         RegSetValueExW(key, L"DeviceState", 0, REG_DWORD, (const BYTE*)&state, sizeof(DWORD));
         if (!RegCreateKeyExW(key, L"Properties", 0, NULL, 0, KEY_WRITE|KEY_READ|KEY_WOW64_64KEY, NULL, &keyprop, NULL))
         {
+            const struct product_name_overrides *override = NULL;
+            const WCHAR *product;
             PROPVARIANT pv;
             WCHAR *type;
             DWORD len;
-
-            pv.vt = VT_LPWSTR;
-            pv.pwszVal = cur->drv_id;
 
             if (SUCCEEDED(set_driver_prop_value(id, flow, &devicepath_key))) {
                 PROPVARIANT pv2;
 
                 PropVariantInit(&pv2);
 
-                if (SUCCEEDED(MMDevice_GetPropValue(id, flow, &devicepath_key, &pv2)) && pv2.vt == VT_LPWSTR) {
-                    const WCHAR *override;
-                    if ((override = find_product_name_override(pv2.pwszVal)) != NULL)
-                        pv.pwszVal = (WCHAR*) override;
-                }
+                if (SUCCEEDED(MMDevice_GetPropValue(id, flow, &devicepath_key, &pv2)) && pv2.vt == VT_LPWSTR)
+                    override = find_product_name_override(pv2.pwszVal);
 
                 PropVariantClear(&pv2);
             }
+            product = override ? override->product : cur->drv_id;
 
+            pv.vt = VT_LPWSTR;
+            pv.pwszVal = (WCHAR *)product;
             MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_DeviceInterface_FriendlyName, &pv);
+
+            if (override && override->container_id)
+            {
+                pv.pwszVal = (WCHAR *)override->container_id;
+                MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_ContainerId, &pv);
+            }
 
             pv.pwszVal = type = (WCHAR *)(flow == eCapture ? L"Microphone" : L"Speakers");
             MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_DeviceDesc, &pv);
 
-            len = (wcslen(type) + wcslen(cur->drv_id) + wcslen(L" ()") + 1);
+            len = (wcslen(type) + wcslen(product) + wcslen(L" ()") + 1);
             pv.vt = VT_LPWSTR;
             pv.pwszVal = CoTaskMemAlloc(len * sizeof(WCHAR));
-            swprintf(pv.pwszVal, len, L"%ls (%ls)", type, cur->drv_id);
+            swprintf(pv.pwszVal, len, L"%ls (%ls)", type, product);
             MMDevice_SetPropValue(id, flow, (const PROPERTYKEY*)&DEVPKEY_Device_FriendlyName, &pv);
             CoTaskMemFree(pv.pwszVal);
 
@@ -1629,6 +1640,27 @@ static HRESULT WINAPI MMDevPropStore_GetValue(IPropertyStore *iface, REFPROPERTY
     hres = MMDevice_GetPropValue(&This->parent->devguid, This->parent->flow, key, pv);
     if (FAILED(hres))
         return hres;
+
+    /* the registry store keeps the container ID as a string, apps expect a CLSID */
+    if (IsEqualPropertyKey(*key, DEVPKEY_Device_ContainerId) && pv->vt == VT_LPWSTR && pv->pwszVal)
+    {
+        WCHAR *guidstr = pv->pwszVal;
+        CLSID *clsid;
+
+        if (!(clsid = CoTaskMemAlloc(sizeof(*clsid))))
+            hres = E_OUTOFMEMORY;
+        else if (FAILED(hres = CLSIDFromString(guidstr, clsid)))
+            CoTaskMemFree(clsid);
+        else
+        {
+            pv->vt = VT_CLSID;
+            pv->puuid = clsid;
+            CoTaskMemFree(guidstr);
+            return S_OK;
+        }
+        PropVariantClear(pv);
+        return hres;
+    }
 
     if (WARN_ON(mmdevapi))
     {

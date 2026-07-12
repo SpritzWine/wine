@@ -413,6 +413,19 @@ static DEVICE_OBJECT *bus_create_hid_device(struct device_desc *desc, UINT64 uni
      * device in order to get things like DEVPKEY_Device_BusReportedDeviceDesc.
      * Create a unique container ID to facilitate this.
      */
+
+    /* DualSense pads instead get a fixed, well-known container ID: their USB
+     * audio endpoint reports the same one (see product_name_overrides in
+     * dlls/mmdevapi/devenum.c), letting games with native DualSense support
+     * (Sony's libScePad) pair the HID device with its haptics audio sink.
+     * Only the first pad of a model keeps it; make_unique_container_id
+     * regenerates duplicates. */
+    if (is_dualsense_gamepad(desc->vid, desc->pid))
+    {
+        static const GUID dualsense_container_id = {0, 0x4453, 0x3548, {0x61, 0x70, 0x74, 0x69, 0x63, 0x73, 0x21, 0x00}};
+        ext->container_id = dualsense_container_id;
+        ext->container_id.Data1 = MAKELONG(desc->vid, desc->pid);
+    }
     make_unique_container_id(ext);
 
     /* add to list of pnp devices */

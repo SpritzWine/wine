@@ -540,6 +540,29 @@ static NTSTATUS WINAPI pdo_pnp(DEVICE_OBJECT *device, IRP *irp)
         break;
     }
 
+    case IRP_MN_QUERY_DEVICE_TEXT:
+    {
+        DEVICE_TEXT_TYPE type = stack->Parameters.QueryDeviceText.DeviceTextType;
+        switch (type)
+        {
+        case DeviceTextDescription:
+        {
+            static const WCHAR description[] = L"XINPUT compatible HID device";
+            WCHAR *text = ExAllocatePool(PagedPool, sizeof(description));
+            if (text) memcpy(text, description, sizeof(description));
+            irp->IoStatus.Information = (ULONG_PTR)text;
+            if (!text) status = STATUS_NO_MEMORY;
+            else status = STATUS_SUCCESS;
+            break;
+        }
+        default:
+            WARN("IRP_MN_QUERY_DEVICE_TEXT type %u, not implemented!\n", type);
+            status = irp->IoStatus.Status;
+            break;
+        }
+        break;
+    }
+
     case IRP_MN_QUERY_CAPABILITIES:
         status = STATUS_SUCCESS;
         break;
