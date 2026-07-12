@@ -3,7 +3,18 @@ IMPORTLIB = hidparse
 IMPORTS = ntoskrnl
 PARENTSRC = ../hid
 
+# The report-descriptor parser (parse_descriptor) is implemented in Rust: link the
+# no_std PE staticlib libwine_hidparse_pe.a (rust/src_sys/hidparse_pe) and force its
+# anchor so the rs_hid_parse_descriptor export is pulled in -- same scheme as ntdll's
+# libwine_ntdll_pe.a / avrt's libwine_avrt_pe.a (see configure.ac WINE_RUST_PE_DIR_*).
+# The Ex{Allocate,Free}Pool + mem* it calls come from ntoskrnl, already imported.
 EXTRADLLFLAGS = -Wl,--subsystem,native
+# hidp.c is shared with hid.dll (PARENTSRC=../hid) and its HidP_*UsageValue* code
+# calls the Rust value engine, so this driver also links libwine_hid_pe.a. It is
+# allocation-free; the MulDiv it references resolves via kernel32 (on the link
+# line already), as the original C hidp.c's MulDiv did.
+i386_EXTRADLLFLAGS = -L$(WINE_RUST_PE_DIR_i386) -lwine_hidparse_pe -Wl,/include:_wine_hidparse_pe_anchor -lwine_hid_pe -Wl,/include:_wine_hid_pe_anchor
+x86_64_EXTRADLLFLAGS = -L$(WINE_RUST_PE_DIR_x86_64) -lwine_hidparse_pe -Wl,/include:wine_hidparse_pe_anchor -lwine_hid_pe -Wl,/include:wine_hid_pe_anchor
 
 SOURCES = \
 	hidp.c \
