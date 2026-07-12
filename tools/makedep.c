@@ -74,6 +74,7 @@ struct incl_file
     enum incl_type     type;          /* type of include */
     unsigned int       arch;          /* architecture for multi-arch files, otherwise 0 */
     bool               use_msvcrt;    /* put msvcrt headers in the search path? */
+    bool               is_external;   /* SpritzWine (from Proton): source belongs to an external makefile (winelib component) */
     struct incl_file  *owner;
     struct array       files;         /* array of struct incl_file* */
     struct strarray    dependencies;  /* file dependencies */
@@ -218,6 +219,8 @@ struct makefile
     const char     *unixlib;
     bool            data_only;
     bool            external;
+    bool            is_external;  /* SpritzWine (from Proton): winelib-component reuse build -- lenient like external, but still wine code (keeps -D__WINESRC__) */
+    bool            has_cxx;      /* SpritzWine (from Proton): a unix source is C++ -> link the unixlib (.so) with CXX for libstdc++ */
     bool            is_win16;
     bool            is_exe;
     bool            disabled[MAX_ARCHS];
@@ -1700,7 +1703,7 @@ static struct file *open_include_file( const struct makefile *make, struct incl_
     if ((file = open_file_same_dir( source->included_by, source->name, &source->filename ))) return file;
 
     /* ignore missing files in external libs */
-    if (make->external) return NULL;
+    if (make->external || make->is_external) return NULL;
     if (source->included_by && is_external_header( source->included_by )) return NULL;
 
     fprintf( stderr, "%s:%d: error: ", source->included_by->file->name, source->included_line );
@@ -1810,6 +1813,7 @@ static struct incl_file *add_src_file( struct makefile *make, const char *name )
     memset( file, 0, sizeof(*file) );
     file->name = xstrdup(name);
     file->use_msvcrt = is_using_msvcrt( make );
+    file->is_external = make->external || make->is_external;
     list_add_tail( &make->sources, &file->entry );
     if (make == include_makefile)
     {
@@ -2243,7 +2247,7 @@ static void get_dependencies( struct incl_file *file, struct incl_file *source )
 
         /* sanity checks */
         if (!strcmp( file->filename, "include/config.h" ) &&
-            file != *ARRAY_ENTRY( &source->files, 0, struct incl_file * ))
+            file != *ARRAY_ENTRY( &source->files, 0, struct incl_file * ) && !source->is_external)
         {
             input_file_name = source->filename;
             input_line = 0;
@@ -2363,7 +2367,7 @@ static struct strarray add_unix_libraries( const struct makefile *make, struct s
     struct strarray ret = empty_strarray;
     struct strarray all_libs = empty_strarray;
 
-    if (strcmp( make->unixlib, "ntdll.so" )) strarray_add( &all_libs, "-lntdll" );
+    if (strcmp( make->unixlib, "ntdll.so" ) && !make->is_external) strarray_add( &all_libs, "-lntdll" );
     strarray_addall( &all_libs, get_expanded_make_var_array( make, "UNIX_LIBS" ));
 
     STRARRAY_FOR_EACH( file, &all_libs )
@@ -2520,6 +2524,14 @@ static struct strarray add_import_libs( const struct makefile *make, struct stra
             continue;
         }
         if (submake) continue;  /* ignore disabled lib */
+        if (make->external || make->is_external)
+        {
+            /* SpritzWine (from Proton): winelib component built against the installed wine -- the import
+               lib isn't part of this build, so pass -l to the linker, which resolves it via -L into
+               wine's lib dir rather than aborting here. */
+            strarray_add( &ret, strmake( "-l%s", basename ));
+            continue;
+        }
         input_file_name = src_dir_path( make, "Makefile.in" );
         fatal_error( "library %s not found\n", basename );
 
@@ -2857,7 +2869,10 @@ static const char *cmd_prefix( const char *cmd )
 static void output_winegcc_command( struct makefile *make, unsigned int arch )
 {
     output( "\t%s%s -o $@", cmd_prefix( "CCLD" ), winegcc );
-    output_filename( "--wine-objdir ." );
+    /* SpritzWine (from Proton): a Proton winelib component reuses the wine Makefile but builds in its
+       own obj dir (cwd != wine obj root), so "." is wrong -- point winegcc at the wine obj tree (where
+       the builtin import libs live) via tools_dir. For a normal native build tools_dir is NULL -> ".". */
+    output_filename( strmake( "--wine-objdir %s", tools_dir ? tools_dir : "." ));
     if (tools_dir)
     {
         output_filename( "--winebuild" );
@@ -3687,7 +3702,10 @@ static void output_source_one_arch( struct makefile *make, struct incl_file *sou
     strarray_add( targets, obj_name );
 
     if (source->file->flags & FLAG_C_UNIX)
+    {
         strarray_add( &make->unixobj_files, obj_name );
+        if (source->file->flags & FLAG_C_CXX) make->has_cxx = 1;  /* SpritzWine: link the .so with CXX */
+    }
     else if (source->file->flags & FLAG_C_IMPLIB)
         strarray_add( &make->implib_files[arch], obj_name );
     else if (!(source->file->flags & FLAG_TESTDLL))
@@ -4070,7 +4088,8 @@ static void output_unix_lib( struct makefile *make )
     output_filenames_obj_dir( make, make->unixobj_files );
     output_filenames( unix_deps );
     output( "\n" );
-    output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
+    if (make->has_cxx) output( "\t%s$(CXX) -o $@", cmd_prefix( "CCLD" ));
+    else output( "\t%s$(CC) -o $@", cmd_prefix( "CCLD" ));
     output_filenames( get_expanded_make_var_array( make, "UNIXLDFLAGS" ));
     output_filenames_obj_dir( make, make->unixobj_files );
     output_filenames( unix_libs );
@@ -4686,6 +4705,8 @@ static void output_gitignore( const char *dest, struct strarray files )
     output_file = create_temp_file( dest );
 
     output( "# Automatically generated by make depend; DO NOT EDIT!!\n" );
+    output( "tmp*/**\n" );
+    output( ".cache/**\n" );
     STRARRAY_FOR_EACH( file, &files )
     {
         if (!strchr( file, '/' )) output( "/" );
@@ -5191,7 +5212,32 @@ int main( int argc, char *argv[] )
     subdirs = get_expanded_make_var_array( top_makefile, "SUBDIRS" );
     submakes = xmalloc( subdirs.count * sizeof(*submakes) );
 
-    for (i = 0; i < subdirs.count; i++) submakes[i] = parse_makefile( subdirs.str[i] );
+    for (i = 0; i < subdirs.count; i++)
+    {
+        const char *tmp;
+        submakes[i] = parse_makefile( subdirs.str[i] );
+        /* SpritzWine (from Proton): a SUBDIRS entry given as an absolute path is a winelib component
+           (lsteamclient / vrclient / steamexe / wineopenxr) built against the already-installed wine
+           via the reused wine Makefile. Re-root its obj dir under dlls/ and mark it external, so makedep
+           treats wine's headers and import libs as externally provided instead of aborting on them. */
+        if (*(tmp = subdirs.str[i]) == '/')
+        {
+            tmp = strmake( "dlls%s", strrchr( tmp, '/' ));
+            submakes[i]->is_external = 1;
+        }
+        submakes[i]->obj_dir = subdirs.str[i] = tmp;
+    }
+
+    /* SpritzWine (from Proton): the component reuse build omits the "include" subdir from SUBDIRS, so
+       include_makefile is never set -- parse it explicitly from the source tree so global_includes is
+       populated with wine's headers (and load_sources below doesn't dereference a NULL). Mark it
+       external: we only mine it for global_includes, so its own unresolved deps (e.g. cdosys.idl's
+       importlib("stdole2.tlb"), which a full build satisfies from dlls/) must not abort makedep. */
+    if (!include_makefile)
+    {
+        include_makefile = parse_makefile( root_src_dir_path( "include" ) );
+        include_makefile->is_external = 1;
+    }
 
     load_sources( top_makefile );
     load_sources( include_makefile );
