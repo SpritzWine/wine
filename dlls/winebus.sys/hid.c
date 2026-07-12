@@ -1190,7 +1190,7 @@ static NTSTATUS hid_device_get_report_descriptor(struct unix_device *iface, BYTE
     return STATUS_SUCCESS;
 }
 
-static void hid_device_set_output_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io)
+void hid_device_set_output_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io)
 {
     struct hid_physical *physical = &iface->hid_physical;
     struct hid_haptics *haptics = &iface->hid_haptics;
@@ -1389,7 +1389,7 @@ static void hid_device_set_output_report(struct unix_device *iface, HID_XFER_PAC
     }
 }
 
-static void hid_device_get_feature_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io)
+void hid_device_get_feature_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io)
 {
     struct hid_haptics *haptics = &iface->hid_haptics;
 
@@ -1410,7 +1410,7 @@ static void hid_device_get_feature_report(struct unix_device *iface, HID_XFER_PA
     }
 }
 
-static void hid_device_set_feature_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io)
+void hid_device_set_feature_report(struct unix_device *iface, HID_XFER_PACKET *packet, IO_STATUS_BLOCK *io)
 {
     struct hid_haptics *haptics = &iface->hid_haptics;
 

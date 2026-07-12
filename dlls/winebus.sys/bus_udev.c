@@ -115,6 +115,16 @@ static inline struct base_device *impl_from_unix_device(struct unix_device *ifac
 struct hidraw_device
 {
     struct base_device base;
+
+#ifdef HAVE_LINUX_HIDRAW_H
+    /* Sony gamepad rumble state (see sony_rumble_init); NULL = plain passthrough */
+    void *sony_state;
+    pthread_t sony_thread;
+    pthread_cond_t sony_cond;
+    BOOL sony_thread_started;
+    BOOL sony_stop;
+    BOOL sony_dirty;
+#endif
 };
 
 static inline struct hidraw_device *hidraw_impl_from_unix_device(struct unix_device *iface)
@@ -284,24 +294,349 @@ static struct base_device *find_device_from_devnode(const char *path)
     return NULL;
 }
 
+#ifdef HAVE_LINUX_HIDRAW_H
+
+/* Sony gamepad (DualShock 4 / DualSense) rumble for the hidraw passthrough
+ * backend. The pads are deliberately kept on hidraw for their native input
+ * protocol, but they only rumble through vendor output reports, so the plain
+ * passthrough exposes no force feedback at all. We splice Wine's synthetic
+ * haptics + PID reports (the same hid.c-built ones the lnxev/SDL backends
+ * use) into the device's own descriptor and translate them to the vendor
+ * rumble reports. Everything device-independent -- the descriptor sanity
+ * scan, the effect/haptics state machine and the exact report layouts + BT
+ * CRC -- lives in Rust (rust/src_sys/winebus, libwine_winebus.so); the glue
+ * here owns the fds, the vtbl wiring and the rumble thread.
+ *
+ * All rs_sony_* calls are made under udev_cs; that is the crate's threading
+ * contract. */
+
+/* synthetic report IDs are allocated from SONY_REPORT_ID_BASE + 1; the scan
+ * in rs_sony_check_descriptor guarantees the device leaves the range free */
+#define SONY_REPORT_ID_BASE 0x40
+#define SONY_REPORT_ID_MAX  0x50
+#define SONY_MAX_REPORT_SIZE 78
+
+extern int rs_sony_check_descriptor(const BYTE *data, UINT len, BYTE base, BYTE base_max);
+extern void *rs_sony_create(UINT family, UINT bus, int vibration_v2);
+extern void rs_sony_destroy(void *state);
+extern void rs_sony_haptics_start(void *state, UINT64 now_ms, UINT duration_ms, UINT16 rumble, UINT16 buzz);
+extern void rs_sony_haptics_stop(void *state);
+extern int rs_sony_device_control(void *state, UINT16 control);
+extern void rs_sony_set_gain(void *state, BYTE percent);
+extern void rs_sony_effect_update(void *state, BYTE index, UINT16 effect_type, UINT16 duration_ms,
+                                  UINT16 start_delay_ms, BYTE gain_percent, UINT16 periodic_magnitude,
+                                  INT16 constant_magnitude, INT16 ramp_start, INT16 ramp_end);
+extern void rs_sony_effect_control(void *state, UINT64 now_ms, BYTE index, UINT16 control, BYTE iterations);
+extern int rs_sony_tick(void *state, UINT64 now_ms, BYTE *buf, UINT cap, UINT *out_len, UINT64 *out_next_ms);
+
+static ULONGLONG sony_now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (ULONGLONG)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* udev_cs must be held */
+static void sony_rumble_wake(struct hidraw_device *impl)
+{
+    impl->sony_dirty = TRUE;
+    pthread_cond_signal(&impl->sony_cond);
+}
+
+static void sony_rumble_noop_destroy(struct unix_device *iface)
+{
+}
+
+static NTSTATUS sony_rumble_noop_start(struct unix_device *iface)
+{
+    return STATUS_SUCCESS;
+}
+
+static void sony_rumble_noop_stop(struct unix_device *iface)
+{
+}
+
+static NTSTATUS sony_rumble_haptics_start(struct unix_device *iface, UINT duration_ms,
+                                          USHORT rumble_intensity, USHORT buzz_intensity,
+                                          USHORT left_intensity, USHORT right_intensity)
+{
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
+    TRACE("iface %p, duration_ms %u, rumble_intensity %u, buzz_intensity %u.\n",
+          iface, duration_ms, rumble_intensity, buzz_intensity);
+
+    pthread_mutex_lock(&udev_cs);
+    rs_sony_haptics_start(impl->sony_state, sony_now_ms(), duration_ms, rumble_intensity, buzz_intensity);
+    sony_rumble_wake(impl);
+    pthread_mutex_unlock(&udev_cs);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS sony_rumble_haptics_stop(struct unix_device *iface)
+{
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
+    TRACE("iface %p.\n", iface);
+
+    pthread_mutex_lock(&udev_cs);
+    rs_sony_haptics_stop(impl->sony_state);
+    sony_rumble_wake(impl);
+    pthread_mutex_unlock(&udev_cs);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS sony_rumble_physical_device_control(struct unix_device *iface, USAGE control)
+{
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+    int supported;
+
+    TRACE("iface %p, control %#04x.\n", iface, control);
+
+    pthread_mutex_lock(&udev_cs);
+    supported = rs_sony_device_control(impl->sony_state, control);
+    sony_rumble_wake(impl);
+    pthread_mutex_unlock(&udev_cs);
+    return supported ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+}
+
+static NTSTATUS sony_rumble_physical_device_set_gain(struct unix_device *iface, BYTE percent)
+{
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
+    TRACE("iface %p, percent %#x.\n", iface, percent);
+
+    pthread_mutex_lock(&udev_cs);
+    rs_sony_set_gain(impl->sony_state, percent);
+    sony_rumble_wake(impl);
+    pthread_mutex_unlock(&udev_cs);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS sony_rumble_physical_effect_control(struct unix_device *iface, BYTE index,
+                                                    USAGE control, BYTE iterations)
+{
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
+    TRACE("iface %p, index %u, control %04x, iterations %u.\n", iface, index, control, iterations);
+
+    pthread_mutex_lock(&udev_cs);
+    rs_sony_effect_control(impl->sony_state, sony_now_ms(), index, control, iterations);
+    sony_rumble_wake(impl);
+    pthread_mutex_unlock(&udev_cs);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS sony_rumble_physical_effect_update(struct unix_device *iface, BYTE index,
+                                                   struct effect_params *params)
+{
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
+    TRACE("iface %p, index %u, params %p.\n", iface, index, params);
+
+    pthread_mutex_lock(&udev_cs);
+    rs_sony_effect_update(impl->sony_state, index, params->effect_type, params->duration,
+                          params->start_delay, params->gain_percent, params->periodic.magnitude,
+                          params->constant_force.magnitude, params->ramp_force.ramp_start,
+                          params->ramp_force.ramp_end);
+    sony_rumble_wake(impl);
+    pthread_mutex_unlock(&udev_cs);
+    return STATUS_SUCCESS;
+}
+
+static const struct hid_device_vtbl sony_rumble_vtbl =
+{
+    sony_rumble_noop_destroy,
+    sony_rumble_noop_start,
+    sony_rumble_noop_stop,
+    sony_rumble_haptics_start,
+    sony_rumble_haptics_stop,
+    sony_rumble_physical_device_control,
+    sony_rumble_physical_device_set_gain,
+    sony_rumble_physical_effect_control,
+    sony_rumble_physical_effect_update,
+};
+
+static void *sony_rumble_thread(void *args)
+{
+    struct unix_device *iface = args;
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+    BYTE buf[SONY_MAX_REPORT_SIZE];
+    ULONGLONG next;
+    UINT len;
+
+    pthread_mutex_lock(&udev_cs);
+    while (!impl->sony_stop)
+    {
+        impl->sony_dirty = FALSE;
+
+        if (rs_sony_tick(impl->sony_state, sony_now_ms(), buf, sizeof(buf), &len, &next) &&
+            write(impl->base.device_fd, buf, len) != len)
+            WARN("rumble write failed: %d %s\n", errno, strerror(errno));
+
+        if (impl->sony_dirty || impl->sony_stop) continue;
+        if (next == (ULONGLONG)-1)
+            pthread_cond_wait(&impl->sony_cond, &udev_cs);
+        else
+        {
+            struct timespec ts = {.tv_sec = next / 1000, .tv_nsec = (next % 1000) * 1000000};
+            pthread_cond_timedwait(&impl->sony_cond, &udev_cs, &ts);
+        }
+    }
+
+    /* silence the motors on the way out */
+    rs_sony_device_control(impl->sony_state, PID_USAGE_DC_DEVICE_RESET);
+    if (rs_sony_tick(impl->sony_state, sony_now_ms(), buf, sizeof(buf), &len, &next))
+        write(impl->base.device_fd, buf, len);
+    pthread_mutex_unlock(&udev_cs);
+    return NULL;
+}
+
+static void sony_rumble_init(struct hidraw_device *impl, const struct device_desc *desc)
+{
+    USAGE effect_usages[] =
+    {
+        PID_USAGE_ET_SINE,
+        PID_USAGE_ET_SQUARE,
+        PID_USAGE_ET_TRIANGLE,
+        PID_USAGE_ET_SAWTOOTH_UP,
+        PID_USAGE_ET_SAWTOOTH_DOWN,
+        PID_USAGE_ET_CONSTANT_FORCE,
+        PID_USAGE_ET_RAMP,
+    };
+    struct unix_device *iface = &impl->base.unix_device;
+    struct hidraw_report_descriptor descriptor;
+    int vibration_v2 = 0;
+    UINT family;
+
+    if (is_dualshock4_gamepad(desc->vid, desc->pid)) family = 1;
+    else if (is_dualsense_gamepad(desc->vid, desc->pid)) family = 2;
+    else return;
+
+    if (desc->bus_type != BUS_TYPE_USB && desc->bus_type != BUS_TYPE_BLUETOOTH)
+    {
+        WARN("unknown bus type %u, no rumble for %04x:%04x\n", desc->bus_type, desc->vid, desc->pid);
+        return;
+    }
+
+    if (ioctl(impl->base.device_fd, HIDIOCGRDESCSIZE, &descriptor.size) == -1 ||
+        descriptor.size > sizeof(descriptor.value) ||
+        ioctl(impl->base.device_fd, HIDIOCGRDESC, &descriptor) == -1)
+    {
+        WARN("failed to read report descriptor: %d %s\n", errno, strerror(errno));
+        return;
+    }
+
+    if (!rs_sony_check_descriptor(descriptor.value, descriptor.size, SONY_REPORT_ID_BASE, SONY_REPORT_ID_MAX))
+    {
+        WARN("descriptor of %04x:%04x not suitable for splicing, keeping plain passthrough\n",
+             desc->vid, desc->pid);
+        return;
+    }
+
+    /* the synthetic reports get IDs above everything the device declares */
+    iface->hid_report_descriptor.next_report_id[HidP_Input] = SONY_REPORT_ID_BASE;
+    iface->hid_report_descriptor.next_report_id[HidP_Output] = SONY_REPORT_ID_BASE;
+    iface->hid_report_descriptor.next_report_id[HidP_Feature] = SONY_REPORT_ID_BASE;
+
+    if (!hid_device_add_haptics(iface) ||
+        !hid_device_add_physical(iface, effect_usages, ARRAY_SIZE(effect_usages), 2))
+    {
+        ERR("failed to build the synthetic rumble reports\n");
+        goto failed;
+    }
+
+    if (family == 2)
+    {
+        BYTE buf[64] = {0x20}; /* DS_FEATURE_REPORT_FIRMWARE_INFO */
+
+        /* DualSense firmware >= 2.21 wants the revised vibration flag
+         * (valid_flag2 COMPATIBLE_VIBRATION2); the Edge always does */
+        vibration_v2 = desc->pid == 0x0df2;
+        if (!vibration_v2 && ioctl(impl->base.device_fd, HIDIOCGFEATURE(sizeof(buf)), buf) >= 0 && buf[0] == 0x20)
+            vibration_v2 = (buf[44] | (buf[45] << 8)) >= 0x0215;
+    }
+
+    if (!(impl->sony_state = rs_sony_create(family, desc->bus_type, vibration_v2)))
+        goto failed;
+
+    iface->hid_vtbl = &sony_rumble_vtbl;
+    TRACE("enabled %s rumble for %04x:%04x on %s, vibration_v2 %d\n",
+          family == 2 ? "DualSense" : "DualShock 4", desc->vid, desc->pid,
+          desc->bus_type == BUS_TYPE_BLUETOOTH ? "bluetooth" : "usb", vibration_v2);
+    return;
+
+failed:
+    free(iface->hid_report_descriptor.data);
+    memset(&iface->hid_report_descriptor, 0, sizeof(iface->hid_report_descriptor));
+    free(iface->hid_physical.effect_state.report_buf);
+    memset(&iface->hid_physical, 0, sizeof(iface->hid_physical));
+}
+
+#endif /* HAVE_LINUX_HIDRAW_H */
+
 static void hidraw_device_destroy(struct unix_device *iface)
 {
     struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
 
+#ifdef HAVE_LINUX_HIDRAW_H
+    if (impl->sony_state)
+    {
+        rs_sony_destroy(impl->sony_state);
+        free(iface->hid_report_descriptor.data);
+        free(iface->hid_physical.effect_state.report_buf);
+    }
+#endif
     udev_device_unref(impl->base.udev_device);
 }
 
 static NTSTATUS hidraw_device_start(struct unix_device *iface)
 {
+    struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
     pthread_mutex_lock(&udev_cs);
     start_polling_device(iface);
     pthread_mutex_unlock(&udev_cs);
+
+#ifdef HAVE_LINUX_HIDRAW_H
+    if (impl->sony_state && !impl->sony_thread_started)
+    {
+        pthread_condattr_t attr;
+
+        pthread_condattr_init(&attr);
+        pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+        pthread_cond_init(&impl->sony_cond, &attr);
+        pthread_condattr_destroy(&attr);
+
+        impl->sony_stop = FALSE;
+        if (!pthread_create(&impl->sony_thread, NULL, sony_rumble_thread, iface))
+            impl->sony_thread_started = TRUE;
+        else
+        {
+            ERR("failed to start the rumble thread\n");
+            pthread_cond_destroy(&impl->sony_cond);
+        }
+    }
+#endif
     return STATUS_SUCCESS;
 }
 
 static void hidraw_device_stop(struct unix_device *iface)
 {
     struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+
+#ifdef HAVE_LINUX_HIDRAW_H
+    if (impl->sony_thread_started)
+    {
+        pthread_mutex_lock(&udev_cs);
+        impl->sony_stop = TRUE;
+        pthread_cond_signal(&impl->sony_cond);
+        pthread_mutex_unlock(&udev_cs);
+
+        pthread_join(impl->sony_thread, NULL);
+        pthread_cond_destroy(&impl->sony_cond);
+        impl->sony_thread_started = FALSE;
+    }
+#endif
 
     pthread_mutex_lock(&udev_cs);
     stop_polling_device(iface);
@@ -315,6 +650,7 @@ static NTSTATUS hidraw_device_get_report_descriptor(struct unix_device *iface, B
 #ifdef HAVE_LINUX_HIDRAW_H
     struct hidraw_report_descriptor descriptor;
     struct hidraw_device *impl = hidraw_impl_from_unix_device(iface);
+    SIZE_T synth_size = impl->sony_state ? iface->hid_report_descriptor.size : 0;
 
     if (ioctl(impl->base.device_fd, HIDIOCGRDESCSIZE, &descriptor.size) == -1)
     {
@@ -322,9 +658,9 @@ static NTSTATUS hidraw_device_get_report_descriptor(struct unix_device *iface, B
         return STATUS_UNSUCCESSFUL;
     }
 
-    *out_length = descriptor.size;
+    *out_length = descriptor.size + synth_size;
 
-    if (length < descriptor.size)
+    if (length < *out_length)
         return STATUS_BUFFER_TOO_SMALL;
     if (!descriptor.size)
         return STATUS_SUCCESS;
@@ -335,7 +671,17 @@ static NTSTATUS hidraw_device_get_report_descriptor(struct unix_device *iface, B
         return STATUS_UNSUCCESSFUL;
     }
 
-    memcpy(buffer, descriptor.value, descriptor.size);
+    if (!synth_size)
+        memcpy(buffer, descriptor.value, descriptor.size);
+    else
+    {
+        /* splice the synthetic rumble reports in before the device's
+         * application collection closes (sony_rumble_init verified the
+         * descriptor ends with END_COLLECTION) */
+        memcpy(buffer, descriptor.value, descriptor.size - 1);
+        memcpy(buffer + descriptor.size - 1, iface->hid_report_descriptor.data, synth_size);
+        buffer[descriptor.size - 1 + synth_size] = 0xc0; /* END_COLLECTION */
+    }
     return STATUS_SUCCESS;
 #else
     return STATUS_NOT_IMPLEMENTED;
@@ -364,6 +710,14 @@ static void hidraw_device_set_output_report(struct unix_device *iface, HID_XFER_
     unsigned int length = packet->reportBufferLen;
     BYTE buffer[8192];
     int count = 0;
+
+#ifdef HAVE_LINUX_HIDRAW_H
+    if (impl->sony_state && packet->reportId > SONY_REPORT_ID_BASE && packet->reportId < SONY_REPORT_ID_MAX)
+    {
+        hid_device_set_output_report(iface, packet, io);
+        return;
+    }
+#endif
 
     if ((buffer[0] = packet->reportId))
         count = write(impl->base.device_fd, packet->reportBuffer, length);
@@ -396,6 +750,12 @@ static void hidraw_device_get_feature_report(struct unix_device *iface, HID_XFER
     unsigned int length = packet->reportBufferLen;
     BYTE buffer[8192];
     int count = 0;
+
+    if (impl->sony_state && packet->reportId > SONY_REPORT_ID_BASE && packet->reportId < SONY_REPORT_ID_MAX)
+    {
+        hid_device_get_feature_report(iface, packet, io);
+        return;
+    }
 
     if ((buffer[0] = packet->reportId) && length <= 0x1fff)
         count = ioctl(impl->base.device_fd, HIDIOCGFEATURE(length), packet->reportBuffer);
@@ -432,6 +792,12 @@ static void hidraw_device_set_feature_report(struct unix_device *iface, HID_XFER
     unsigned int length = packet->reportBufferLen;
     BYTE buffer[8192];
     int count = 0;
+
+    if (impl->sony_state && packet->reportId > SONY_REPORT_ID_BASE && packet->reportId < SONY_REPORT_ID_MAX)
+    {
+        hid_device_set_feature_report(iface, packet, io);
+        return;
+    }
 
     if ((buffer[0] = packet->reportId) && length <= 0x1fff)
         count = ioctl(impl->base.device_fd, HIDIOCSFEATURE(length), packet->reportBuffer);
@@ -1518,6 +1884,8 @@ static NTSTATUS hidraw_device_create(struct udev_device *dev, int fd, const char
     impl->udev_device = udev_device_ref(dev);
     strcpy(impl->devnode, devnode);
     impl->device_fd = fd;
+
+    sony_rumble_init(hidraw_impl_from_unix_device(&impl->unix_device), &desc);
 
     TRACE("dev %p, node %s, desc %s.\n", dev, debugstr_a(devnode), debugstr_device_desc(&desc));
     bus_event_queue_device_created(&event_queue, &impl->unix_device, &desc);
