@@ -1831,35 +1831,60 @@ static ULONG64 get_int_reg( CONTEXT *context, int reg )
     return *(&context->Rax + reg);
 }
 
-static void set_int_reg( CONTEXT *context, KNONVOLATILE_CONTEXT_POINTERS *ctx_ptr, int reg, ULONG64 *val )
-{
-    *(&context->Rax + reg) = *val;
-    if (ctx_ptr) ctx_ptr->IntegerContext[reg] = val;
-}
+/* SpritzWine: the x86_64 UNWIND_INFO opcode interpreter is implemented in Rust
+ * (rust/src_dll/ntdll_pe/src/unwind.rs) -- bounds-checked opcode parsing plus the
+ * stack-limit support RtlVirtualUnwind2's C version lacked (it ignored the limits
+ * and faulted on a wild read for a frame whose .pdata didn't match its stack).
+ * The per-opcode register writes (formerly set_float_reg) and opcode-size logic
+ * (get_opcode_size) moved there too. `int_regs` is &context->Rax, `xmm_regs` is
+ * &context->Xmm0; returns STATUS_BAD_FUNCTION_TABLE on a bad read / malformed stream. */
+/* struct unwind_reject + the UNWIND_REJECT_* codes are shared via ntdll_misc.h
+ * (also used by signal_i386.c for the i386 SEH chain). */
 
-static void set_float_reg( CONTEXT *context, KNONVOLATILE_CONTEXT_POINTERS *ctx_ptr, int reg, M128A *val )
-{
-    /* Use a memcpy() to avoid issues if val is misaligned. */
-    memcpy(&context->Xmm0 + reg, val, sizeof(*val));
-    if (ctx_ptr) ctx_ptr->FloatingContext[reg] = val;
-}
+extern NTSTATUS rs_rtl_unwind_run_codes( ULONG64 *int_regs, BYTE *xmm_regs,
+                                         ULONG64 **ctx_int, BYTE **ctx_float,
+                                         const BYTE *unwind_info, ULONG64 frame,
+                                         ULONG prolog_offset, const ULONG64 *limit_low,
+                                         const ULONG64 *limit_high, ULONG64 *frame_ret,
+                                         int *mach_frame, struct unwind_reject *reject );
+/* leaf-function + final return-address pop: Rip = *Rsp; Rsp += 8, bounds-checked */
+extern NTSTATUS rs_rtl_unwind_pop_return( ULONG64 *int_regs, const ULONG64 *limit_low,
+                                          const ULONG64 *limit_high, struct unwind_reject *reject );
+/* the Rust port of interpret_epilog (bounds-checked stack reads) */
+extern NTSTATUS rs_rtl_interpret_epilog( ULONG64 *int_regs, ULONG64 **ctx_int, const BYTE *pc,
+                                         const ULONG64 *limit_low, const ULONG64 *limit_high,
+                                         struct unwind_reject *reject );
+/* validate a SEH SCOPE_TABLE is in-module before __C_specific_handler dispatches it */
+extern NTSTATUS rs_seh_validate_scope_table( const BYTE *table, ULONG64 table_addr, ULONG64 base,
+                                             ULONG64 image_size, struct unwind_reject *reject );
 
-static int get_opcode_size( struct opcode op )
+/* Log a rejected frame on the `unwind` channel. Names the offending module
+ * (so you can tell at a glance whose .pdata is corrupt -- the game's own
+ * VMProtect/Denuvo section vs a wine builtin) and classifies which side of the
+ * stack the bad read fell on (below StackLimit -> overflow, above StackBase ->
+ * foreign/wild table) -- the legwork we did by hand off the AFOP/WDL traces. */
+static void warn_unwind_reject( const struct unwind_reject *reject, ULONG_PTR base, ULONG_PTR pc,
+                                const ULONG_PTR *limit_low, const ULONG_PTR *limit_high )
 {
-    switch (op.code)
+    static const char * const reasons[] =
+        { "none", "out-of-bounds stack read", "malformed opcode stream", "unknown opcode" };
+    const char *why = reject->reason < 4 ? reasons[reject->reason] : "?";
+    LDR_DATA_TABLE_ENTRY *ldr;
+    const WCHAR *module = NULL;
+    const char *side = "";
+
+    if (!LdrFindEntryForAddress( (void *)pc, &ldr )) module = ldr->BaseDllName.Buffer;
+
+    if (reject->reason == UNWIND_REJECT_OOB_READ && limit_low && limit_high)
     {
-    case UWOP_ALLOC_LARGE:
-        return 2 + (op.info != 0);
-    case UWOP_SAVE_NONVOL:
-    case UWOP_SAVE_XMM128:
-    case UWOP_EPILOG:
-        return 2;
-    case UWOP_SAVE_NONVOL_FAR:
-    case UWOP_SAVE_XMM128_FAR:
-        return 3;
-    default:
-        return 1;
+        if (reject->addr < *limit_low)        side = " below StackLimit (overflow?)";
+        else if (reject->addr >= *limit_high) side = " above StackBase (foreign/wild .pdata, e.g. VMProtect)";
     }
+
+    WARN( "RtlVirtualUnwind2: aborting in %s at %I64x (base+%I64x): %s; addr %I64x not in [%I64x,%I64x)%s opcode #%x\n",
+          module ? debugstr_w(module) : "<unknown module>", (ULONG64)pc, (ULONG64)(pc - base), why,
+          reject->addr, limit_low ? (ULONG64)*limit_low : 0, limit_high ? (ULONG64)*limit_high : 0,
+          side, (unsigned int)reject->opcode_index );
 }
 
 static void *get_main_function_start( const RUNTIME_FUNCTION *f, ULONG_PTR base )
@@ -1967,65 +1992,8 @@ static BOOL is_inside_epilog( BYTE *pc, ULONG64 base, const RUNTIME_FUNCTION *fu
     }
 }
 
-/* execute a function epilog, which must have been validated with is_inside_epilog() */
-static void interpret_epilog( BYTE *pc, CONTEXT *context, KNONVOLATILE_CONTEXT_POINTERS *ctx_ptr )
-{
-    for (;;)
-    {
-        BYTE rex = 0;
-
-        if ((*pc & 0xf0) == 0x40) rex = *pc++ & 0x0f;  /* rex prefix */
-
-        switch (*pc)
-        {
-        case 0x58: /* pop %rax/r8 */
-        case 0x59: /* pop %rcx/r9 */
-        case 0x5a: /* pop %rdx/r10 */
-        case 0x5b: /* pop %rbx/r11 */
-        case 0x5c: /* pop %rsp/r12 */
-        case 0x5d: /* pop %rbp/r13 */
-        case 0x5e: /* pop %rsi/r14 */
-        case 0x5f: /* pop %rdi/r15 */
-            set_int_reg( context, ctx_ptr, *pc - 0x58 + (rex & 1) * 8, (ULONG64 *)context->Rsp );
-            context->Rsp += sizeof(ULONG64);
-            pc++;
-            continue;
-        case 0x81: /* add $nnnn,%rsp */
-            context->Rsp += *(LONG *)(pc + 2);
-            pc += 2 + sizeof(LONG);
-            continue;
-        case 0x83: /* add $n,%rsp */
-            context->Rsp += (signed char)pc[2];
-            pc += 3;
-            continue;
-        case 0x8d:
-            if ((pc[1] >> 6) == 1)  /* lea n(reg),%rsp */
-            {
-                context->Rsp = get_int_reg( context, (pc[1] & 7) + (rex & 1) * 8 ) + (signed char)pc[2];
-                pc += 3;
-            }
-            else  /* lea nnnn(reg),%rsp */
-            {
-                context->Rsp = get_int_reg( context, (pc[1] & 7) + (rex & 1) * 8 ) + *(LONG *)(pc + 2);
-                pc += 2 + sizeof(LONG);
-            }
-            continue;
-        case 0xc2: /* ret $nn */
-            context->Rip = *(ULONG64 *)context->Rsp;
-            context->Rsp += sizeof(ULONG64) + *(WORD *)(pc + 1);
-            return;
-        case 0xe9: /* jmp nnnn */
-        case 0xeb: /* jmp n */
-        case 0xc3: /* ret */
-        case 0xf3: /* rep; ret */
-        case 0xff: /* jmp */
-            context->Rip = *(ULONG64 *)context->Rsp;
-            context->Rsp += sizeof(ULONG64);
-            return;
-        }
-        return;
-    }
-}
+/* interpret_epilog moved to Rust (rs_rtl_interpret_epilog) so the epilog's
+ * pop/ret stack reads are bounds-checked against the unwind limits too. */
 
 static RUNTIME_FUNCTION *find_function_info( ULONG_PTR pc, ULONG_PTR base,
                                              RUNTIME_FUNCTION *func, ULONG count )
@@ -2061,9 +2029,9 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
                                    PEXCEPTION_ROUTINE *handler_ret, ULONG flags )
 {
     union handler_data *handler_data;
-    ULONG64 frame, off;
+    ULONG64 frame;
     struct UNWIND_INFO *info;
-    unsigned int i, prolog_offset;
+    unsigned int prolog_offset;
     BOOL mach_frame = FALSE, chained = FALSE;
 
 #ifdef __arm64ec__
@@ -2084,14 +2052,27 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
 #endif
 
     TRACE( "type %lx base %I64x rip %I64x rva %I64x rsp %I64x\n", type, base, pc, pc - base, context->Rsp );
-    if (limit_low || limit_high) FIXME( "limits not supported\n" );
+
+    /* SpritzWine: every stack read in RtlVirtualUnwind2 now goes through the Rust ntdll
+     * (rs_rtl_unwind_run_codes for the opcode stream, rs_rtl_interpret_epilog for epilogs,
+     * rs_rtl_unwind_pop_return for the leaf + final return-address pops). Each honors the
+     * caller's [limit_low, limit_high) so a corrupt/foreign frame aborts the unwind cleanly
+     * instead of reading a wild stack address and faulting INSIDE the unwinder -- which, during
+     * exception dispatch, re-enters dispatch and recurses to a stack overflow (observed with
+     * VMProtect-virtualized code whose .pdata does not match its VM stack). On an abort the Rust
+     * side fills a struct unwind_reject we log via warn_unwind_reject(). */
 
     frame = *frame_ret = context->Rsp;
 
     if (!function)  /* leaf function */
     {
-        context->Rip = *(ULONG64 *)context->Rsp;
-        context->Rsp += sizeof(ULONG64);
+        struct unwind_reject reject = { 0 };
+        NTSTATUS rs_status = rs_rtl_unwind_pop_return( &context->Rax, limit_low, limit_high, &reject );
+        if (rs_status)
+        {
+            warn_unwind_reject( &reject, base, pc, limit_low, limit_high );
+            return rs_status;
+        }
         if (type) *data = NULL;
         if (handler_ret) *handler_ret = NULL;
         return STATUS_SUCCESS;
@@ -2125,76 +2106,44 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
             /* Since Win10 1809 epilogue does not have a special treatment in case of zero opcode count. */
             if (!chained && info->count && is_inside_epilog( (BYTE *)pc, base, function ))
             {
+                struct unwind_reject reject = { 0 };
+                NTSTATUS rs_status;
                 TRACE("inside epilog.\n");
-                interpret_epilog( (BYTE *)pc, context, ctx_ptr );
+                rs_status = rs_rtl_interpret_epilog( &context->Rax, ctx_ptr ? ctx_ptr->IntegerContext : NULL,
+                                                     (const BYTE *)pc, limit_low, limit_high, &reject );
+                if (rs_status)
+                {
+                    warn_unwind_reject( &reject, base, pc, limit_low, limit_high );
+                    return rs_status;
+                }
                 *frame_ret = info->frame_reg ? context->Rsp - 8 : frame;
                 if (handler_ret) *handler_ret = NULL;
                 return STATUS_SUCCESS;
             }
         }
 
-        for (i = 0; i < info->count; i += get_opcode_size(info->opcodes[i]))
         {
-            if (prolog_offset < info->opcodes[i].offset) continue; /* skip it */
-
-            switch (info->opcodes[i].code)
+            /* SpritzWine: the UNWIND_INFO opcode interpreter -- the attacker-facing
+             * parser that walks the opcode stream and dereferences stack slots to
+             * restore the caller's registers -- lives in Rust now (task #35). It does
+             * bounds-checked opcode parsing and honors the stack limits the C version
+             * ignored (the FIXME), so a corrupt/foreign frame aborts the unwind
+             * cleanly instead of faulting on a wild read. See
+             * rust/src_dll/ntdll_pe/src/unwind.rs. */
+            int rs_mach = 0;
+            struct unwind_reject reject = { 0 };
+            NTSTATUS rs_status = rs_rtl_unwind_run_codes(
+                &context->Rax, (BYTE *)&context->Xmm0,
+                ctx_ptr ? ctx_ptr->IntegerContext : NULL,
+                ctx_ptr ? (BYTE **)ctx_ptr->FloatingContext : NULL,
+                (const BYTE *)info, frame, prolog_offset, limit_low, limit_high,
+                frame_ret, &rs_mach, &reject );
+            if (rs_status)
             {
-            case UWOP_PUSH_NONVOL:  /* pushq %reg */
-                set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)context->Rsp );
-                context->Rsp += sizeof(ULONG64);
-                break;
-            case UWOP_ALLOC_LARGE:  /* subq $nn,%rsp */
-                if (info->opcodes[i].info) context->Rsp += *(DWORD *)&info->opcodes[i+1];
-                else context->Rsp += *(USHORT *)&info->opcodes[i+1] * 8;
-                break;
-            case UWOP_ALLOC_SMALL:  /* subq $n,%rsp */
-                context->Rsp += (info->opcodes[i].info + 1) * 8;
-                break;
-            case UWOP_SET_FPREG:  /* leaq nn(%rsp),%framereg */
-                context->Rsp = *frame_ret = frame;
-                break;
-            case UWOP_SAVE_NONVOL:  /* movq %reg,n(%rsp) */
-                off = frame + *(USHORT *)&info->opcodes[i+1] * 8;
-                set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)off );
-                break;
-            case UWOP_SAVE_NONVOL_FAR:  /* movq %reg,nn(%rsp) */
-                off = frame + *(DWORD *)&info->opcodes[i+1];
-                set_int_reg( context, ctx_ptr, info->opcodes[i].info, (ULONG64 *)off );
-                break;
-            case UWOP_SAVE_XMM128:  /* movaps %xmmreg,n(%rsp) */
-                off = frame + *(USHORT *)&info->opcodes[i+1] * 16;
-                set_float_reg( context, ctx_ptr, info->opcodes[i].info, (M128A *)off );
-                break;
-            case UWOP_SAVE_XMM128_FAR:  /* movaps %xmmreg,nn(%rsp) */
-                off = frame + *(DWORD *)&info->opcodes[i+1];
-                set_float_reg( context, ctx_ptr, info->opcodes[i].info, (M128A *)off );
-                break;
-            case UWOP_PUSH_MACHFRAME:
-                if (info->flags & UNW_FLAG_CHAININFO)
-                {
-                    FIXME("PUSH_MACHFRAME with chained unwind info.\n");
-                    break;
-                }
-                if (i + get_opcode_size(info->opcodes[i]) < info->count )
-                {
-                    FIXME("PUSH_MACHFRAME is not the last opcode.\n");
-                    break;
-                }
-
-                if (info->opcodes[i].info)
-                    context->Rsp += 0x8;
-
-                context->Rip = *(ULONG64 *)context->Rsp;
-                context->Rsp = *(ULONG64 *)(context->Rsp + 24);
-                mach_frame = TRUE;
-                break;
-            case UWOP_EPILOG:
-                if (info->version == 2)
-                    break; /* nothing to do */
-            default:
-                FIXME( "unknown code %u\n", info->opcodes[i].code );
-                break;
+                warn_unwind_reject( &reject, base, pc, limit_low, limit_high );
+                return rs_status;
             }
+            if (rs_mach) mach_frame = TRUE;
         }
 
         if (!(info->flags & UNW_FLAG_CHAININFO)) break;
@@ -2205,8 +2154,13 @@ NTSTATUS WINAPI RtlVirtualUnwind2( ULONG type, ULONG_PTR base, ULONG_PTR pc,
     if (!mach_frame)
     {
         /* now pop return address */
-        context->Rip = *(ULONG64 *)context->Rsp;
-        context->Rsp += sizeof(ULONG64);
+        struct unwind_reject reject = { 0 };
+        NTSTATUS rs_status = rs_rtl_unwind_pop_return( &context->Rax, limit_low, limit_high, &reject );
+        if (rs_status)
+        {
+            warn_unwind_reject( &reject, base, pc, limit_low, limit_high );
+            return rs_status;
+        }
     }
 
     if (handler_ret) *handler_ret = NULL;
@@ -2258,6 +2212,28 @@ EXCEPTION_DISPOSITION WINAPI __C_specific_handler( EXCEPTION_RECORD *rec, void *
 
     TRACE( "%p %p %p %p pc %Ix\n", rec, frame, context, dispatch, pc );
     if (TRACE_ON(unwind)) DUMP_SCOPE_TABLE( base, table );
+
+    /* SpritzWine: validate the scope table lies inside the module before we dispatch it, so a
+     * corrupt/foreign table (e.g. VMProtect) can't make us call a wild filter/__finally or unwind
+     * to a wild target. Best-effort: only when pc resolves to the module at `base` (skips dynamic
+     * function tables, whose base isn't a loaded image). On a bad table we log and decline the
+     * handler (ExceptionContinueSearch) rather than calling into garbage. */
+    {
+        LDR_DATA_TABLE_ENTRY *mod;
+        if (!LdrFindEntryForAddress( (void *)pc, &mod ) && base == (ULONG_PTR)mod->DllBase)
+        {
+            struct unwind_reject reject = { 0 };
+            if (rs_seh_validate_scope_table( (const BYTE *)table, (ULONG64)(ULONG_PTR)table,
+                                             base, mod->SizeOfImage, &reject ))
+            {
+                WARN( "__C_specific_handler: corrupt scope table in %s (base+%I64x): record #%x "
+                      "targets %I64x outside the module -- declining handler\n",
+                      debugstr_w(mod->BaseDllName.Buffer), (ULONG64)(pc - base),
+                      (unsigned int)reject.opcode_index, reject.addr );
+                return ExceptionContinueSearch;
+            }
+        }
+    }
 
     if (rec->ExceptionFlags & (EXCEPTION_UNWINDING | EXCEPTION_EXIT_UNWIND))
     {

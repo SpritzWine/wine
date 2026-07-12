@@ -243,6 +243,7 @@ NTSTATUS WINAPI wow64_NtPowerInformation( UINT *args )
     case SystemBatteryState:   /* SYSTEM_BATTERY_STATE */
     case SystemExecutionState:   /* ULONG */
     case ProcessorInformation:   /* PROCESSOR_POWER_INFORMATION */
+    case SystemPowerInformation: /* Battery-Mode and Time remaining */
         return NtPowerInformation( level, in_buf, in_len, out_buf, out_len );
 
     default:
