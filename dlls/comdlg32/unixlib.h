@@ -1,0 +1,63 @@
+/*
+ * comdlg32 Unix library interface.
+ *
+ * Bridges Wine's classic file open/save dialogs to the host's native file
+ * chooser via the XDG desktop portal (org.freedesktop.portal.FileChooser).
+ * The PE side (portal.c) marshals a request and makes a __wine_unix_call into
+ * comdlg32.so, whose dispatch table (unixlib.c) forwards to the Rust portal
+ * client in libwine_comdlg32.so.
+ *
+ * Copyright 2026 The SpritzWine project
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
+ */
+
+#ifndef __WINE_COMDLG32_UNIXLIB_H
+#define __WINE_COMDLG32_UNIXLIB_H
+
+#include "windef.h"
+#include "winternl.h"
+#include "wine/unixlib.h"
+
+/* Request/response for unix_file_chooser. All strings are UTF-8. In a same-width
+ * build (pure 32- or 64-bit) the PE and Unix sides share one address space; the
+ * 32-bit-PE-on-64-bit-unix (wow64) case is handled by a thunk in unixlib.c. */
+struct file_chooser_params
+{
+    BOOL        save;           /* TRUE: Save dialog, FALSE: Open dialog */
+    BOOL        multiple;       /* allow selecting multiple files */
+    BOOL        directory;      /* pick a directory rather than a file */
+    const char *title;          /* dialog title, or NULL */
+    const char *initial_dir;    /* starting host directory, or NULL */
+    const char *current_name;   /* suggested name for Save, or NULL */
+    const char *filters;        /* "label\0glob;glob\0...\0\0", or NULL */
+    ULONG       current_filter; /* 1-based index of the filter to pre-select, 0 = none */
+    char       *out_paths;      /* out: chosen host path(s), each NUL-terminated,
+                                 * the list double-NUL-terminated, UTF-8 */
+    ULONG       out_size;       /* in: capacity of out_paths (bytes);
+                                 * out: bytes required including the final NUL */
+    ULONG       out_filter;     /* out: 1-based index of the filter the user
+                                 * selected, 0 = unknown */
+};
+
+enum comdlg32_funcs
+{
+    unix_file_chooser,
+    unix_funcs_count,
+};
+
+#define COMDLG32_CALL( func, params ) WINE_UNIX_CALL( unix_ ## func, (params) )
+
+#endif /* __WINE_COMDLG32_UNIXLIB_H */

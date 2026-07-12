@@ -36,10 +36,12 @@
 WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 
 #include "cdlg.h"
+#include "unixlib.h"
 
 
 HINSTANCE COMDLG32_hInstance = 0;
 HANDLE	COMDLG32_hActCtx = INVALID_HANDLE_VALUE;
+BOOL COMDLG32_unixlib_initialized = FALSE;
 
 static DWORD COMDLG32_TlsIndex = TLS_OUT_OF_INDEXES;
 
@@ -61,6 +63,11 @@ BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD Reason, LPVOID Reserved)
 	case DLL_PROCESS_ATTACH:
 	{
 		ACTCTXW actctx = {0};
+
+		/* Set up the __wine_unix_call bridge to comdlg32.so (host file
+		 * chooser via the XDG desktop portal). Non-fatal: if it fails to load,
+		 * portal calls are skipped and Wine's own dialogs are used. */
+		COMDLG32_unixlib_initialized = !__wine_init_unix_call();
 
 		COMDLG32_hInstance = hInstance;
 		DisableThreadLibraryCalls(hInstance);
