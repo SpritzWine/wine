@@ -1096,35 +1096,17 @@ NTSTATUS WINAPI RtlGetCompressionWorkSpaceSize(USHORT format, PULONG compress_wo
     }
 }
 
-/* compress data using LZNT1, currently only a stub */
+/* LZNT1 compression is implemented in Rust (rust/src_dll/ntdll_pe -> the PE-side
+ * static lib libwine_ntdll_pe.a, linked into ntdll.dll.so). It emits real LZ
+ * back-references; the previous C code was a stub that only wrote uncompressed
+ * chunks. */
+extern NTSTATUS rs_rtl_lznt1_compress( const UCHAR *src, ULONG src_size,
+                                       UCHAR *dst, ULONG dst_size, ULONG *final_size );
+
 static NTSTATUS lznt1_compress(UCHAR *src, ULONG src_size, UCHAR *dst, ULONG dst_size,
                                ULONG chunk_size, ULONG *final_size, UCHAR *workspace)
 {
-    UCHAR *src_cur = src, *src_end = src + src_size;
-    UCHAR *dst_cur = dst, *dst_end = dst + dst_size;
-    ULONG block_size;
-
-    while (src_cur < src_end)
-    {
-        /* determine size of current chunk */
-        block_size = min(0x1000, src_end - src_cur);
-        if (dst_cur + sizeof(WORD) + block_size > dst_end)
-            return STATUS_BUFFER_TOO_SMALL;
-
-        /* write (uncompressed) chunk header */
-        *(WORD *)dst_cur = 0x3000 | (block_size - 1);
-        dst_cur += sizeof(WORD);
-
-        /* write chunk content */
-        memcpy(dst_cur, src_cur, block_size);
-        dst_cur += block_size;
-        src_cur += block_size;
-    }
-
-    if (final_size)
-        *final_size = dst_cur - dst;
-
-    return STATUS_SUCCESS;
+    return rs_rtl_lznt1_compress(src, src_size, dst, dst_size, final_size);
 }
 
 /******************************************************************************
@@ -1153,60 +1135,19 @@ NTSTATUS WINAPI RtlCompressBuffer(USHORT format, PUCHAR uncompressed, ULONG unco
     }
 }
 
-/* decompress a single LZNT1 chunk */
+/* Decompress a single LZNT1 chunk. The token decoder (which walks
+ * attacker-controlled back-references and does overlapping copies) is
+ * implemented in Rust (rust/src_dll/ntdll_pe -> libwine_ntdll_pe.a),
+ * bounds-checked. */
+extern NTSTATUS rs_rtl_lznt1_decompress_chunk( UCHAR *dst, ULONG dst_size,
+                                               const UCHAR *src, ULONG src_size, ULONG *written );
+
 static UCHAR *lznt1_decompress_chunk(UCHAR *dst, ULONG dst_size, UCHAR *src, ULONG src_size)
 {
-    UCHAR *src_cur = src, *src_end = src + src_size;
-    UCHAR *dst_cur = dst, *dst_end = dst + dst_size;
-    ULONG displacement_bits, length_bits;
-    ULONG code_displacement, code_length;
-    WORD flags, code;
-
-    while (src_cur < src_end && dst_cur < dst_end)
-    {
-        flags = 0x8000 | *src_cur++;
-        while ((flags & 0xff00) && src_cur < src_end)
-        {
-            if (flags & 1)
-            {
-                /* backwards reference */
-                if (src_cur + sizeof(WORD) > src_end)
-                    return NULL;
-
-                code = *(WORD *)src_cur;
-                src_cur += sizeof(WORD);
-
-                /* find length / displacement bits */
-                for (displacement_bits = 12; displacement_bits > 4; displacement_bits--)
-                    if ((1 << (displacement_bits - 1)) < dst_cur - dst) break;
-
-                length_bits       = 16 - displacement_bits;
-                code_length       = (code & ((1 << length_bits) - 1)) + 3;
-                code_displacement = (code >> length_bits) + 1;
-
-                if (dst_cur < dst + code_displacement)
-                    return NULL;
-
-                /* copy bytes of chunk - we can't use memcpy() since source and dest can
-                 * be overlapping, and the same bytes can be repeated over and over again */
-                while (code_length--)
-                {
-                    if (dst_cur >= dst_end) return dst_cur;
-                    *dst_cur = *(dst_cur - code_displacement);
-                    dst_cur++;
-                }
-            }
-            else
-            {
-                /* uncompressed data */
-                if (dst_cur >= dst_end) return dst_cur;
-                *dst_cur++ = *src_cur++;
-            }
-            flags >>= 1;
-        }
-    }
-
-    return dst_cur;
+    ULONG written;
+    if (rs_rtl_lznt1_decompress_chunk(dst, dst_size, src, src_size, &written))
+        return NULL;
+    return dst + written;
 }
 
 /* decompress data encoded with LZNT1 */

@@ -109,6 +109,8 @@ static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEX
 {
     LDR_DATA_TABLE_ENTRY *module = NULL;
     NTSTATUS status;
+    ULONG_PTR stack_low, stack_high;
+    ULONG_PTR *limit_lo = NULL, *limit_hi = NULL;
 
     if (dump_backtrace)
     {
@@ -140,9 +142,20 @@ static NTSTATUS virtual_unwind( ULONG type, DISPATCHER_CONTEXT *dispatch, CONTEX
         if (status != STATUS_UNSUCCESSFUL) return status;
     }
 
+    /* SpritzWine: pass the thread stack bounds as unwind limits so RtlVirtualUnwind2 aborts cleanly
+     * on a corrupt frame instead of faulting inside the unwinder and recursing to a stack overflow.
+     * Only when the TEB stack range is initialized and sane (low < high); otherwise NULL = unchecked,
+     * preserving the old behavior so early/foreign-stack unwinds are never wrongly rejected. */
+    stack_low  = (ULONG_PTR)NtCurrentTeb()->Tib.StackLimit;
+    stack_high = (ULONG_PTR)NtCurrentTeb()->Tib.StackBase;
+    if (stack_low && stack_high && stack_low < stack_high)
+    {
+        limit_lo = &stack_low;
+        limit_hi = &stack_high;
+    }
     return RtlVirtualUnwind2( type, dispatch->ImageBase, context->Rip, dispatch->FunctionEntry,
                               context, NULL, &dispatch->HandlerData, &dispatch->EstablisherFrame,
-                              NULL, NULL, NULL, &dispatch->LanguageHandler, 0 );
+                              NULL, limit_lo, limit_hi, &dispatch->LanguageHandler, 0 );
 }
 
 
@@ -267,7 +280,15 @@ NTSTATUS call_seh_handlers( EXCEPTION_RECORD *rec, CONTEXT *orig_context )
     nested_frame = 0;
     for (;;)
     {
+        /* virtual_unwind's signature follows the BASE: Valve's 11.0 carries the extra
+         * need_backtrace() argument that our 11.12 fork base does not have. */
         status = virtual_unwind( UNW_FLAG_EHANDLER, &dispatch, &context, need_backtrace( rec->ExceptionCode ) );
+        /* SpritzWine: an un-unwindable frame (corrupt .pdata, or a stack that doesn't match it -- e.g.
+         * VMProtect VM code) makes virtual_unwind fail. Returning that status here re-raises it as a
+         * fresh STATUS_BAD_FUNCTION_TABLE exception, which re-enters dispatch and recurses to a stack
+         * overflow. Treat it as end-of-search -> deliver the original exception as unhandled (clean
+         * process termination) like reaching the end of the frame chain. */
+        if (status == STATUS_BAD_FUNCTION_TABLE) break;
         if (status != STATUS_SUCCESS) return status;
 
     unwind_done:

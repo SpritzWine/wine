@@ -74,6 +74,25 @@ static inline BOOL is_valid_frame( ULONG_PTR frame )
             (void *)frame <= NtCurrentTeb()->Tib.StackBase);
 }
 
+/* Diagnostic the Rust ntdll fills when it rejects a corrupt unwind/SEH control
+ * structure, so we can log why/where on the debug channel -- the line that was
+ * missing when triaging the VMProtect/Denuvo crashes (AFOP 2840770, WDL 2239550).
+ * Shared by dlls/ntdll/unwind.c (x86_64 .pdata) and signal_i386.c (i386 SEH chain);
+ * mirrors `UnwindReject` in rust/src_dll/ntdll_pe/src/unwind.rs (padding-free). */
+struct unwind_reject
+{
+    ULONG64 addr;          /* offending address (stack slot / handler / frame), else 0 */
+    ULONG   reason;        /* UNWIND_REJECT_* below */
+    ULONG   opcode_index;  /* opcode/record slot at the failure, or ~0 */
+};
+#define UNWIND_REJECT_NONE                 0
+#define UNWIND_REJECT_OOB_READ             1
+#define UNWIND_REJECT_MALFORMED            2
+#define UNWIND_REJECT_UNKNOWN_OPCODE       3
+#define UNWIND_REJECT_BAD_SCOPE            4
+#define UNWIND_REJECT_SEH_CYCLE            5
+#define UNWIND_REJECT_SEH_HANDLER_ON_STACK 6
+
 extern void WINAPI LdrInitializeThunk(CONTEXT*,ULONG_PTR,ULONG_PTR,ULONG_PTR);
 extern void WINAPI KiUserExceptionDispatcher(EXCEPTION_RECORD*,CONTEXT*);
 extern void WINAPI KiUserApcDispatcher(CONTEXT*,ULONG_PTR,ULONG_PTR,ULONG_PTR,PNTAPCFUNC);
