@@ -96,6 +96,11 @@ typedef struct
     LPITEMIDLIST places[5];
 } FileOpenDlgInfos;
 
+/* portal.c: try the host's native file chooser (XDG desktop portal). Returns
+ * TRUE if it handled the dialog (with *result set to what GetFileName95 should
+ * return), or FALSE to fall back to Wine's own dialog. */
+extern BOOL COMDLG32_TryPortalFileDialog(FileOpenDlgInfos *info, BOOL *result);
+
 /***********************************************************************
  * Control IDs
  */

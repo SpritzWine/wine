@@ -406,6 +406,17 @@ static void get_compatible_ids(const struct usb_device *device, struct string_bu
     append_id(buffer, L"");
 }
 
+static void get_container_id(const struct usb_device *device, struct string_buffer *buffer)
+{
+    /* A container ID groups all the functions of one physical device. Derive it
+     * deterministically from the device-level identity (vendor/product/revision +
+     * bus/port) and NOT from the interface, so a composite device's interfaces all
+     * report the same ID and the PnP manager groups them. Mirrors winebus.sys. */
+    append_id(buffer, L"{%08X-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
+            (unsigned int)MAKELONG(device->product, device->vendor), device->revision, device->usbver,
+            device->busnum, device->portnum, device->class, device->subclass, device->protocol, 0, 0, 0);
+}
+
 static NTSTATUS query_id(struct usb_device *device, IRP *irp, BUS_QUERY_ID_TYPE type)
 {
     struct string_buffer buffer = {0};
@@ -428,6 +439,10 @@ static NTSTATUS query_id(struct usb_device *device, IRP *irp, BUS_QUERY_ID_TYPE 
 
         case BusQueryCompatibleIDs:
             get_compatible_ids(device, &buffer);
+            break;
+
+        case BusQueryContainerID:
+            get_container_id(device, &buffer);
             break;
 
         default:
