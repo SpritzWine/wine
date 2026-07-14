@@ -4154,6 +4154,7 @@ struct thread_data *virtual_alloc_thread_data(void)
         data->wait_fd[0] = -1;
         data->wait_fd[1] = -1;
         data->alert_fd   = -1;
+        data->fsync_apc_futex = NULL;
 #ifdef VALGRIND_STACK_REGISTER
         VALGRIND_STACK_REGISTER( (char *)data + signal_stack_mask + 1, (char *)data + view->size );
 #endif
