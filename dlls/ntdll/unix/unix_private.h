@@ -107,6 +107,7 @@ struct thread_data
     int          reply_fd;          /* fd for receiving server replies */
     int          wait_fd[2];        /* fd for sleeping server requests */
     int          alert_fd;          /* inproc sync fd for user apc alerts */
+    int         *fsync_apc_futex;   /* fsync: futex the alertable waits watch for APC arrival */
     DWORD        tid;               /* thread id */
     BOOL         allow_writes;      /* ThreadAllowWrites flags */
     BOOL         suspend;           /* suspend on startup */
@@ -247,6 +248,7 @@ extern unsigned int server_select( const union select_op *select_op, data_size_t
                                    timeout_t abs_timeout, struct context_data *context, struct user_apc *user_apc );
 extern unsigned int server_wait( const union select_op *select_op, data_size_t size, UINT flags,
                                  const LARGE_INTEGER *timeout );
+extern int get_inproc_alert_fd(void);
 extern unsigned int server_wait_for_object( HANDLE handle, BOOL alertable, const LARGE_INTEGER *timeout );
 extern unsigned int server_queue_process_apc( HANDLE process, const union apc_call *call,
                                               union apc_result *result );
