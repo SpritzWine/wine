@@ -6061,6 +6061,8 @@ struct get_inproc_sync_fd_reply
     struct reply_header __header;
     int           type;
     unsigned int access;
+    unsigned int fsync_shm_idx;
+    char __pad_20[4];
 };
 
 
@@ -6074,7 +6076,7 @@ struct get_inproc_alert_fd_reply
 {
     struct reply_header __header;
     obj_handle_t handle;
-    char __pad_12[4];
+    unsigned int fsync_shm_idx;
 };
 
 
@@ -6216,6 +6218,31 @@ struct d3dkmt_mutex_release_request
     char __pad_36[4];
 };
 struct d3dkmt_mutex_release_reply
+{
+    struct reply_header __header;
+};
+
+
+#define FSYNC_SHM_PAGE_SIZE 0x10000
+#define FSYNC_USED_BY_SERVER 0x7eadfeef
+
+enum fsync_type
+{
+    FSYNC_SEMAPHORE = 1,
+    FSYNC_AUTO_EVENT,
+    FSYNC_MANUAL_EVENT,
+    FSYNC_MUTEX,
+    FSYNC_AUTO_SERVER,
+    FSYNC_MANUAL_SERVER,
+    FSYNC_QUEUE,
+};
+
+struct fsync_free_shm_idx_request
+{
+    struct request_header __header;
+    unsigned int shm_idx;
+};
+struct fsync_free_shm_idx_reply
 {
     struct reply_header __header;
 };
@@ -6530,6 +6557,7 @@ enum request
     REQ_d3dkmt_object_open_name,
     REQ_d3dkmt_mutex_acquire,
     REQ_d3dkmt_mutex_release,
+    REQ_fsync_free_shm_idx,
     REQ_NB_REQUESTS
 };
 
@@ -6844,6 +6872,7 @@ union generic_request
     struct d3dkmt_object_open_name_request d3dkmt_object_open_name_request;
     struct d3dkmt_mutex_acquire_request d3dkmt_mutex_acquire_request;
     struct d3dkmt_mutex_release_request d3dkmt_mutex_release_request;
+    struct fsync_free_shm_idx_request fsync_free_shm_idx_request;
 };
 union generic_reply
 {
@@ -7156,8 +7185,9 @@ union generic_reply
     struct d3dkmt_object_open_name_reply d3dkmt_object_open_name_reply;
     struct d3dkmt_mutex_acquire_reply d3dkmt_mutex_acquire_reply;
     struct d3dkmt_mutex_release_reply d3dkmt_mutex_release_reply;
+    struct fsync_free_shm_idx_reply fsync_free_shm_idx_reply;
 };
 
-#define SERVER_PROTOCOL_VERSION 956
+#define SERVER_PROTOCOL_VERSION 957
 
 #endif /* __WINE_WINE_SERVER_PROTOCOL_H */
