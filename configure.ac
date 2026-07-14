@@ -824,6 +824,7 @@ AC_CHECK_HEADERS(\
 	linux/errqueue.h \
 	linux/filter.h \
 	linux/fs.h \
+	linux/futex.h \
 	linux/hdreg.h \
 	linux/hidraw.h \
 	linux/input.h \
