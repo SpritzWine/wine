@@ -11000,7 +11000,7 @@ fi
 ac_fn_c_check_header_compile "$LINENO" "asm/hwcap.h" "ac_cv_header_asm_hwcap_h" "$ac_includes_default"
 if test "x$ac_cv_header_asm_hwcap_h" = xyes
 then :
-  printf '%s\n' "#define HAVE_ASM_HWCAP_H 1" >>confdefs.h
+  printf "%s\n" "#define HAVE_ASM_HWCAP_H 1" >>confdefs.h
 
 fi
 ac_fn_c_check_header_compile "$LINENO" "asm/termbits.h" "ac_cv_header_asm_termbits_h" "$ac_includes_default"
@@ -11030,7 +11030,7 @@ fi
 ac_fn_c_check_header_compile "$LINENO" "dev/evdev/input.h" "ac_cv_header_dev_evdev_input_h" "$ac_includes_default"
 if test "x$ac_cv_header_dev_evdev_input_h" = xyes
 then :
-  printf '%s\n' "#define HAVE_DEV_EVDEV_INPUT_H 1" >>confdefs.h
+  printf "%s\n" "#define HAVE_DEV_EVDEV_INPUT_H 1" >>confdefs.h
 
 fi
 ac_fn_c_check_header_compile "$LINENO" "elf.h" "ac_cv_header_elf_h" "$ac_includes_default"
@@ -11073,6 +11073,12 @@ ac_fn_c_check_header_compile "$LINENO" "linux/fs.h" "ac_cv_header_linux_fs_h" "$
 if test "x$ac_cv_header_linux_fs_h" = xyes
 then :
   printf "%s\n" "#define HAVE_LINUX_FS_H 1" >>confdefs.h
+
+fi
+ac_fn_c_check_header_compile "$LINENO" "linux/futex.h" "ac_cv_header_linux_futex_h" "$ac_includes_default"
+if test "x$ac_cv_header_linux_futex_h" = xyes
+then :
+  printf "%s\n" "#define HAVE_LINUX_FUTEX_H 1" >>confdefs.h
 
 fi
 ac_fn_c_check_header_compile "$LINENO" "linux/hdreg.h" "ac_cv_header_linux_hdreg_h" "$ac_includes_default"

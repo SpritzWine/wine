@@ -3411,6 +3411,7 @@ static void dump_get_inproc_sync_fd_reply( const struct get_inproc_sync_fd_reply
 {
     fprintf( stderr, " type=%d", req->type );
     fprintf( stderr, ", access=%08x", req->access );
+    fprintf( stderr, ", fsync_shm_idx=%08x", req->fsync_shm_idx );
 }
 
 static void dump_get_inproc_alert_fd_request( const struct get_inproc_alert_fd_request *req )
@@ -3420,6 +3421,7 @@ static void dump_get_inproc_alert_fd_request( const struct get_inproc_alert_fd_r
 static void dump_get_inproc_alert_fd_reply( const struct get_inproc_alert_fd_reply *req )
 {
     fprintf( stderr, " handle=%04x", req->handle );
+    fprintf( stderr, ", fsync_shm_idx=%08x", req->fsync_shm_idx );
 }
 
 static void dump_d3dkmt_object_create_request( const struct d3dkmt_object_create_request *req )
@@ -3522,6 +3524,11 @@ static void dump_d3dkmt_mutex_release_request( const struct d3dkmt_mutex_release
     dump_uint64( ", fence_value=", &req->fence_value );
     fprintf( stderr, ", runtime_size=%u", req->runtime_size );
     dump_varargs_bytes( ", runtime=", cur_size );
+}
+
+static void dump_fsync_free_shm_idx_request( const struct fsync_free_shm_idx_request *req )
+{
+    fprintf( stderr, " shm_idx=%08x", req->shm_idx );
 }
 
 typedef void (*dump_func)( const void *req );
@@ -3835,6 +3842,7 @@ static const dump_func req_dumpers[REQ_NB_REQUESTS] =
     (dump_func)dump_d3dkmt_object_open_name_request,
     (dump_func)dump_d3dkmt_mutex_acquire_request,
     (dump_func)dump_d3dkmt_mutex_release_request,
+    (dump_func)dump_fsync_free_shm_idx_request,
 };
 
 static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
@@ -4145,6 +4153,7 @@ static const dump_func reply_dumpers[REQ_NB_REQUESTS] =
     (dump_func)dump_d3dkmt_share_objects_reply,
     (dump_func)dump_d3dkmt_object_open_name_reply,
     (dump_func)dump_d3dkmt_mutex_acquire_reply,
+    NULL,
     NULL,
 };
 
@@ -4457,6 +4466,7 @@ static const char * const req_names[REQ_NB_REQUESTS] =
     "d3dkmt_object_open_name",
     "d3dkmt_mutex_acquire",
     "d3dkmt_mutex_release",
+    "fsync_free_shm_idx",
 };
 
 static const struct
