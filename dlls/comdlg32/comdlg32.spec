@@ -2,6 +2,7 @@
 @ stdcall ChooseColorW(ptr)
 @ stdcall ChooseFontA(ptr)
 @ stdcall ChooseFontW(ptr)
+@ stdcall COMDLG32_PortalPickFolder(ptr ptr ptr long) # SpritzWine: portal folder picker for shell32
 @ stdcall CommDlgExtendedError()
 @ stdcall -private DllGetClassObject(ptr ptr ptr)
 @ stdcall -private DllRegisterServer()
