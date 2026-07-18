@@ -247,6 +247,24 @@ enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL dir
     return ret;
 }
 
+/* Folder-picker entry exported for shell32's SHBrowseForFolder, which lives in
+ * another DLL and so can't reach COMDLG32_RunPortalChooser directly. Picks a single
+ * directory through the host portal. Returns 1 when the user chose a folder (dos_out
+ * receives its DOS path), 0 when they cancelled, and -1 to tell the caller to fall
+ * back to its own dialog (no portal on the bus, or a request it can't honor).
+ * COMDLG32_RunPortalChooser already gates on portal availability. */
+INT WINAPI COMDLG32_PortalPickFolder( const WCHAR *title, const WCHAR *initial_dir,
+                                      WCHAR *dos_out, DWORD dos_out_len )
+{
+    switch (COMDLG32_RunPortalChooser( FALSE, FALSE, TRUE, title, initial_dir,
+                                       NULL, NULL, 0, dos_out, dos_out_len, NULL ))
+    {
+    case PORTAL_CHOSEN:    return 1;
+    case PORTAL_CANCELLED: return 0;
+    default:               return -1;
+    }
+}
+
 /* Fill an OFN_ALLOWMULTISELECT result from a double-NUL list of full DOS paths.
  * Win32 returns one full path for a single file, or "dir\0name1\0name2\0\0" for
  * several (the directory is taken from the first entry). Honors the A/W flavor.
