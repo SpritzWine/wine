@@ -1204,6 +1204,25 @@ LPITEMIDLIST WINAPI SHBrowseForFolderA (LPBROWSEINFOA lpbi)
 }
 
 
+/* SpritzWine: implemented in comdlg32 (portal.c). Picks a folder through the host's
+ * XDG desktop portal. 1 = chosen (dos filled), 0 = cancelled, -1 = no portal / can't
+ * honor -> use Wine's own tree dialog. shell32 already delay-imports comdlg32. */
+extern INT WINAPI COMDLG32_PortalPickFolder( const WCHAR *title, const WCHAR *initial_dir,
+                                             WCHAR *dos_out, DWORD dos_out_len );
+
+/* Only a plain "pick a filesystem folder" request maps cleanly onto the portal. Anything
+ * with a callback (whose BFFM_* messages the portal can't deliver), a restricted root, or
+ * a non-folder / virtual target keeps Wine's own dialog so its semantics survive. */
+static BOOL browse_can_use_portal( const BROWSEINFOW *bi )
+{
+    if (bi->lpfn) return FALSE;
+    if (bi->pidlRoot) return FALSE;
+    if (bi->ulFlags & (BIF_BROWSEFORCOMPUTER | BIF_BROWSEFORPRINTER |
+                       BIF_BROWSEINCLUDEURLS | BIF_BROWSEINCLUDEFILES))
+        return FALSE;
+    return TRUE;
+}
+
 /*************************************************************************
  * SHBrowseForFolderW [SHELL32.@]
  *
@@ -1222,6 +1241,36 @@ LPITEMIDLIST WINAPI SHBrowseForFolderW (LPBROWSEINFOW lpbi)
     info.pidlRet = NULL;
     info.lpBrowseInfo = lpbi;
     info.hwndTreeView = NULL;
+
+    /* SpritzWine: offer the host's native folder chooser before building Wine's tree
+     * dialog. On success return the chosen PIDL directly; on cancel return NULL; only
+     * fall through to the dialog below when the portal can't serve this request. */
+    if (browse_can_use_portal( lpbi ))
+    {
+        WCHAR dos[MAX_PATH];
+
+        switch (COMDLG32_PortalPickFolder( lpbi->lpszTitle, NULL, dos, ARRAY_SIZE(dos) ))
+        {
+        case 1:
+        {
+            LPITEMIDLIST pidl = SHSimpleIDListFromPathW( dos );
+            if (pidl)
+            {
+                if (lpbi->pszDisplayName)
+                {
+                    const WCHAR *name = wcsrchr( dos, '\\' );
+                    lstrcpynW( lpbi->pszDisplayName, name ? name + 1 : dos, MAX_PATH );
+                }
+                return pidl;
+            }
+            break; /* couldn't map the path -> fall back to Wine's dialog */
+        }
+        case 0:
+            return NULL; /* user cancelled */
+        default:
+            break;       /* -1: no portal / unsupported -> Wine's dialog */
+        }
+    }
 
     icex.dwSize = sizeof( icex );
     icex.dwICC = ICC_TREEVIEW_CLASSES;
