@@ -3605,6 +3605,17 @@ void WINAPIV _Trace_agents(/*enum Concurrency::Agents_EventType*/int type, __int
 }
 #endif
 
+#if _MSVCR_VER >= 110 && !defined(_CONCRT)
+/* ?_ReportUnobservedException@details@Concurrency@@YAXXZ */
+void __cdecl _ReportUnobservedException(void)
+{
+    /* MSDN states that an exception thrown by a task and never observed
+     * terminates the process */
+    ERR("an exception thrown by a task was never observed, terminating\n");
+    terminate();
+}
+#endif
+
 /* ?_Trace_ppl_function@Concurrency@@YAXABU_GUID@@EW4ConcRT_EventType@1@@Z */
 /* ?_Trace_ppl_function@Concurrency@@YAXAEBU_GUID@@EW4ConcRT_EventType@1@@Z */
 void __cdecl _Trace_ppl_function(const GUID *guid, unsigned char level, enum ConcRT_EventType type)

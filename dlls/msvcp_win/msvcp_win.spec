@@ -1589,7 +1589,7 @@
 @ cdecl -arch=win64 ?_Rep@?$num_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@GU?$char_traits@G@std@@@2@V32@G_K@Z(ptr ptr ptr long long) msvcp140.?_Rep@?$num_put@GV?$ostreambuf_iterator@GU?$char_traits@G@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@GU?$char_traits@G@std@@@2@V32@G_K@Z
 @ cdecl -arch=win32 ?_Rep@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@_WI@Z(ptr ptr long ptr long long) msvcp140.?_Rep@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@ABA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@_WI@Z
 @ cdecl -arch=win64 ?_Rep@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@_W_K@Z(ptr ptr ptr long long) msvcp140.?_Rep@?$num_put@_WV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@std@@@std@@AEBA?AV?$ostreambuf_iterator@_WU?$char_traits@_W@std@@@2@V32@_W_K@Z
-@ stub ?_ReportUnobservedException@details@Concurrency@@YAXXZ
+@ cdecl ?_ReportUnobservedException@details@Concurrency@@YAXXZ() msvcp140.?_ReportUnobservedException@details@Concurrency@@YAXXZ
 @ cdecl -arch=win32 ?_Reschedule_chore@details@Concurrency@@YAHPBU_Threadpool_chore@12@@Z(ptr) msvcp140.?_Reschedule_chore@details@Concurrency@@YAHPBU_Threadpool_chore@12@@Z
 @ cdecl -arch=win64 ?_Reschedule_chore@details@Concurrency@@YAHPEBU_Threadpool_chore@12@@Z(ptr) msvcp140.?_Reschedule_chore@details@Concurrency@@YAHPEBU_Threadpool_chore@12@@Z
 @ cdecl -arch=arm ?_Reset@_ContextCallback@details@Concurrency@@AAAXXZ(ptr) msvcp140.?_Reset@_ContextCallback@details@Concurrency@@AAAXXZ
@@ -1624,7 +1624,7 @@
 @ cdecl -arch=win32 ?_Syserror_map@std@@YAPBDH@Z(long) msvcp140.?_Syserror_map@std@@YAPBDH@Z
 @ cdecl -arch=win64 ?_Syserror_map@std@@YAPEBDH@Z(long) msvcp140.?_Syserror_map@std@@YAPEBDH@Z
 @ cdecl ?_Throw_C_error@std@@YAXH@Z(long) msvcp140.?_Throw_C_error@std@@YAXH@Z
-@ stub ?_Throw_Cpp_error@std@@YAXH@Z
+@ cdecl ?_Throw_Cpp_error@std@@YAXH@Z(long) msvcp140.?_Throw_Cpp_error@std@@YAXH@Z
 @ cdecl -arch=win32 ?_Throw_future_error@std@@YAXABVerror_code@1@@Z(ptr) msvcp140.?_Throw_future_error@std@@YAXABVerror_code@1@@Z
 @ cdecl -arch=win64 ?_Throw_future_error@std@@YAXAEBVerror_code@1@@Z(ptr) msvcp140.?_Throw_future_error@std@@YAXAEBVerror_code@1@@Z
 @ cdecl -arch=arm ?_Tidy@?$_Yarn@D@std@@AAAXXZ(ptr) msvcp140.?_Tidy@?$_Yarn@D@std@@AAAXXZ

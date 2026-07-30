@@ -1242,6 +1242,47 @@ void __cdecl _Throw_C_error(int code)
     _CxxThrowException(&se, &system_error_exception_type);
 }
 
+/* ?_Throw_Cpp_error@std@@YAXH@Z */
+void __cdecl DECLSPEC_NORETURN _Throw_Cpp_error(int code)
+{
+    /* The argument indexes the threading subset of std::errc, sorted by
+     * enumerator name; each entry is that enumerator's errno. */
+    static const errno_t errc_map[] =
+    {
+        EBUSY,   /* device_or_resource_busy */
+        EINVAL,  /* invalid_argument */
+        ESRCH,   /* no_such_process */
+        ENOMEM,  /* not_enough_memory */
+        EPERM,   /* operation_not_permitted */
+        EDEADLK, /* resource_deadlock_would_occur */
+        EAGAIN,  /* resource_unavailable_try_again */
+    };
+    system_error se;
+    const char *msg;
+    errno_t err;
+
+    TRACE("(%d)\n", code);
+
+    if (code >= 0 && code < ARRAY_SIZE(errc_map))
+    {
+        err = errc_map[code];
+        msg = _Syserror_map(err);
+    }
+    else
+    {
+        FIXME("unknown error code %d\n", code);
+        err = EINVAL;
+        msg = "unknown error";
+    }
+
+    MSVCP_runtime_error_ctor(&se.base, &msg);
+    se.code.code = err;
+    se.code.category = std_generic_category();
+    se.base.e.vtable = &system_error_vtable;
+
+    _CxxThrowException(&se, &system_error_exception_type);
+}
+
 /* compute the this pointer for a base class of a given type */
 static inline void *get_this_pointer( const this_ptr_offsets *off, void *object )
 {

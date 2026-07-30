@@ -157,6 +157,7 @@ typedef struct {
 } _Cancellation_beacon;
 
 static unsigned int (CDECL *p__GetConcurrency)(void);
+static void (__cdecl *p__ReportUnobservedException)(void);
 
 static critical_section* (__thiscall *p_critical_section_ctor)(critical_section*);
 static void (__thiscall *p_critical_section_dtor)(critical_section*);
@@ -201,6 +202,7 @@ static BOOL init(void)
     SET(p__GetConcurrency, "?_GetConcurrency@details@Concurrency@@YAIXZ");
     SET(p__Context__CurrentContext, "?_CurrentContext@_Context@details@Concurrency@@SA?AV123@XZ");
     SET(p_Context_IsCurrentTaskCollectionCanceling, "?IsCurrentTaskCollectionCanceling@Context@Concurrency@@SA_NXZ");
+    SET(p__ReportUnobservedException, "?_ReportUnobservedException@details@Concurrency@@YAXXZ");
     if(sizeof(void*) == 8) { /* 64-bit initialization */
         SET(p__StructuredTaskCollection_ctor,
                 "??0_StructuredTaskCollection@details@Concurrency@@QEAA@PEAV_CancellationTokenState@12@@Z");
@@ -1782,9 +1784,46 @@ static void test__fsopen(void)
     setlocale(LC_ALL, "C");
 }
 
+static void test__ReportUnobservedException_child(void)
+{
+    p__ReportUnobservedException();
+    ExitProcess(0xdead);
+}
+
+static void test__ReportUnobservedException(const char *argv0)
+{
+    PROCESS_INFORMATION proc;
+    STARTUPINFOA startup = {0};
+    char path[MAX_PATH];
+    DWORD ret;
+
+    sprintf(path, "%s msvcr120 unobserved", argv0);
+    startup.cb = sizeof(startup);
+    CreateProcessA(NULL, path, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &proc);
+    ret = WaitForSingleObject(proc.hProcess, INFINITE);
+    ok(ret == WAIT_OBJECT_0, "child process wait failed\n");
+    GetExitCodeProcess(proc.hProcess, &ret);
+    /* MSDN promises only that the app is terminated, not which path gets
+     * there, so the exit code of a child that did die carries no expectation */
+    ok(ret != 0xdead, "_ReportUnobservedException returned\n");
+    CloseHandle(proc.hProcess);
+    CloseHandle(proc.hThread);
+}
+
 START_TEST(msvcr120)
 {
+    char **argv;
+    int argc;
+
     if (!init()) return;
+
+    argc = winetest_get_mainargs(&argv);
+    if (argc == 3 && !strcmp(argv[2], "unobserved"))
+    {
+        test__ReportUnobservedException_child();
+        return;
+    }
+
     test_lconv();
     test__dsign();
     test__dpcomp();
@@ -1809,4 +1848,5 @@ START_TEST(msvcr120)
     test_strcmp();
     test_gmtime64();
     test__fsopen();
+    test__ReportUnobservedException(argv[0]);
 }
