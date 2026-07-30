@@ -49,6 +49,7 @@ static unsigned int (CDECL *p__CurrentScheduler__Id)(void);
 
 static Context* (__cdecl *p_Context_CurrentContext)(void);
 static _Context* (__cdecl *p__Context__CurrentContext)(_Context*);
+static void (__cdecl *p__ReportUnobservedException)(void);
 
 #define SETNOFAIL(x,y) x = (void*)GetProcAddress(module,y)
 #define SET(x,y) do { SETNOFAIL(x,y); ok(x != NULL, "Export '%s' not found\n", y); } while(0)
@@ -63,6 +64,7 @@ static BOOL init(void)
     SET(p__CurrentScheduler__Id, "?_Id@_CurrentScheduler@details@Concurrency@@SAIXZ");
 
     SET(p__Context__CurrentContext, "?_CurrentContext@_Context@details@Concurrency@@SA?AV123@XZ");
+    SET(p__ReportUnobservedException, "?_ReportUnobservedException@details@Concurrency@@YAXXZ");
 
     if(sizeof(void*) == 8)
     {
@@ -295,13 +297,51 @@ static void test__get_heap_handle(void)
     ok((HANDLE)_get_heap_handle() == GetProcessHeap(), "Expected _get_heap_handle() to return GetProcessHeap()\n");
 }
 
+static void test__ReportUnobservedException_child(void)
+{
+    p__ReportUnobservedException();
+    ExitProcess(0xdead);
+}
+
+static void test__ReportUnobservedException(const char *argv0)
+{
+    PROCESS_INFORMATION proc;
+    STARTUPINFOA startup = {0};
+    char path[MAX_PATH];
+    DWORD ret;
+
+    sprintf(path, "%s msvcr110 unobserved", argv0);
+    startup.cb = sizeof(startup);
+    CreateProcessA(NULL, path, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &proc);
+    ret = WaitForSingleObject(proc.hProcess, INFINITE);
+    ok(ret == WAIT_OBJECT_0, "child process wait failed\n");
+    GetExitCodeProcess(proc.hProcess, &ret);
+    /* MSDN promises only that the app is terminated, not which path gets
+     * there, so the exit code of a child that did die carries no expectation */
+    ok(ret != 0xdead, "_ReportUnobservedException returned\n");
+    CloseHandle(proc.hProcess);
+    CloseHandle(proc.hThread);
+}
+
 START_TEST(msvcr110)
 {
+    char **argv;
+    int argc;
+
     if (!init()) return;
+
+    argc = winetest_get_mainargs(&argv);
+    if (argc == 3 && !strcmp(argv[2], "unobserved"))
+    {
+        test__ReportUnobservedException_child();
+        return;
+    }
+
     test_CurrentScheduler(); /* MUST be first (at least among Concurrency tests) */
     test_setlocale();
     test___strncnt();
     test_CurrentContext();
     test_strcmp();
     test__get_heap_handle();
+    test__ReportUnobservedException(argv[0]);
 }

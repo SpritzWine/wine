@@ -21,8 +21,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <limits.h>
+#include <errno.h>
 
 #include "wine/test.h"
+#include "wine/exception.h"
 #include "winbase.h"
 #include "winnls.h"
 
@@ -225,6 +227,7 @@ static short (__cdecl *p__Dtest)(double *d);
 static short (__cdecl *p__Dscale)(double *d, int exp);
 static short (__cdecl *p__FExp)(float *x, float y, int exp);
 static const char* (__cdecl *p__Syserror_map)(int err);
+static void (__cdecl *p__Throw_Cpp_error)(int code);
 
 /* filesystem */
 static ULONGLONG(__cdecl *p_tr2_sys__File_size)(char const*);
@@ -843,6 +846,7 @@ static BOOL init(void)
             "_Cnd_do_broadcast_at_thread_exit");
 
     SET(p_byte_reverse_table, "?_Byte_reverse_table@details@Concurrency@@3QBEB");
+    SET(p__Throw_Cpp_error, "?_Throw_Cpp_error@std@@YAXH@Z");
 
     hdll = GetModuleHandleA("msvcr120.dll");
     p_setlocale = (void*)GetProcAddress(hdll, "setlocale");
@@ -1218,6 +1222,109 @@ static void test__Syserror_map(void)
 
     r = p__Syserror_map(0);
     ok(!r, "_Syserror_map(0) returned %p\n", r);
+}
+
+/* layout from msvcp90/cxx.h and msvcp90/msvcp90.h */
+typedef struct
+{
+    const void *vtable;
+    char *name;
+    int do_free;
+} thrown_exception;
+
+typedef struct
+{
+    thrown_exception e;
+    int code;
+    const void *category;
+} thrown_system_error;
+
+typedef const char* (__thiscall *category_name_func)(const void*);
+
+static int Throw_Cpp_error_code;
+static const void *Throw_Cpp_error_category;
+static const char *Throw_Cpp_error_what;
+
+static LONG CALLBACK Throw_Cpp_error_filter(EXCEPTION_POINTERS *eptr)
+{
+    const EXCEPTION_RECORD *rec = eptr->ExceptionRecord;
+    const thrown_system_error *se;
+
+    if(rec->ExceptionCode != 0xe06d7363) /* c++ exception */
+        return EXCEPTION_CONTINUE_SEARCH;
+
+    /* the object lives on the throwing frame, read it before unwinding */
+    se = (const thrown_system_error*)rec->ExceptionInformation[1];
+    Throw_Cpp_error_code = se->code;
+    Throw_Cpp_error_category = se->category;
+    Throw_Cpp_error_what = se->e.name;
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static const char* get_category_name(const void *category)
+{
+    /* error_category keeps name() in the second vtable slot, behind the
+     * vector deleting destructor (dlls/msvcp90/misc.c) */
+    const category_name_func *vtable = *(const category_name_func * const *)category;
+    category_name_func name = vtable[1];
+
+    return (const char*)call_func1(name, (void*)category);
+}
+
+static void test__Throw_Cpp_error(void)
+{
+    /* the argument indexes the threading subset of std::errc, sorted by
+     * enumerator name; each entry is the errno of that enumerator */
+    static const int errc_map[] = { EBUSY, EINVAL, ESRCH, ENOMEM, EPERM, EDEADLK, EAGAIN };
+    const void *category = NULL;
+    const char *name, *msg;
+    BOOL caught;
+    int i;
+
+    for(i = 0; i < ARRAY_SIZE(errc_map); i++)
+    {
+        caught = FALSE;
+        Throw_Cpp_error_code = -1;
+        Throw_Cpp_error_category = NULL;
+        Throw_Cpp_error_what = NULL;
+
+        __TRY
+        {
+            p__Throw_Cpp_error(i);
+        }
+        __EXCEPT(Throw_Cpp_error_filter)
+        {
+            caught = TRUE;
+        }
+        __ENDTRY
+
+        ok(caught, "_Throw_Cpp_error(%d) didn't throw\n", i);
+        if(!caught) continue;
+
+        ok(Throw_Cpp_error_code == errc_map[i], "_Throw_Cpp_error(%d) threw error code %d, expected %d\n",
+                i, Throw_Cpp_error_code, errc_map[i]);
+        ok(Throw_Cpp_error_category != NULL, "_Throw_Cpp_error(%d) threw a NULL error category\n", i);
+        if(!i)
+            category = Throw_Cpp_error_category;
+        else
+            ok(Throw_Cpp_error_category == category, "_Throw_Cpp_error(%d) error category %p != %p\n",
+                    i, Throw_Cpp_error_category, category);
+        if(!Throw_Cpp_error_category) continue;
+
+        /* msvcp120 exports no accessor for generic_category(), so identify the
+         * object by the name ISO C++ [syserr.errcat.objects] gives it */
+        name = get_category_name(Throw_Cpp_error_category);
+        ok(!strcmp(name, "generic"), "_Throw_Cpp_error(%d) error category is named \"%s\"\n", i, name);
+
+        /* compare against the map the module under test exports, so the
+         * assertion holds whatever the texts are */
+        msg = p__Syserror_map(errc_map[i]);
+        ok(Throw_Cpp_error_what != NULL, "_Throw_Cpp_error(%d) threw a NULL message\n", i);
+        if(Throw_Cpp_error_what && msg)
+            ok(strstr(Throw_Cpp_error_what, msg) != NULL,
+                    "_Throw_Cpp_error(%d) message \"%s\" doesn't contain \"%s\"\n",
+                    i, Throw_Cpp_error_what, msg);
+    }
 }
 
 static void test_tr2_sys__File_size(void)
@@ -3432,6 +3539,7 @@ START_TEST(msvcp120)
     test__Dscale();
     test__FExp();
     test__Syserror_map();
+    test__Throw_Cpp_error();
 
     test_tr2_sys__File_size();
     test_tr2_sys__Equivalent();
