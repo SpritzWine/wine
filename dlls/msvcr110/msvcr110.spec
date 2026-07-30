@@ -601,7 +601,7 @@
 @ stub -arch=arm ?_ReleaseWrite@_ReaderWriterLock@details@Concurrency@@QAAXXZ
 @ stub -arch=i386 ?_ReleaseWrite@_ReaderWriterLock@details@Concurrency@@QAEXXZ
 @ stub -arch=win64 ?_ReleaseWrite@_ReaderWriterLock@details@Concurrency@@QEAAXXZ
-@ stub ?_ReportUnobservedException@details@Concurrency@@YAXXZ
+@ cdecl ?_ReportUnobservedException@details@Concurrency@@YAXXZ() _ReportUnobservedException
 @ cdecl -arch=arm ?_Reset@?$_SpinWait@$00@details@Concurrency@@IAAXXZ(ptr) SpinWait__Reset
 @ thiscall -arch=i386 ?_Reset@?$_SpinWait@$00@details@Concurrency@@IAEXXZ(ptr) SpinWait__Reset
 @ cdecl -arch=win64 ?_Reset@?$_SpinWait@$00@details@Concurrency@@IEAAXXZ(ptr) SpinWait__Reset

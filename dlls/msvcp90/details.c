@@ -1099,6 +1099,15 @@ void __thiscall _ExceptionHolder__ReportUnhandledError(void *this)
 {
     FIXME("(%p) stub\n", this);
 }
+
+/* ?_ReportUnobservedException@details@Concurrency@@YAXXZ */
+void __cdecl _ReportUnobservedException(void)
+{
+    /* MSDN states that an exception thrown by a task and never observed
+     * terminates the process */
+    ERR("an exception thrown by a task was never observed, terminating\n");
+    __std_terminate();
+}
 #endif
 
 __ASM_BLOCK_BEGIN(concurrency_details_vtables)
