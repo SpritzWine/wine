@@ -581,7 +581,7 @@
 @ stub -arch=arm ?_ReleaseWrite@_ReaderWriterLock@details@Concurrency@@QAAXXZ
 @ stub -arch=i386 ?_ReleaseWrite@_ReaderWriterLock@details@Concurrency@@QAEXXZ
 @ stub -arch=win64 ?_ReleaseWrite@_ReaderWriterLock@details@Concurrency@@QEAAXXZ
-@ stub ?_ReportUnobservedException@details@Concurrency@@YAXXZ
+@ cdecl ?_ReportUnobservedException@details@Concurrency@@YAXXZ() msvcr120.?_ReportUnobservedException@details@Concurrency@@YAXXZ
 @ cdecl -arch=arm ?_Reset@?$_SpinWait@$00@details@Concurrency@@IAAXXZ(ptr) msvcr120.?_Reset@?$_SpinWait@$00@details@Concurrency@@IAAXXZ
 @ thiscall -arch=i386 ?_Reset@?$_SpinWait@$00@details@Concurrency@@IAEXXZ(ptr) msvcr120.?_Reset@?$_SpinWait@$00@details@Concurrency@@IAEXXZ
 @ cdecl -arch=win64 ?_Reset@?$_SpinWait@$00@details@Concurrency@@IEAAXXZ(ptr) msvcr120.?_Reset@?$_SpinWait@$00@details@Concurrency@@IEAAXXZ

@@ -18,9 +18,55 @@
 
 #include <locale.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include "wine/test.h"
+#include "wine/exception.h"
 #include "winbase.h"
+
+#undef __thiscall
+#ifdef __i386__
+#define __thiscall __stdcall
+#else
+#define __thiscall __cdecl
+#endif
+
+/* Emulate a __thiscall */
+#ifdef __i386__
+
+#pragma pack(push,1)
+struct thiscall_thunk
+{
+    BYTE pop_eax;    /* popl  %eax (ret addr) */
+    BYTE pop_edx;    /* popl  %edx (func) */
+    BYTE pop_ecx;    /* popl  %ecx (this) */
+    BYTE push_eax;   /* pushl %eax */
+    WORD jmp_edx;    /* jmp  *%edx */
+};
+#pragma pack(pop)
+
+static void * (WINAPI *call_thiscall_func1)( void *func, void *this );
+
+static void init_thiscall_thunk(void)
+{
+    struct thiscall_thunk *thunk = VirtualAlloc( NULL, sizeof(*thunk),
+            MEM_COMMIT, PAGE_EXECUTE_READWRITE );
+    thunk->pop_eax  = 0x58;   /* popl  %eax */
+    thunk->pop_edx  = 0x5a;   /* popl  %edx */
+    thunk->pop_ecx  = 0x59;   /* popl  %ecx */
+    thunk->push_eax = 0x50;   /* pushl %eax */
+    thunk->jmp_edx  = 0xe2ff; /* jmp  *%edx */
+    call_thiscall_func1 = (void *)thunk;
+}
+
+#define call_func1(func,_this) call_thiscall_func1(func,_this)
+
+#else
+
+#define init_thiscall_thunk()
+#define call_func1(func,_this) func(_this)
+
+#endif /* __i386__ */
 
 typedef unsigned char MSVCP_bool;
 
@@ -38,6 +84,8 @@ static void (__cdecl *p_tr2_sys__Last_write_time_set)(char const*, __int64);
 static void (__cdecl *p_tr2_sys__Last_write_time_set_wchar)(WCHAR const*, __int64);
 
 static const BYTE *p_byte_reverse_table;
+static void (__cdecl *p__Throw_Cpp_error)(int code);
+static const char* (__cdecl *p__Syserror_map)(int err);
 
 static HMODULE msvcp;
 #define SETNOFAIL(x,y) x = (void*)GetProcAddress(msvcp,y)
@@ -51,7 +99,11 @@ static BOOL init(void)
         return FALSE;
     }
 
+    init_thiscall_thunk();
+
     if(sizeof(void*) == 8) { /* 64-bit initialization */
+        SET(p__Syserror_map,
+                "?_Syserror_map@std@@YAPEBDH@Z");
         SET(p_tr2_sys__Make_dir,
                 "?_Make_dir@sys@tr2@std@@YAHPEBD@Z");
         SET(p_tr2_sys__Remove_dir,
@@ -65,6 +117,8 @@ static BOOL init(void)
         SET(p_tr2_sys__Last_write_time_set_wchar,
                 "?_Last_write_time@sys@tr2@std@@YAXPEB_W_J@Z");
     } else {
+        SET(p__Syserror_map,
+                "?_Syserror_map@std@@YAPBDH@Z");
         SET(p_tr2_sys__Make_dir,
                 "?_Make_dir@sys@tr2@std@@YAHPBD@Z");
         SET(p_tr2_sys__Remove_dir,
@@ -79,6 +133,7 @@ static BOOL init(void)
                 "?_Last_write_time@sys@tr2@std@@YAXPB_W_J@Z");
     }
     SET(p_byte_reverse_table, "?_Byte_reverse_table@details@Concurrency@@3QBEB");
+    SET(p__Throw_Cpp_error, "?_Throw_Cpp_error@std@@YAXH@Z");
     return TRUE;
 }
 
@@ -208,6 +263,109 @@ static void test_vbtable_size_exports(void)
     }
 }
 
+/* layout from msvcp90/cxx.h and msvcp90/msvcp90.h */
+typedef struct
+{
+    const void *vtable;
+    char *name;
+    int do_free;
+} thrown_exception;
+
+typedef struct
+{
+    thrown_exception e;
+    int code;
+    const void *category;
+} thrown_system_error;
+
+typedef const char* (__thiscall *category_name_func)(const void*);
+
+static int Throw_Cpp_error_code;
+static const void *Throw_Cpp_error_category;
+static const char *Throw_Cpp_error_what;
+
+static LONG CALLBACK Throw_Cpp_error_filter(EXCEPTION_POINTERS *eptr)
+{
+    const EXCEPTION_RECORD *rec = eptr->ExceptionRecord;
+    const thrown_system_error *se;
+
+    if(rec->ExceptionCode != 0xe06d7363) /* c++ exception */
+        return EXCEPTION_CONTINUE_SEARCH;
+
+    /* the object lives on the throwing frame, read it before unwinding */
+    se = (const thrown_system_error*)rec->ExceptionInformation[1];
+    Throw_Cpp_error_code = se->code;
+    Throw_Cpp_error_category = se->category;
+    Throw_Cpp_error_what = se->e.name;
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+static const char* get_category_name(const void *category)
+{
+    /* error_category keeps name() in the second vtable slot, behind the
+     * vector deleting destructor (dlls/msvcp90/misc.c) */
+    const category_name_func *vtable = *(const category_name_func * const *)category;
+    category_name_func name = vtable[1];
+
+    return (const char*)call_func1(name, (void*)category);
+}
+
+static void test__Throw_Cpp_error(void)
+{
+    /* the argument indexes the threading subset of std::errc, sorted by
+     * enumerator name; each entry is the errno of that enumerator */
+    static const int errc_map[] = { EBUSY, EINVAL, ESRCH, ENOMEM, EPERM, EDEADLK, EAGAIN };
+    const void *category = NULL;
+    const char *name, *msg;
+    BOOL caught;
+    int i;
+
+    for(i = 0; i < ARRAY_SIZE(errc_map); i++)
+    {
+        caught = FALSE;
+        Throw_Cpp_error_code = -1;
+        Throw_Cpp_error_category = NULL;
+        Throw_Cpp_error_what = NULL;
+
+        __TRY
+        {
+            p__Throw_Cpp_error(i);
+        }
+        __EXCEPT(Throw_Cpp_error_filter)
+        {
+            caught = TRUE;
+        }
+        __ENDTRY
+
+        ok(caught, "_Throw_Cpp_error(%d) didn't throw\n", i);
+        if(!caught) continue;
+
+        ok(Throw_Cpp_error_code == errc_map[i], "_Throw_Cpp_error(%d) threw error code %d, expected %d\n",
+                i, Throw_Cpp_error_code, errc_map[i]);
+        ok(Throw_Cpp_error_category != NULL, "_Throw_Cpp_error(%d) threw a NULL error category\n", i);
+        if(!i)
+            category = Throw_Cpp_error_category;
+        else
+            ok(Throw_Cpp_error_category == category, "_Throw_Cpp_error(%d) error category %p != %p\n",
+                    i, Throw_Cpp_error_category, category);
+        if(!Throw_Cpp_error_category) continue;
+
+        /* msvcp110 exports no accessor for generic_category(), so identify the
+         * object by the name ISO C++ [syserr.errcat.objects] gives it */
+        name = get_category_name(Throw_Cpp_error_category);
+        ok(!strcmp(name, "generic"), "_Throw_Cpp_error(%d) error category is named \"%s\"\n", i, name);
+
+        /* compare against the map the module under test exports, so the
+         * assertion holds whatever the texts are */
+        msg = p__Syserror_map(errc_map[i]);
+        ok(Throw_Cpp_error_what != NULL, "_Throw_Cpp_error(%d) threw a NULL message\n", i);
+        if(Throw_Cpp_error_what && msg)
+            ok(strstr(Throw_Cpp_error_what, msg) != NULL,
+                    "_Throw_Cpp_error(%d) message \"%s\" doesn't contain \"%s\"\n",
+                    i, Throw_Cpp_error_what, msg);
+    }
+}
+
 static BYTE byte_reverse(BYTE b)
 {
     b = ((b & 0xf0) >> 4) | ((b & 0x0f) << 4);
@@ -232,6 +390,7 @@ START_TEST(msvcp110)
 {
     if(!init()) return;
     test_tr2_sys__Last_write_time();
+    test__Throw_Cpp_error();
     test_vbtable_size_exports();
     test_data_exports();
     FreeLibrary(msvcp);

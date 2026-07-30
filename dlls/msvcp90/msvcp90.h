@@ -709,6 +709,7 @@ typedef struct
 } error_code;
 
 const char *_Winerror_map_str(int err);
+const char* __cdecl _Syserror_map(int err);
 #endif
 
 #if _MSVCP_VER < 80
@@ -746,4 +747,5 @@ void DECLSPEC_NORETURN throw_range_error(const char*);
 
 #if _MSVCP_VER >= 140
 int CDECL _get_stream_buffer_pointers(FILE*,char***,char***,int**);
+void __cdecl __std_terminate(void);
 #endif
