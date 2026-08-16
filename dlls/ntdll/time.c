@@ -377,11 +377,56 @@ LONGLONG WINAPI RtlGetSystemTimePrecise( void )
     return ret;
 }
 
+/* The KUSER_SHARED_DATA QPC bypass reader (the write half — deciding whether the
+ * host TSC is trustworthy and publishing QpcFrequency/Bias/Shift — is the Rust
+ * rs_qpc_init on the unix side). This half is a tiny leaf read on the hottest
+ * path in Wine (a racing sim issues millions of QueryPerformanceCounter calls a
+ * second), so it is deliberately C with no cross-object call: counter =
+ * (rdtsc + QpcBias) >> QpcShift, straight off the fixed USER_SHARED_DATA page,
+ * with the NtQueryPerformanceCounter syscall as the fallback when the kernel did
+ * not enable the bypass. The unix-side NtQueryPerformanceCounter serves the
+ * identical formula (rs_qpc_read), so the two paths never disagree. */
+#if defined(__i386__) || defined(__x86_64__)
+static inline ULONGLONG qpc_read_tsc( UCHAR flags )
+{
+    unsigned int lo, hi;
+
+    if (flags & SHARED_GLOBAL_FLAGS_QPC_BYPASS_USE_RDTSCP)
+        __asm__ __volatile__( "rdtscp" : "=a"(lo), "=d"(hi) :: "ecx" );
+    else
+    {
+        if (flags & SHARED_GLOBAL_FLAGS_QPC_BYPASS_USE_LFENCE)
+            __asm__ __volatile__( "lfence" ::: "memory" );
+        else if (flags & SHARED_GLOBAL_FLAGS_QPC_BYPASS_USE_MFENCE)
+            __asm__ __volatile__( "mfence" ::: "memory" );
+        __asm__ __volatile__( "rdtsc" : "=a"(lo), "=d"(hi) );
+    }
+    return ((ULONGLONG)hi << 32) | lo;
+}
+
+/* the hypervisor-page form is never published by Wine; take the syscall if it
+ * ever appears rather than misread the fields */
+static inline BOOL qpc_bypass_active( UCHAR flags )
+{
+    return (flags & SHARED_GLOBAL_FLAGS_QPC_BYPASS_ENABLED) &&
+          !(flags & SHARED_GLOBAL_FLAGS_QPC_BYPASS_USE_HV_PAGE);
+}
+#endif
+
 /******************************************************************************
  *  RtlQueryPerformanceCounter   [NTDLL.@]
  */
 BOOL WINAPI DECLSPEC_HOTPATCH RtlQueryPerformanceCounter( LARGE_INTEGER *counter )
 {
+#if defined(__i386__) || defined(__x86_64__)
+    UCHAR flags = user_shared_data->QpcBypassEnabled;
+
+    if (qpc_bypass_active( flags ))
+    {
+        counter->QuadPart = (qpc_read_tsc( flags ) + user_shared_data->QpcBias) >> user_shared_data->QpcShift;
+        return TRUE;
+    }
+#endif
     NtQueryPerformanceCounter( counter, NULL );
     return TRUE;
 }
@@ -391,6 +436,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH RtlQueryPerformanceCounter( LARGE_INTEGER *counter
  */
 BOOL WINAPI DECLSPEC_HOTPATCH RtlQueryPerformanceFrequency( LARGE_INTEGER *frequency )
 {
+#if defined(__i386__) || defined(__x86_64__)
+    if (qpc_bypass_active( user_shared_data->QpcBypassEnabled ))
+    {
+        frequency->QuadPart = user_shared_data->QpcFrequency;
+        return TRUE;
+    }
+#endif
     frequency->QuadPart = TICKSPERSEC;
     return TRUE;
 }

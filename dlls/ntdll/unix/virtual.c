@@ -4739,6 +4739,23 @@ done:
 static const WCHAR shared_data_nameW[] = {'\\','K','e','r','n','e','l','O','b','j','e','c','t','s',
                                           '\\','_','_','w','i','n','e','_','u','s','e','r','_','s','h','a','r','e','d','_','d','a','t','a',0};
 
+/* the PE-side QPC fast path (rust/src_dll/ntdll_pe/src/qpc.rs) reads these
+ * fields by raw offset from the fixed USD mapping; keep it honest */
+C_ASSERT( offsetof(KUSER_SHARED_DATA, QpcFrequency) == 0x300 );
+C_ASSERT( offsetof(KUSER_SHARED_DATA, QpcBias) == 0x3b8 );
+C_ASSERT( offsetof(KUSER_SHARED_DATA, QpcBypassEnabled) == 0x3c6 );
+C_ASSERT( offsetof(KUSER_SHARED_DATA, QpcShift) == 0x3c7 );
+
+/* mirror of QpcParams in rust/src_dll/ntdll/src/qpc.rs */
+struct rs_qpc_params
+{
+    UINT64 frequency;
+    UINT64 bias;
+    UCHAR  flags;
+    UCHAR  shift;
+};
+extern int rs_qpc_init( UINT64 mono_ticks, struct rs_qpc_params *params );
+
 /***********************************************************************
  *           virtual_map_user_shared_data
  */
@@ -4814,6 +4831,27 @@ void virtual_init_user_shared_data(void)
     }
 
     init_shared_data_cpuinfo( data );
+
+    data->QpcFrequency = TICKSPERSEC;
+#ifdef __x86_64__
+    {
+        struct rs_qpc_params qpc;
+        int ret = rs_qpc_init( monotonic_counter(), &qpc );
+
+        if (ret > 0)
+        {
+            data->QpcFrequency     = qpc.frequency;
+            data->QpcBias          = qpc.bias;
+            data->QpcShift         = qpc.shift;
+            data->QpcBypassEnabled = qpc.flags;  /* last: readers key on it */
+            TRACE( "QPC bypass enabled: tsc %s freq %s shift %u bias %s\n",
+                   wine_dbgstr_longlong( (UINT64)qpc.frequency << qpc.shift ),
+                   wine_dbgstr_longlong( qpc.frequency ), qpc.shift,
+                   wine_dbgstr_longlong( qpc.bias ) );
+        }
+        else WARN( "QPC bypass disabled (reason %d), keeping the 10 MHz syscall counter\n", ret );
+    }
+#endif
     munmap( data, sizeof(*data) );
 }
 

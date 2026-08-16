@@ -871,14 +871,17 @@ static NTSTATUS oss_timer_loop(void *args)
 {
     struct timer_loop_params *params = args;
     struct oss_stream *stream = handle_get_stream(params->stream);
-    LARGE_INTEGER delay, now, next;
-    int adjust;
+    LARGE_INTEGER delay, now, next, qpf;
+    LONGLONG period_ticks, adjust;
 
     oss_lock(stream);
 
+    /* QPC ticks are not necessarily 100 ns units (TSC-backed counter), so keep
+     * the pacing arithmetic in ticks and convert only the sleep to 100 ns */
     delay.QuadPart = -stream->period;
-    NtQueryPerformanceCounter(&now, NULL);
-    next.QuadPart = now.QuadPart + stream->period;
+    NtQueryPerformanceCounter(&now, &qpf);
+    period_ticks = stream->period * qpf.QuadPart / 10000000;
+    next.QuadPart = now.QuadPart + period_ticks;
 
     while(!stream->please_quit){
         if(stream->playing){
@@ -896,12 +899,12 @@ static NTSTATUS oss_timer_loop(void *args)
         oss_lock(stream);
         NtQueryPerformanceCounter(&now, NULL);
         adjust = next.QuadPart - now.QuadPart;
-        if(adjust > stream->period / 2)
-            adjust = stream->period / 2;
-        else if(adjust < -stream->period / 2)
-            adjust = -stream->period / 2;
-        delay.QuadPart = -(stream->period + adjust);
-        next.QuadPart += stream->period;
+        if(adjust > period_ticks / 2)
+            adjust = period_ticks / 2;
+        else if(adjust < -period_ticks / 2)
+            adjust = -period_ticks / 2;
+        delay.QuadPart = -(stream->period + adjust * 10000000 / qpf.QuadPart);
+        next.QuadPart += period_ticks;
     }
 
     oss_unlock(stream);

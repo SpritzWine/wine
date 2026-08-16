@@ -2,10 +2,14 @@ EXTRADEFS = -D_NTSYSTEM_ -D_ACRTIMP= -DWINBASEAPI=
 MODULE    = ntdll.dll
 UNIXLIB   = ntdll.so
 IMPORTLIB = ntdll
+# Crypto/unwind deps follow the BASE, not the tier: Valve's wine 11.0 still uses
+# tomcrypt and libunwind, while upstream had moved to symcrypt+zlib and dropped
+# libunwind by 11.12 (where these tiers were authored). Keep the base's side and add
+# only what soda-ntdll contributes: the Rust ntdll core (rust/src_dll/ntdll).
 IMPORTS   = $(TOMCRYPT_PE_LIBS) $(MUSL_PE_LIBS)
 EXTRAINCL = $(TOMCRYPT_PE_CFLAGS)
 UNIX_CFLAGS  = $(UNWIND_CFLAGS) $(HWLOC_CFLAGS)
-UNIX_LIBS    = $(IOKIT_LIBS) $(COREFOUNDATION_LIBS) $(CORESERVICES_LIBS) $(RT_LIBS) $(PTHREAD_LIBS) $(UNWIND_LIBS) $(I386_LIBS) $(PROCSTAT_LIBS) $(HWLOC_LIBS)
+UNIX_LIBS    = $(IOKIT_LIBS) $(COREFOUNDATION_LIBS) $(CORESERVICES_LIBS) $(RT_LIBS) $(PTHREAD_LIBS) $(UNWIND_LIBS) $(I386_LIBS) $(PROCSTAT_LIBS) $(HWLOC_LIBS) $(WINE_RUST_LDFLAGS) -Wl,-lwine_ntdll
 
 EXTRADLLFLAGS = -nodefaultlibs
 i386_EXTRADLLFLAGS = -Wl,--image-base,0x7bc00000

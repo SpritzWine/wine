@@ -899,10 +899,10 @@ static int get_timeout( LARGE_INTEGER start, UINT timeout )
 
 static ULONG get_rtt( LARGE_INTEGER start )
 {
-    LARGE_INTEGER now;
+    LARGE_INTEGER now, freq;
 
-    NtQueryPerformanceCounter( &now, NULL );
-    return (now.QuadPart - start.QuadPart) / 10000;
+    NtQueryPerformanceCounter( &now, &freq );
+    return (now.QuadPart - start.QuadPart) * 1000 / freq.QuadPart;
 }
 
 static NTSTATUS recv_msg( struct icmp_data *data, struct icmp_listen_params *params )

@@ -810,13 +810,9 @@ unsigned int server_wait( const union select_op *select_op, data_size_t size, UI
     unsigned int ret;
     struct user_apc apc;
 
-    if (abs_timeout < 0)
-    {
-        LARGE_INTEGER now;
-
-        NtQueryPerformanceCounter( &now, NULL );
-        abs_timeout -= now.QuadPart;
-    }
+    /* not NtQueryPerformanceCounter: server timeouts are in 100 ns monotonic
+     * units regardless of the QPC bypass */
+    if (abs_timeout < 0) abs_timeout -= monotonic_counter();
 
     ret = server_select( select_op, size, flags, abs_timeout, NULL, &apc );
     if (ret == STATUS_USER_APC) return invoke_user_apc( NULL, &apc, ret );

@@ -1633,14 +1633,17 @@ static NTSTATUS alsa_timer_loop(void *args)
 {
     struct timer_loop_params *params = args;
     struct alsa_stream *stream = handle_get_stream(params->stream);
-    LARGE_INTEGER delay, next;
-    int adjust;
+    LARGE_INTEGER delay, next, qpf;
+    LONGLONG period_ticks, adjust;
 
     alsa_lock(stream);
 
+    /* QPC ticks are not necessarily 100 ns units (TSC-backed counter), so keep
+     * the pacing arithmetic in ticks and convert only the sleep to 100 ns */
     delay.QuadPart = -stream->mmdev_period_rt;
-    NtQueryPerformanceCounter(&stream->last_period_time, NULL);
-    next.QuadPart = stream->last_period_time.QuadPart + stream->mmdev_period_rt;
+    NtQueryPerformanceCounter(&stream->last_period_time, &qpf);
+    period_ticks = stream->mmdev_period_rt * qpf.QuadPart / 10000000;
+    next.QuadPart = stream->last_period_time.QuadPart + period_ticks;
 
     while(!stream->please_quit){
         if(stream->flow == eRender)
@@ -1654,12 +1657,12 @@ static NTSTATUS alsa_timer_loop(void *args)
         alsa_lock(stream);
         NtQueryPerformanceCounter(&stream->last_period_time, NULL);
         adjust = next.QuadPart - stream->last_period_time.QuadPart;
-        if(adjust > stream->mmdev_period_rt / 2)
-            adjust = stream->mmdev_period_rt / 2;
-        else if(adjust < -stream->mmdev_period_rt / 2)
-            adjust = -stream->mmdev_period_rt / 2;
-        delay.QuadPart = -(stream->mmdev_period_rt + adjust);
-        next.QuadPart += stream->mmdev_period_rt;
+        if(adjust > period_ticks / 2)
+            adjust = period_ticks / 2;
+        else if(adjust < -period_ticks / 2)
+            adjust = -period_ticks / 2;
+        delay.QuadPart = -(stream->mmdev_period_rt + adjust * 10000000 / qpf.QuadPart);
+        next.QuadPart += period_ticks;
     }
 
     alsa_unlock(stream);
