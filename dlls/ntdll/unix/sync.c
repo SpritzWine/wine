@@ -86,7 +86,7 @@ static const char *debugstr_timeout( const LARGE_INTEGER *timeout )
 
 
 /* return a monotonic time counter, in Win32 ticks */
-static inline ULONGLONG monotonic_counter(void)
+ULONGLONG monotonic_counter(void)
 {
     struct timeval now;
 #ifdef __APPLE__
@@ -2279,7 +2279,9 @@ NTSTATUS WINAPI NtQueryTimer( HANDLE handle, TIMER_INFORMATION_CLASS class,
         if (basic_info->RemainingTime.QuadPart > 0) NtQuerySystemTime( &now );
         else
         {
-            NtQueryPerformanceCounter( &now, NULL );
+            /* not NtQueryPerformanceCounter: server timeouts are in 100 ns
+             * monotonic units regardless of the QPC bypass */
+            now.QuadPart = monotonic_counter();
             basic_info->RemainingTime.QuadPart = -basic_info->RemainingTime.QuadPart;
         }
 
@@ -2470,6 +2472,19 @@ NTSTATUS WINAPI NtDelayExecution( BOOLEAN alertable, const LARGE_INTEGER *timeou
  */
 NTSTATUS WINAPI NtQueryPerformanceCounter( LARGE_INTEGER *counter, LARGE_INTEGER *frequency )
 {
+#ifdef __x86_64__
+    /* once virtual_init_user_shared_data has published the TSC-based QPC
+     * bypass, serve the identical formula the PE-side fast path uses so the
+     * two never disagree */
+    UCHAR bypass = user_shared_data->QpcBypassEnabled;
+    if (bypass & SHARED_GLOBAL_FLAGS_QPC_BYPASS_ENABLED)
+    {
+        extern UINT64 rs_qpc_read( UCHAR flags, UINT64 bias, UCHAR shift );
+        counter->QuadPart = rs_qpc_read( bypass, user_shared_data->QpcBias, user_shared_data->QpcShift );
+        if (frequency) frequency->QuadPart = user_shared_data->QpcFrequency;
+        return STATUS_SUCCESS;
+    }
+#endif
     counter->QuadPart = monotonic_counter();
     if (frequency) frequency->QuadPart = TICKSPERSEC;
     return STATUS_SUCCESS;
