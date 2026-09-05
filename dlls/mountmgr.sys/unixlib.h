@@ -158,6 +158,7 @@ enum mountmgr_funcs
     unix_add_drive,
     unix_get_dosdev_symlink,
     unix_set_dosdev_symlink,
+    unix_delete_volume_symlinks,
     unix_get_volume_size_info,
     unix_get_volume_dos_devices,
     unix_read_volume_file,

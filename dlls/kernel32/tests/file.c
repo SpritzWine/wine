@@ -1553,11 +1553,9 @@ static void test_CreateFileA(void)
                         FILE_SHARE_READ | FILE_SHARE_WRITE,
                         NULL, OPEN_EXISTING,
                         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, NULL );
-            todo_wine
             ok(hFile == INVALID_HANDLE_VALUE,
                 "CreateFileA should not have opened %s, hFile %p\n",
                 filename, hFile);
-            todo_wine
             ok(hFile == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PATH_NOT_FOUND,
                 "CreateFileA should have returned ERROR_PATH_NOT_FOUND on %s, but got %lu\n",
                 filename, GetLastError());
@@ -1574,7 +1572,6 @@ static void test_CreateFileA(void)
                         FILE_SHARE_READ | FILE_SHARE_WRITE,
                         NULL, OPEN_EXISTING,
                         FILE_FLAG_BACKUP_SEMANTICS, NULL );
-            todo_wine
             ok(hFile != INVALID_HANDLE_VALUE,
                 "CreateFileA should have opened %s, but got %lu\n",
                 filename, GetLastError());
@@ -5621,7 +5618,7 @@ static void test_GetFinalPathNameByHandleW(void)
     WCHAR volume_path[MAX_PATH + 50];
     WCHAR nt_path[2 * MAX_PATH];
     BOOL success;
-    HANDLE file;
+    HANDLE file, file2;
     DWORD count;
     UINT i, ret;
 
@@ -5753,6 +5750,23 @@ static void test_GetFinalPathNameByHandleW(void)
     ok(lstrcmpiW(dos_path, result_path) == 0, "Expected %s, got %s\n",
        wine_dbgstr_w(dos_path), wine_dbgstr_w(result_path));
     CloseHandle(file);
+
+    /* A VOLUME_NAME_GUID path must round-trip through CreateFileW. */
+    ret = GetTempFileNameW(temp_path, prefix, 0, test_path);
+    ok(ret != 0, "GetTempFileNameW error %lu\n", GetLastError());
+    file = CreateFileW(test_path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                       NULL, CREATE_ALWAYS, 0, 0);
+    ok(file != INVALID_HANDLE_VALUE, "CreateFileW error %lu\n", GetLastError());
+    memset(result_path, 0x11, sizeof(result_path));
+    count = pGetFinalPathNameByHandleW(file, result_path, MAX_PATH, FILE_NAME_NORMALIZED | VOLUME_NAME_GUID);
+    ok(count && count < MAX_PATH, "GetFinalPathNameByHandleW error %lu\n", GetLastError());
+    ok(!wcsncmp(result_path, L"\\\\?\\Volume{", 11), "Expected volume GUID path, got %s\n", wine_dbgstr_w(result_path));
+    file2 = CreateFileW(result_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        NULL, OPEN_EXISTING, 0, 0);
+    ok(file2 != INVALID_HANDLE_VALUE, "CreateFileW(%s) error %lu\n", wine_dbgstr_w(result_path), GetLastError());
+    CloseHandle(file2);
+    CloseHandle(file);
+    DeleteFileW(test_path);
 
     lstrcpyW(test_path, L"\\\\?\\");
     lstrcatW(test_path, temp_path);

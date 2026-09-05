@@ -1021,7 +1021,11 @@ static NTSTATUS set_volume_info( struct volume *volume, struct dos_drive *drive,
         id = disk_device->unix_mount;
         id_len = strlen( disk_device->unix_mount ) + 1;
     }
-    if (volume->mount) set_mount_point_id( volume->mount, id, id_len );
+    if (volume->mount)
+    {
+        set_mount_point_id( volume->mount, id, id_len );
+        set_mount_point_unix_mount( volume->mount, disk_device->unix_mount );
+    }
     if (drive && drive->mount) set_mount_point_id( drive->mount, id, id_len );
 
     return STATUS_SUCCESS;
@@ -1903,6 +1907,9 @@ NTSTATUS WINAPI harddisk_driver_entry( DRIVER_OBJECT *driver, UNICODE_STRING *pa
 
     /* create a harddisk0 device that isn't assigned to any drive */
     create_disk_device( DEVICE_HARDDISK, &device, NULL );
+
+    /* volume mount points don't outlive the session, neither should their Unix symlinks */
+    MOUNTMGR_CALL( delete_volume_symlinks, NULL );
 
     create_drive_devices();
 
