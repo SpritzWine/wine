@@ -65,6 +65,7 @@ static CHAR     (WINAPI *pRtlUpperChar)(CHAR);
 static NTSTATUS (WINAPI *pRtlUpperString)(STRING *, const STRING *);
 static NTSTATUS (WINAPI *pRtlGUIDFromString)(const UNICODE_STRING*,GUID*);
 static NTSTATUS (WINAPI *pRtlStringFromGUID)(const GUID*, UNICODE_STRING*);
+static NTSTATUS (WINAPI *pRtlStringFromGUIDEx)(const GUID*, UNICODE_STRING*, BOOLEAN);
 static BOOLEAN (WINAPI *pRtlIsTextUnicode)(LPVOID, INT, INT *);
 static NTSTATUS (WINAPI *pRtlHashUnicodeString)(PCUNICODE_STRING,BOOLEAN,ULONG,ULONG*);
 static NTSTATUS (WINAPI *pRtlUnicodeToUTF8N)(CHAR *, ULONG, ULONG *, const WCHAR *, ULONG);
@@ -132,6 +133,7 @@ static void InitFunctionPtrs(void)
 	pRtlUpperString = (void *)GetProcAddress(hntdll, "RtlUpperString");
 	pRtlGUIDFromString = (void *)GetProcAddress(hntdll, "RtlGUIDFromString");
 	pRtlStringFromGUID = (void *)GetProcAddress(hntdll, "RtlStringFromGUID");
+	pRtlStringFromGUIDEx = (void *)GetProcAddress(hntdll, "RtlStringFromGUIDEx");
 	pRtlIsTextUnicode = (void *)GetProcAddress(hntdll, "RtlIsTextUnicode");
         pRtlHashUnicodeString = (void*)GetProcAddress(hntdll, "RtlHashUnicodeString");
         pRtlUnicodeToUTF8N = (void*)GetProcAddress(hntdll, "RtlUnicodeToUTF8N");
@@ -1968,6 +1970,99 @@ static void test_RtlStringFromGUID(void)
   pRtlFreeUnicodeString(&str);
 }
 
+static void test_RtlStringFromGUIDEx(void)
+{
+  static const WCHAR fill[] = { 0xcccc, 0xcccc, 0xcccc, 0xcccc, 0xcccc };
+  UNICODE_STRING str, str2;
+  WCHAR buffer[ARRAY_SIZE(szGuid) + 2];
+  NTSTATUS ret;
+
+  if (!pRtlStringFromGUIDEx)
+  {
+      win_skip("RtlStringFromGUIDEx is not available\n");
+      return;
+  }
+
+  /* allocate == TRUE behaves exactly like RtlStringFromGUID */
+  str.Length = str.MaximumLength = 0;
+  str.Buffer = NULL;
+  ret = pRtlStringFromGUIDEx(&IID_Endianness, &str, TRUE);
+  ok(ret == STATUS_SUCCESS, "expected STATUS_SUCCESS, got 0x%0lx\n", ret);
+  ok(str.Length == (ARRAY_SIZE(szGuid) - 1) * sizeof(WCHAR), "got Length %u\n", str.Length);
+  ok(str.MaximumLength == ARRAY_SIZE(szGuid) * sizeof(WCHAR), "got MaximumLength %u\n", str.MaximumLength);
+  ok(str.Buffer && !lstrcmpiW(str.Buffer, szGuid), "got %s\n", wine_dbgstr_w(str.Buffer));
+  ok(str.Buffer && !str.Buffer[ARRAY_SIZE(szGuid) - 1], "not NUL terminated\n");
+
+  str2.Length = str2.MaximumLength = 0;
+  str2.Buffer = NULL;
+  ret = pRtlStringFromGUID(&IID_Endianness, &str2);
+  ok(ret == STATUS_SUCCESS, "expected STATUS_SUCCESS, got 0x%0lx\n", ret);
+  ok(str2.Length == str.Length, "got Length %u vs %u\n", str2.Length, str.Length);
+  ok(str2.MaximumLength == str.MaximumLength, "got MaximumLength %u vs %u\n", str2.MaximumLength, str.MaximumLength);
+  ok(str2.Buffer && str.Buffer && !lstrcmpW(str2.Buffer, str.Buffer), "got %s vs %s\n",
+     wine_dbgstr_w(str2.Buffer), wine_dbgstr_w(str.Buffer));
+  pRtlFreeUnicodeString(&str2);
+  pRtlFreeUnicodeString(&str);
+
+  /* allocate == FALSE, buffer with exactly enough room for the string and its NUL */
+  memset(buffer, 0xcc, sizeof(buffer));
+  str.Length = 0x1234;
+  str.MaximumLength = ARRAY_SIZE(szGuid) * sizeof(WCHAR);
+  str.Buffer = buffer;
+  ret = pRtlStringFromGUIDEx(&IID_Endianness, &str, FALSE);
+  ok(ret == STATUS_SUCCESS, "expected STATUS_SUCCESS, got 0x%0lx\n", ret);
+  ok(str.Length == (ARRAY_SIZE(szGuid) - 1) * sizeof(WCHAR), "got Length %u\n", str.Length);
+  ok(str.MaximumLength == ARRAY_SIZE(szGuid) * sizeof(WCHAR), "got MaximumLength %u\n", str.MaximumLength);
+  ok(str.Buffer == buffer, "got Buffer %p\n", str.Buffer);
+  ok(!lstrcmpiW(buffer, szGuid), "got %s\n", wine_dbgstr_w(buffer));
+  ok(!buffer[ARRAY_SIZE(szGuid) - 1], "not NUL terminated\n");
+  ok(!memcmp(buffer + ARRAY_SIZE(szGuid), fill, 2 * sizeof(WCHAR)), "wrote past MaximumLength\n");
+
+  /* allocate == FALSE, buffer larger than needed: only the string and its NUL are written */
+  memset(buffer, 0xcc, sizeof(buffer));
+  str.Length = 0;
+  str.MaximumLength = sizeof(buffer);
+  str.Buffer = buffer;
+  ret = pRtlStringFromGUIDEx(&IID_Endianness, &str, FALSE);
+  ok(ret == STATUS_SUCCESS, "expected STATUS_SUCCESS, got 0x%0lx\n", ret);
+  ok(str.Length == (ARRAY_SIZE(szGuid) - 1) * sizeof(WCHAR), "got Length %u\n", str.Length);
+  ok(str.MaximumLength == sizeof(buffer), "got MaximumLength %u\n", str.MaximumLength);
+  ok(str.Buffer == buffer, "got Buffer %p\n", str.Buffer);
+  ok(!lstrcmpiW(buffer, szGuid), "got %s\n", wine_dbgstr_w(buffer));
+  ok(!buffer[ARRAY_SIZE(szGuid) - 1], "not NUL terminated\n");
+  ok(!memcmp(buffer + ARRAY_SIZE(szGuid), fill, 2 * sizeof(WCHAR)), "wrote past the NUL\n");
+
+  /* allocate == FALSE, room for the string but not for its NUL: too small, nothing touched */
+  memset(buffer, 0xcc, sizeof(buffer));
+  str.Length = 0x1234;
+  str.MaximumLength = (ARRAY_SIZE(szGuid) - 1) * sizeof(WCHAR);
+  str.Buffer = buffer;
+  ret = pRtlStringFromGUIDEx(&IID_Endianness, &str, FALSE);
+  ok(ret == STATUS_BUFFER_TOO_SMALL, "expected STATUS_BUFFER_TOO_SMALL, got 0x%0lx\n", ret);
+  ok(str.Length == 0x1234, "got Length %u\n", str.Length);
+  ok(str.MaximumLength == (ARRAY_SIZE(szGuid) - 1) * sizeof(WCHAR), "got MaximumLength %u\n", str.MaximumLength);
+  ok(str.Buffer == buffer, "got Buffer %p\n", str.Buffer);
+  ok(!memcmp(buffer, fill, sizeof(fill)), "buffer was written to\n");
+
+  /* allocate == FALSE, odd MaximumLength just below the threshold */
+  str.Length = 0x1234;
+  str.MaximumLength = ARRAY_SIZE(szGuid) * sizeof(WCHAR) - 1;
+  str.Buffer = buffer;
+  ret = pRtlStringFromGUIDEx(&IID_Endianness, &str, FALSE);
+  ok(ret == STATUS_BUFFER_TOO_SMALL, "expected STATUS_BUFFER_TOO_SMALL, got 0x%0lx\n", ret);
+  ok(str.Length == 0x1234, "got Length %u\n", str.Length);
+  ok(!memcmp(buffer, fill, sizeof(fill)), "buffer was written to\n");
+
+  /* allocate == FALSE, empty string: the size check comes before any buffer access */
+  str.Length = str.MaximumLength = 0;
+  str.Buffer = NULL;
+  ret = pRtlStringFromGUIDEx(&IID_Endianness, &str, FALSE);
+  ok(ret == STATUS_BUFFER_TOO_SMALL, "expected STATUS_BUFFER_TOO_SMALL, got 0x%0lx\n", ret);
+  ok(!str.Length, "got Length %u\n", str.Length);
+  ok(!str.MaximumLength, "got MaximumLength %u\n", str.MaximumLength);
+  ok(!str.Buffer, "got Buffer %p\n", str.Buffer);
+}
+
 struct hash_unicodestring_test {
     WCHAR str[50];
     BOOLEAN case_insensitive;
@@ -2951,6 +3046,7 @@ START_TEST(rtlstr)
     test_RtlFindCharInUnicodeString();
     test_RtlGUIDFromString();
     test_RtlStringFromGUID();
+    test_RtlStringFromGUIDEx();
     test_RtlIsTextUnicode();
     test_RtlCompareUnicodeString();
     test_RtlUpcaseUnicodeChar();

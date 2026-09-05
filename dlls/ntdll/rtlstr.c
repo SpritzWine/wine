@@ -1667,6 +1667,57 @@ NTSTATUS WINAPI RtlGUIDFromString(PUNICODE_STRING str, GUID* guid)
 }
 
 /*************************************************************************
+ * RtlStringFromGUIDEx (NTDLL.@)
+ *
+ * Convert a GUID into a string representation of a GUID.
+ *
+ * PARAMS
+ *  guid     [I] GUID to convert
+ *  str      [O] Destination for the converted string
+ *  allocate [I] TRUE to allocate str->Buffer, FALSE to use the caller supplied buffer
+ *
+ * RETURNS
+ *  Success: STATUS_SUCCESS. str contains the converted, NUL terminated value.
+ *  Failure: STATUS_NO_MEMORY, if allocate is TRUE and memory for str cannot be allocated.
+ *           STATUS_BUFFER_TOO_SMALL, if allocate is FALSE and str->MaximumLength cannot
+ *           hold the string and its terminating NUL. str is left untouched.
+ *
+ * NOTES
+ *  With allocate == FALSE the buffer needs room for GUID_STRING_LENGTH + 1 WCHARs.
+ *
+ * SEE ALSO
+ *  See RtlGUIDFromString.
+ */
+NTSTATUS WINAPI RtlStringFromGUIDEx(const GUID* guid, UNICODE_STRING *str, BOOLEAN allocate)
+{
+  TRACE("(%p,%p,%u)\n", guid, str, allocate);
+
+  if (allocate)
+  {
+    str->Length = GUID_STRING_LENGTH * sizeof(WCHAR);
+    str->MaximumLength = str->Length + sizeof(WCHAR);
+    str->Buffer = RtlAllocateHeap(GetProcessHeap(), 0, str->MaximumLength);
+    if (!str->Buffer)
+    {
+      str->Length = str->MaximumLength = 0;
+      return STATUS_NO_MEMORY;
+    }
+  }
+  else
+  {
+    if (str->MaximumLength < (GUID_STRING_LENGTH + 1) * sizeof(WCHAR))
+      return STATUS_BUFFER_TOO_SMALL;
+    str->Length = GUID_STRING_LENGTH * sizeof(WCHAR);
+  }
+  swprintf(str->Buffer, str->MaximumLength/sizeof(WCHAR),
+          L"{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}", guid->Data1, guid->Data2, guid->Data3,
+          guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
+          guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
+
+  return STATUS_SUCCESS;
+}
+
+/*************************************************************************
  * RtlStringFromGUID (NTDLL.@)
  *
  * Convert a GUID into a string representation of a GUID.
@@ -1680,26 +1731,13 @@ NTSTATUS WINAPI RtlGUIDFromString(PUNICODE_STRING str, GUID* guid)
  *  Failure: STATUS_NO_MEMORY, if memory for str cannot be allocated.
  *
  * SEE ALSO
- *  See RtlGUIDFromString.
+ *  See RtlStringFromGUIDEx, RtlGUIDFromString.
  */
 NTSTATUS WINAPI RtlStringFromGUID(const GUID* guid, UNICODE_STRING *str)
 {
   TRACE("(%p,%p)\n", guid, str);
 
-  str->Length = GUID_STRING_LENGTH * sizeof(WCHAR);
-  str->MaximumLength = str->Length + sizeof(WCHAR);
-  str->Buffer = RtlAllocateHeap(GetProcessHeap(), 0, str->MaximumLength);
-  if (!str->Buffer)
-  {
-    str->Length = str->MaximumLength = 0;
-    return STATUS_NO_MEMORY;
-  }
-  swprintf(str->Buffer, str->MaximumLength/sizeof(WCHAR),
-          L"{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}", guid->Data1, guid->Data2, guid->Data3,
-          guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
-          guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
-
-  return STATUS_SUCCESS;
+  return RtlStringFromGUIDEx(guid, str, TRUE);
 }
 
 

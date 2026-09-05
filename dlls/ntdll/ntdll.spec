@@ -1060,6 +1060,7 @@
 @ stub RtlStartRXact
 # @ stub RtlStatMemoryStream
 @ stdcall RtlStringFromGUID(ptr ptr)
+@ stdcall RtlStringFromGUIDEx(ptr ptr long)
 @ stdcall RtlSubAuthorityCountSid(ptr)
 @ stdcall RtlSubAuthoritySid(ptr long)
 @ stdcall RtlSubtreePredecessor(ptr)
