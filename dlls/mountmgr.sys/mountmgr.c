@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 
@@ -37,6 +38,7 @@ struct mount_point
     DEVICE_OBJECT *device;  /* disk device */
     UNICODE_STRING name;    /* device name */
     UNICODE_STRING link;    /* DOS device symlink */
+    char          *dosdev;  /* Unix dosdevices symlink name (volume mount points only) */
     void          *id;      /* device unique id */
     unsigned int   id_len;
 };
@@ -75,6 +77,7 @@ static struct mount_point *add_mount_point( DEVICE_OBJECT *device, UNICODE_STRIN
     mount->name.Length = device_name->Length;
     mount->name.MaximumLength = device_name->Length + sizeof(WCHAR);
     mount->device = device;
+    mount->dosdev = NULL;
     mount->id = NULL;
     list_add_tail( &mount_points_list, &mount->entry );
 
@@ -98,13 +101,30 @@ struct mount_point *add_dosdev_mount_point( DEVICE_OBJECT *device, UNICODE_STRIN
 struct mount_point *add_volume_mount_point( DEVICE_OBJECT *device, UNICODE_STRING *device_name,
                                             const GUID *guid )
 {
+    struct mount_point *mount;
     WCHAR link[64];
+    char dosdev[64];
+    unsigned int i;
 
     swprintf( link, ARRAY_SIZE(link), L"\\??\\Volume{%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}",
               guid->Data1, guid->Data2, guid->Data3,
               guid->Data4[0], guid->Data4[1], guid->Data4[2], guid->Data4[3],
               guid->Data4[4], guid->Data4[5], guid->Data4[6], guid->Data4[7]);
-    return add_mount_point( device, device_name, link );
+    if (!(mount = add_mount_point( device, device_name, link ))) return NULL;
+
+    /* ntdll resolves \??\Volume{xxx} through the dosdevices/volume{xxx} Unix symlink (lowercase) */
+    for (i = 0; link[i + 4]; i++) dosdev[i] = tolower( link[i + 4] );
+    dosdev[i] = 0;
+    mount->dosdev = strdup( dosdev );
+    return mount;
+}
+
+/* create, update or remove the Unix dosdevices symlink of a volume mount point */
+void set_mount_point_unix_mount( struct mount_point *mount, const char *unix_mount )
+{
+    struct set_dosdev_symlink_params params = { mount->dosdev, unix_mount };
+
+    if (mount->dosdev) MOUNTMGR_CALL( set_dosdev_symlink, &params );
 }
 
 /* delete the mount point symlinks when a device goes away */
@@ -114,6 +134,8 @@ void delete_mount_point( struct mount_point *mount )
     list_remove( &mount->entry );
     RegDeleteValueW( mount_key, mount->link.Buffer );
     IoDeleteSymbolicLink( &mount->link );
+    set_mount_point_unix_mount( mount, NULL );
+    free( mount->dosdev );
     free( mount->id );
     free( mount );
 }

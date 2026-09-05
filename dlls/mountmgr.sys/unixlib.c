@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -313,6 +314,29 @@ static NTSTATUS set_dosdev_symlink( void *args )
 
     free( path );
     return status;
+}
+
+/* remove the volume mount point symlinks left behind by a previous session */
+static NTSTATUS delete_volume_symlinks( void *args )
+{
+    struct dirent *de;
+    struct stat st;
+    char *path;
+    DIR *dir;
+
+    if (!(path = get_dosdevices_path( "" ))) return STATUS_NO_MEMORY;
+    if ((dir = opendir( path )))
+    {
+        while ((de = readdir( dir )))
+        {
+            if (strncmp( de->d_name, "volume{", 7 )) continue;
+            if (fstatat( dirfd( dir ), de->d_name, &st, AT_SYMLINK_NOFOLLOW ) == -1) continue;
+            if (S_ISLNK( st.st_mode )) unlinkat( dirfd( dir ), de->d_name, 0 );
+        }
+        closedir( dir );
+    }
+    free( path );
+    return STATUS_SUCCESS;
 }
 
 #ifdef __APPLE__
@@ -617,6 +641,7 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
     add_drive,
     get_dosdev_symlink,
     set_dosdev_symlink,
+    delete_volume_symlinks,
     get_volume_size_info,
     get_volume_dos_devices,
     read_volume_file,

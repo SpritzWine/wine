@@ -108,5 +108,6 @@ extern struct mount_point *add_volume_mount_point( DEVICE_OBJECT *device, UNICOD
                                                    const GUID *guid );
 extern void delete_mount_point( struct mount_point *mount );
 extern void set_mount_point_id( struct mount_point *mount, const void *id, unsigned int id_len );
+extern void set_mount_point_unix_mount( struct mount_point *mount, const char *unix_mount );
 
 #endif /* __WINE_MOUNTMGR_H */
