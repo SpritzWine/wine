@@ -173,6 +173,61 @@ static BOOL device_find_next( struct bluetooth_find_device *find, BLUETOOTH_DEVI
     return FALSE;
 }
 
+static BTH_DEVICE_INFO_LIST *radio_find_devices( HANDLE radio, const BLUETOOTH_DEVICE_SEARCH_PARAMS *params )
+{
+    if (params->fIssueInquiry)
+    {
+        if (!radio_set_inquiry( radio, TRUE ))
+            return NULL;
+        Sleep( params->cTimeoutMultiplier * 1280 );
+        radio_set_inquiry( radio, FALSE );
+    }
+    return radio_get_devices( radio );
+}
+
+/* A NULL hRadio means every local radio: concatenate their device lists. */
+static BTH_DEVICE_INFO_LIST *all_radios_find_devices( const BLUETOOTH_DEVICE_SEARCH_PARAMS *params )
+{
+    BLUETOOTH_FIND_RADIO_PARAMS radio_params = { .dwSize = sizeof( radio_params ) };
+    BTH_DEVICE_INFO_LIST *merged = NULL;
+    HBLUETOOTH_RADIO_FIND radio_find;
+    DWORD count = 0;
+    HANDLE radio;
+
+    if (!(radio_find = BluetoothFindFirstRadio( &radio_params, &radio )))
+        return NULL;
+    do
+    {
+        BTH_DEVICE_INFO_LIST *list = radio_find_devices( radio, params );
+
+        CloseHandle( radio );
+        if (!list) continue;
+        if (list->numOfDevices)
+        {
+            BTH_DEVICE_INFO_LIST *grown;
+            SIZE_T size = sizeof( *merged ) + (count + list->numOfDevices - 1) * sizeof( merged->deviceList[0] );
+
+            if (!(grown = realloc( merged, size )))
+            {
+                free( list );
+                free( merged );
+                BluetoothFindRadioClose( radio_find );
+                SetLastError( ERROR_OUTOFMEMORY );
+                return NULL;
+            }
+            merged = grown;
+            memcpy( &merged->deviceList[count], list->deviceList, list->numOfDevices * sizeof( list->deviceList[0] ) );
+            count += list->numOfDevices;
+            merged->numOfDevices = count;
+        }
+        free( list );
+    } while (BluetoothFindNextRadio( radio_find, &radio ));
+    BluetoothFindRadioClose( radio_find );
+
+    if (!merged) SetLastError( ERROR_NO_MORE_ITEMS );
+    return merged;
+}
+
 /*********************************************************************
  *  BluetoothFindFirstDevice
  */
@@ -199,23 +254,12 @@ HBLUETOOTH_DEVICE_FIND WINAPI BluetoothFindFirstDevice( BLUETOOTH_DEVICE_SEARCH_
         SetLastError( ERROR_INVALID_PARAMETER );
         return NULL;
     }
-    if (!params->hRadio)
-    {
-        /* TODO: Perform device inquiry on all local radios */
-        FIXME( "semi-stub!\n" );
-        SetLastError( ERROR_INVALID_PARAMETER );
-        return NULL;
-    }
 
-    if (params->fIssueInquiry)
-    {
-        if (!radio_set_inquiry( params->hRadio, TRUE ))
-            return NULL;
-        Sleep( params->cTimeoutMultiplier * 1280 );
-        radio_set_inquiry( params->hRadio, FALSE );
-    }
-
-    if (!(device_list = radio_get_devices( params->hRadio )))
+    if (params->hRadio)
+        device_list = radio_find_devices( params->hRadio, params );
+    else
+        device_list = all_radios_find_devices( params );
+    if (!device_list)
         return NULL;
 
     hfind = malloc( sizeof( *hfind ) );
