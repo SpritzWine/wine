@@ -30,6 +30,9 @@
 /* Define to 1 if you have the <bluetooth/rfcomm.h> header file. */
 #undef HAVE_BLUETOOTH_RFCOMM_H
 
+/* Define to 1 if you have the <bluetooth/sdp_lib.h> header file. */
+#undef HAVE_BLUETOOTH_SDP_LIB_H
+
 /* Define to 1 if you have the <capi20.h> header file. */
 #undef HAVE_CAPI20_H
 
@@ -746,6 +749,9 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* Define to the soname of the libbluetooth library. */
+#undef SONAME_LIBBLUETOOTH
 
 /* Define to the soname of the libcups library. */
 #undef SONAME_LIBCUPS
