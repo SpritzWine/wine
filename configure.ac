@@ -1029,15 +1029,6 @@ AC_CHECK_HEADERS([bluetooth/rfcomm.h],,,
 #include <bluetooth/bluetooth.h>
 #endif])
 
-dnl **** Check for libbluetooth (SDP lookups for RFCOMM connects) ****
-if test "x$ac_cv_header_bluetooth_rfcomm_h" = xyes
-then
-    AC_CHECK_HEADERS([bluetooth/sdp_lib.h],
-        [WINE_CHECK_SONAME(bluetooth, sdp_connect)],,
-        [#include <bluetooth/bluetooth.h>
-#include <bluetooth/sdp.h>])
-fi
-
 if test "x$ac_cv_header_sys_xattr_h" = xyes
 then
     AC_CACHE_CHECK([whether getxattr takes additional arguments], wine_cv_xattr_extra_args,

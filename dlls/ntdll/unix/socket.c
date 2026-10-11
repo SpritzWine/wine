@@ -67,14 +67,6 @@
 # define HAS_IRDA
 #endif
 
-#ifdef SONAME_LIBBLUETOOTH
-# include <dlfcn.h>
-# include <pthread.h>
-# include <bluetooth/bluetooth.h>
-# include <bluetooth/sdp.h>
-# include <bluetooth/sdp_lib.h>
-#endif
-
 #include "ntstatus.h"
 #include "windef.h"
 #include "winioctl.h"
@@ -1612,50 +1604,39 @@ static int get_sock_type( HANDLE handle )
 }
 
 
-#ifdef SONAME_LIBBLUETOOTH
+/* rust/src_dll/bluetooth/src/lib.rs (libwine_bluetooth.so): SDP lookup of the RFCOMM
+ * channel advertised for service_class by bdaddr. Returns the channel (1..30), 0 when
+ * the peer has no matching record, or -errno (Linux values). Blocks the calling thread
+ * for at most timeout_ms (0 = library default, 15 s). */
+extern int rs_bt_resolve_rfcomm_channel( UINT64 bdaddr, const GUID *service_class, unsigned int timeout_ms );
 
-#define MAKE_FUNCPTR(f) static typeof(f) * p##f
-MAKE_FUNCPTR(sdp_connect);
-MAKE_FUNCPTR(sdp_close);
-MAKE_FUNCPTR(sdp_list_append);
-MAKE_FUNCPTR(sdp_list_free);
-MAKE_FUNCPTR(sdp_uuid16_create);
-MAKE_FUNCPTR(sdp_uuid128_create);
-MAKE_FUNCPTR(sdp_service_search_attr_req);
-MAKE_FUNCPTR(sdp_get_access_protos);
-MAKE_FUNCPTR(sdp_get_proto_port);
-MAKE_FUNCPTR(sdp_record_free);
-#undef MAKE_FUNCPTR
-
-static void *libbluetooth_handle;
-
-static void load_libbluetooth( void )
+/* sock_errno_to_status() is tuned for socket calls; a few errnos the SDP lookup
+ * reports have no case there or map to a status ws2_32 turns into WSAEINVAL. */
+static NTSTATUS rfcomm_errno_to_status( int err )
 {
-    void *handle;
+    NTSTATUS status;
 
-    if (!(handle = dlopen( SONAME_LIBBLUETOOTH, RTLD_NOW )))
+    switch (err)
     {
-        WARN( "failed to load %s: %s\n", SONAME_LIBBLUETOOTH, dlerror() );
-        return;
+    case EHOSTDOWN:      /* HCI page timeout: peer off or out of range */
+    case ENODEV:         /* no adapter */
+    case ENXIO:
+    case EADDRNOTAVAIL:  /* no local address to route from */
+    case EBUSY:          /* ACL setup to this peer still pending after the retry window */
+        return STATUS_HOST_UNREACHABLE;
+    case EPROTO:         /* unusable SDP traffic */
+    case EBADMSG:        /* SDP ErrorResponse or malformed records */
+    case EMSGSIZE:       /* oversized SDU or reassembly: the peer answered, no channel */
+        return STATUS_INVALID_ADDRESS_COMPONENT;
+    case ENOMEM:
+    case ENOBUFS:
+    case EMFILE:
+    case ENFILE:
+        return STATUS_NO_MEMORY;
     }
-#define LOAD_FUNCPTR(f) if (!(p##f = dlsym( handle, #f ))) { WARN( "%s not found in %s\n", #f, SONAME_LIBBLUETOOTH ); dlclose( handle ); return; }
-    LOAD_FUNCPTR(sdp_connect);
-    LOAD_FUNCPTR(sdp_close);
-    LOAD_FUNCPTR(sdp_list_append);
-    LOAD_FUNCPTR(sdp_list_free);
-    LOAD_FUNCPTR(sdp_uuid16_create);
-    LOAD_FUNCPTR(sdp_uuid128_create);
-    LOAD_FUNCPTR(sdp_service_search_attr_req);
-    LOAD_FUNCPTR(sdp_get_access_protos);
-    LOAD_FUNCPTR(sdp_get_proto_port);
-    LOAD_FUNCPTR(sdp_record_free);
-#undef LOAD_FUNCPTR
-    libbluetooth_handle = handle;
-}
-
-static void free_proto_list( void *list, void *unused )
-{
-    psdp_list_free( list, NULL );
+    status = sock_errno_to_status( err );
+    /* an unmapped errno would reach the app as WSAEINVAL; "unreachable" is the honest reading */
+    return status == STATUS_UNSUCCESSFUL ? STATUS_HOST_UNREACHABLE : status;
 }
 
 /* Windows resolves BT_PORT_ANY by asking the peer's SDP server for a record
@@ -1664,80 +1645,23 @@ static void free_proto_list( void *list, void *unused )
  * reaches the server. */
 static NTSTATUS rfcomm_resolve_channel( SOCKADDR_BTH *addr )
 {
-    static const GUID bluetooth_base = {0, 0x0000, 0x1000, {0x80, 0x00, 0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb}};
-    static pthread_once_t load_once = PTHREAD_ONCE_INIT;
-    const GUID *id = &addr->serviceClassId;
-    uint32_t attr_range = 0x0000ffff;
-    sdp_list_t *search, *attrs, *rsp = NULL, *r;
-    sdp_session_t *session;
-    bdaddr_t dst;
-    uuid_t uuid;
-    int channel = 0;
+    GUID id = addr->serviceClassId; /* SOCKADDR_BTH is packed: hand over an aligned copy */
+    int ret = rs_bt_resolve_rfcomm_channel( addr->btAddr, &id, 0 );
 
-    pthread_once( &load_once, load_libbluetooth );
-    if (!libbluetooth_handle) return STATUS_NOT_SUPPORTED;
-
-    memcpy( dst.b, &addr->btAddr, sizeof(dst.b) );
-
-    /* a short UUID must stay short on the wire: not every SDP server compares
-     * the expanded 128-bit form against its 16-bit records */
-    if (id->Data1 <= 0xffff && id->Data2 == bluetooth_base.Data2 && id->Data3 == bluetooth_base.Data3
-        && !memcmp( id->Data4, bluetooth_base.Data4, sizeof(id->Data4) ))
-        psdp_uuid16_create( &uuid, id->Data1 );
-    else
+    if (ret > 0)
     {
-        unsigned char be[16] = { id->Data1 >> 24, id->Data1 >> 16, id->Data1 >> 8, id->Data1,
-                                 id->Data2 >> 8, id->Data2, id->Data3 >> 8, id->Data3 };
-        memcpy( be + 8, id->Data4, sizeof(id->Data4) );
-        psdp_uuid128_create( &uuid, be );
+        TRACE( "%s -> RFCOMM channel %d\n", debugstr_guid( &id ), ret );
+        addr->port = ret;
+        return STATUS_SUCCESS;
     }
-
-    if (!(session = psdp_connect( BDADDR_ANY, &dst, SDP_RETRY_IF_BUSY )))
+    if (!ret)
     {
-        WARN( "sdp_connect to %s failed: %s\n", debugstr_guid( id ), strerror( errno ) );
-        return STATUS_HOST_UNREACHABLE;
-    }
-
-    search = psdp_list_append( NULL, &uuid );
-    attrs = psdp_list_append( NULL, &attr_range );
-    if (!psdp_service_search_attr_req( session, search, SDP_ATTR_REQ_RANGE, attrs, &rsp ))
-    {
-        for (r = rsp; r && channel <= 0; r = r->next)
-        {
-            sdp_list_t *protos = NULL;
-
-            if (psdp_get_access_protos( r->data, &protos )) continue;
-            channel = psdp_get_proto_port( protos, RFCOMM_UUID );
-            sdp_list_foreach( protos, free_proto_list, NULL );
-            psdp_list_free( protos, NULL );
-        }
-        psdp_list_free( rsp, (sdp_free_func_t)psdp_record_free );
-    }
-    else WARN( "SDP search for %s failed: %s\n", debugstr_guid( id ), strerror( errno ) );
-
-    psdp_list_free( search, NULL );
-    psdp_list_free( attrs, NULL );
-    psdp_close( session );
-
-    if (channel <= 0)
-    {
-        WARN( "no RFCOMM channel for %s\n", debugstr_guid( id ) );
+        WARN( "no RFCOMM channel for %s\n", debugstr_guid( &id ) );
         return STATUS_INVALID_ADDRESS_COMPONENT;
     }
-    TRACE( "%s -> RFCOMM channel %d\n", debugstr_guid( id ), channel );
-    addr->port = channel;
-    return STATUS_SUCCESS;
+    WARN( "SDP lookup for %s failed: %s\n", debugstr_guid( &id ), strerror( -ret ) );
+    return rfcomm_errno_to_status( -ret );
 }
-
-#else
-
-static NTSTATUS rfcomm_resolve_channel( SOCKADDR_BTH *addr )
-{
-    FIXME( "built without libbluetooth, cannot resolve %s\n", debugstr_guid( &addr->serviceClassId ) );
-    return STATUS_NOT_SUPPORTED;
-}
-
-#endif /* SONAME_LIBBLUETOOTH */
 
 NTSTATUS sock_ioctl( HANDLE handle, HANDLE event, PIO_APC_ROUTINE apc, void *apc_user, IO_STATUS_BLOCK *io,
                      UINT code, void *in_buffer, UINT in_size, void *out_buffer, UINT out_size )
