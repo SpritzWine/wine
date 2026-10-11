@@ -707,6 +707,44 @@ static WCHAR *get_ppd_dir( void )
     return dir;
 }
 
+/* SpritzWine: the printer behind comdlg32's host print dialog. Its PORTAL: port
+ * hands the job to the desktop's print portal (localspl), so the queue the user
+ * picked there never has to be known here; the generic PPD describes it. */
+static const WCHAR portal_printer_name[] = L"Desktop Print Dialog";
+
+static void add_portal_printer( HKEY printers_key, WCHAR **ppd_dir )
+{
+    HKEY printer_key;
+    HANDLE added_printer;
+    PRINTER_INFO_2W pi2;
+    WCHAR raw[] = L"RAW", wineps[] = L"wineps", empty[] = L"", port[] = L"PORTAL:";
+
+    if (RegOpenKeyW( printers_key, portal_printer_name, &printer_key ) == ERROR_SUCCESS)
+    {
+        RegCloseKey( printer_key );
+        return;
+    }
+    if (!*ppd_dir && !(*ppd_dir = get_ppd_dir())) return;
+    if (!add_printer_driver( portal_printer_name, *ppd_dir )) return;
+
+    memset( &pi2, 0, sizeof(pi2) );
+    pi2.pPrinterName    = (WCHAR *)portal_printer_name;
+    pi2.pDatatype       = raw;
+    pi2.pPrintProcessor = wineps;
+    pi2.pDriverName     = (WCHAR *)portal_printer_name;
+    pi2.pComment        = empty;
+    pi2.pLocation       = empty;
+    pi2.pPortName       = port;
+    pi2.pParameters     = empty;
+    pi2.pShareName      = empty;
+    pi2.pSepFile        = empty;
+
+    added_printer = AddPrinterW( NULL, 2, (BYTE *)&pi2 );
+    if (added_printer) ClosePrinter( added_printer );
+    else if (GetLastError() != ERROR_PRINTER_ALREADY_EXISTS)
+        ERR( "printer '%s' not added by AddPrinter (error %ld)\n", debugstr_w( portal_printer_name ), GetLastError() );
+}
+
 static BOOL init_unix_printers( void )
 {
     WCHAR *port, *ppd_dir = NULL, *default_printer = NULL;
@@ -724,6 +762,8 @@ static BOOL init_unix_printers( void )
         ERR( "Can't create Printers key\n" );
         return FALSE;
     }
+
+    add_portal_printer( printers_key, &ppd_dir );
 
     size = 10000;
     do
@@ -785,14 +825,15 @@ static BOOL init_unix_printers( void )
     }
 
     if (!default_printer && num) default_printer = enum_params.printers[0].name;
-    if (default_printer) SetDefaultPrinterW( default_printer );
+end:
+    /* Without any CUPS queue the portal printer is the only way to print. */
+    SetDefaultPrinterW( default_printer ? default_printer : portal_printer_name );
 
     if (ppd_dir)
     {
         RemoveDirectoryW( ppd_dir );
         free( ppd_dir );
     }
-end:
     free( enum_params.printers );
     RegCloseKey( printers_key );
     return TRUE;

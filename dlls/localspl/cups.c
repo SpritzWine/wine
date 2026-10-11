@@ -62,15 +62,30 @@ static void *libcups_handle;
     DO_FUNC(cupsWriteRequestData)
 #define CUPS_OPT_FUNCS \
     DO_FUNC(cupsGetNamedDest); \
-    DO_FUNC(cupsLastErrorString)
+    DO_FUNC(cupsLastErrorString); \
+    DO_FUNC(cupsGetDefault); \
+    DO_FUNC(cupsPrintFile)
 
 #define DO_FUNC(f) static typeof(f) *p##f
 CUPS_FUNCS;
 #undef DO_FUNC
 static cups_dest_t * (*pcupsGetNamedDest)(http_t *, const char *, const char *);
 static const char *  (*pcupsLastErrorString)(void);
+static const char *  (*pcupsGetDefault)(void);
+static int           (*pcupsPrintFile)(const char *, const char *, const char *, int, cups_option_t *);
 
 #endif /* SONAME_LIBCUPS */
+
+/* PORTAL: port. The job is spooled to a temporary file and handed to the host's
+ * print portal by the Rust client shared with comdlg32 (libwine_comdlg32.so),
+ * which still holds the token of the dialog that chose the printer. Mirrors
+ * struct portal_print_params in dlls/comdlg32/unixlib.h. */
+struct portal_print_params
+{
+    const char *path;
+    const char *title;
+};
+extern NTSTATUS rs_portal_print( void *args );
 
 typedef struct _doc_t
 {
@@ -88,6 +103,12 @@ typedef struct _doc_t
         {
             int fd;
         } unixname;
+        struct
+        {
+            int fd;
+            char *path;
+            char *title;
+        } portal;
 #ifdef SONAME_LIBCUPS
         struct
         {
@@ -213,6 +234,92 @@ static BOOL unixname_start_doc(doc_t *doc, const WCHAR *output)
     free(outputA);
 
     return doc->unixname.fd != -1;
+}
+
+static BOOL portal_write_doc(doc_t *doc, const BYTE *buf, unsigned int size)
+{
+    return write(doc->portal.fd, buf, size) == size;
+}
+
+/* No portal on the bus: the CUPS default queue is the next best home for the
+ * job. A job is never silently dropped; without either, the spool file stays. */
+static BOOL portal_fallback_cups(const char *path, const char *title)
+{
+#ifdef SONAME_LIBCUPS
+    const char *dest;
+
+    if (pcupsGetDefault && pcupsPrintFile && (dest = pcupsGetDefault()))
+    {
+        TRACE("no print portal, sending %s to the CUPS default queue %s\n", path, dest);
+        return pcupsPrintFile(dest, path, title ? title : "", 0, NULL) > 0;
+    }
+#endif
+    return FALSE;
+}
+
+static BOOL portal_end_doc(doc_t *doc)
+{
+    struct portal_print_params params = { doc->portal.path, doc->portal.title };
+    NTSTATUS status;
+    BOOL ret = TRUE;
+
+    close(doc->portal.fd);
+
+    status = rs_portal_print(&params);
+    if (status == STATUS_NOT_SUPPORTED)
+    {
+        if (!portal_fallback_cups(doc->portal.path, doc->portal.title))
+        {
+            ERR("no print portal and no CUPS default queue; the job is kept at %s\n", doc->portal.path);
+            free(doc->portal.path);
+            free(doc->portal.title);
+            return FALSE;
+        }
+    }
+    else if (status)
+    {
+        WARN("portal print failed: %#x\n", (unsigned int)status);
+        ret = FALSE;
+    }
+
+    unlink(doc->portal.path);
+    free(doc->portal.path);
+    free(doc->portal.title);
+    return ret;
+}
+
+static BOOL portal_start_doc(doc_t *doc, const WCHAR *document_title)
+{
+    static const char suffix[] = "/wine-print-XXXXXX";
+    const char *tmp = getenv("TMPDIR");
+    DWORD len;
+
+    doc->write_doc = portal_write_doc;
+    doc->end_doc = portal_end_doc;
+
+    if (!tmp || !*tmp) tmp = "/tmp";
+    doc->portal.path = malloc(strlen(tmp) + sizeof(suffix));
+    if (!doc->portal.path) return FALSE;
+    strcpy(doc->portal.path, tmp);
+    strcat(doc->portal.path, suffix);
+
+    doc->portal.fd = mkstemp(doc->portal.path);
+    if (doc->portal.fd == -1)
+    {
+        ERR("cannot create a spool file in %s\n", tmp);
+        free(doc->portal.path);
+        return FALSE;
+    }
+
+    doc->portal.title = NULL;
+    if (document_title)
+    {
+        len = wcslen(document_title);
+        doc->portal.title = malloc(len * 3 + 1);
+        if (doc->portal.title)
+            ntdll_wcstoumbs(document_title, len + 1, doc->portal.title, len * 3 + 1, FALSE);
+    }
+    return TRUE;
 }
 
 static BOOL lpr_start_doc(doc_t *doc, const WCHAR *printer_name)
@@ -481,6 +588,8 @@ static NTSTATUS start_doc(void *args)
     else if (params->type == PORT_IS_CUPS)
         ret = cups_start_doc(doc, params->port + 5 /*strlen("cups:") */,
                 params->document_title);
+    else if (params->type == PORT_IS_PORTAL)
+        ret = portal_start_doc(doc, params->document_title);
 
     if (ret)
         *params->doc = (size_t)doc;

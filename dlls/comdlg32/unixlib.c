@@ -39,10 +39,12 @@
 
 /* Implemented in Rust: rust/src_dll/comdlg32 -> libwine_comdlg32.so. */
 extern NTSTATUS rs_portal_file_chooser( void *args );
+extern NTSTATUS rs_portal_prepare_print( void *args );
 
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
     rs_portal_file_chooser,   /* unix_file_chooser */
+    rs_portal_prepare_print,  /* unix_prepare_print */
 };
 
 C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count );
@@ -95,9 +97,31 @@ static NTSTATUS wow64_file_chooser( void *args )
     return status;
 }
 
+/* prepare_print_params is one pointer followed by scalars and fixed arrays, so
+ * the 32-bit layout is the native one with the pointer narrowed: widen it and
+ * copy the rest through unchanged. */
+static NTSTATUS wow64_prepare_print( void *args )
+{
+    struct prepare_print_params params;
+    const size_t rest = FIELD_OFFSET(struct prepare_print_params, output_file)
+                        + sizeof(params.output_file)
+                        - FIELD_OFFSET(struct prepare_print_params, copies);
+    BYTE *rest32 = (BYTE *)args + sizeof(PTR32);
+    NTSTATUS status;
+
+    params.title = ULongToPtr( *(PTR32 *)args );
+    memcpy( &params.copies, rest32, rest );
+
+    status = rs_portal_prepare_print( &params );
+
+    memcpy( rest32, &params.copies, rest );
+    return status;
+}
+
 const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
 {
     wow64_file_chooser,   /* unix_file_chooser */
+    wow64_prepare_print,  /* unix_prepare_print */
 };
 
 C_ASSERT( ARRAYSIZE(__wine_unix_call_wow64_funcs) == unix_funcs_count );

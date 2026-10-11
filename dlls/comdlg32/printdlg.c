@@ -43,6 +43,7 @@
 #include "dlgs.h"
 #include "cderr.h"
 #include "cdlg.h"
+#include "unixlib.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(commdlg);
 
@@ -2283,6 +2284,206 @@ static BOOL PRINTDLG_CreateDCW(LPPRINTDLGW lppd)
 }
 
 /***********************************************************************
+ *           PRINTDLG_PortalDialog   [internal]
+ *
+ * SpritzWine: show the host's print dialog instead of ours. Returns TRUE when
+ * the portal handled the call, with *result the dialog's outcome; FALSE means
+ * carry on with Wine's dialog.
+ *
+ * The app is handed the "Desktop Print Dialog" printer (winspool adds it): its
+ * PORTAL: port passes the finished document to whatever queue the user picked
+ * in the host dialog, so that queue is never named here. The host also applies
+ * copies, collation and duplex itself, so the app is told to print one copy;
+ * page ranges are the app's job, as they are for GTK apps, and are passed on.
+ */
+static const WCHAR portal_printer_name[] = L"Desktop Print Dialog";
+
+/* The driver's DMPAPER_* for the portal's paper, or DMPAPER_USER with explicit
+ * dimensions. width/height in tenths of a millimetre. */
+static void portal_set_paper( DEVMODEW *dm, const WCHAR *printer, const WCHAR *port, ULONG width, ULONG height )
+{
+    DWORD count, i;
+    WORD *papers = NULL;
+    POINT *sizes = NULL;
+
+    if (!width || !height) return;
+
+    count = DeviceCapabilitiesW( printer, port, DC_PAPERS, NULL, NULL );
+    if (count && count != (DWORD)-1)
+    {
+        papers = malloc( count * sizeof(*papers) );
+        sizes = malloc( count * sizeof(*sizes) );
+        if (papers && sizes &&
+            DeviceCapabilitiesW( printer, port, DC_PAPERS, (WCHAR *)papers, NULL ) == count &&
+            DeviceCapabilitiesW( printer, port, DC_PAPERSIZE, (WCHAR *)sizes, NULL ) == count)
+        {
+            for (i = 0; i < count; i++)
+            {
+                if (abs( sizes[i].x - (LONG)width ) <= 10 && abs( sizes[i].y - (LONG)height ) <= 10)
+                {
+                    dm->dmPaperSize = papers[i];
+                    dm->dmFields = (dm->dmFields | DM_PAPERSIZE) & ~(DM_PAPERWIDTH | DM_PAPERLENGTH);
+                    goto done;
+                }
+            }
+        }
+    }
+    dm->dmPaperSize = DMPAPER_USER;
+    dm->dmPaperWidth = width;
+    dm->dmPaperLength = height;
+    dm->dmFields |= DM_PAPERSIZE | DM_PAPERWIDTH | DM_PAPERLENGTH;
+done:
+    free( papers );
+    free( sizes );
+}
+
+/* First "from[-to]" of the portal's range string; PRINTDLG carries one range. */
+static BOOL portal_first_range( const char *ranges, WORD *from, WORD *to )
+{
+    char *end;
+    unsigned long a, b;
+
+    a = strtoul( ranges, &end, 10 );
+    if (end == ranges || !a || a > 0xffff) return FALSE;
+    b = a;
+    if (*end == '-')
+    {
+        const char *p = end + 1;
+        b = strtoul( p, &end, 10 );
+        if (end == p || b < a || b > 0xffff) return FALSE;
+    }
+    *from = a;
+    *to = b;
+    return TRUE;
+}
+
+static BOOL PRINTDLG_PortalDialog( PRINTDLGW *lppd, BOOL unicode, BOOL *result )
+{
+    struct prepare_print_params params;
+    enum portal_result res;
+    HANDLE hprn = NULL;
+    PRINTER_INFO_2W *pi = NULL;
+    DRIVER_INFO_3W *di = NULL;
+    DEVMODEW *dm = NULL, *app_dm;
+    DWORD needed;
+    LONG size;
+    WORD from, to;
+    BOOL handled = FALSE;
+
+    /* Hooks, custom templates and the setup-only dialog cannot be expressed
+     * through the portal: Wine's dialog honours them. */
+    if (lppd->Flags & (PD_ENABLEPRINTHOOK | PD_ENABLESETUPHOOK | PD_ENABLEPRINTTEMPLATE |
+                       PD_ENABLESETUPTEMPLATE | PD_ENABLEPRINTTEMPLATEHANDLE |
+                       PD_ENABLESETUPTEMPLATEHANDLE | PD_PRINTSETUP))
+        return FALSE;
+    if (!COMDLG32_unixlib_initialized) return FALSE;
+    if (!OpenPrinterW( (WCHAR *)portal_printer_name, &hprn, NULL )) return FALSE;
+
+    GetPrinterW( hprn, 2, NULL, 0, &needed );
+    if (!(pi = malloc( needed )) || !GetPrinterW( hprn, 2, (BYTE *)pi, needed, &needed )) goto done;
+    GetPrinterDriverW( hprn, NULL, 3, NULL, 0, &needed );
+    if (!(di = malloc( needed )) || !GetPrinterDriverW( hprn, NULL, 3, (BYTE *)di, needed, &needed )) goto done;
+
+    /* Start from the driver's defaults for this printer; the choices are merged
+     * in below and validated by the driver afterwards. */
+    size = DocumentPropertiesW( 0, hprn, pi->pPrinterName, NULL, NULL, 0 );
+    if (size <= 0 || !(dm = malloc( size ))) goto done;
+    if (DocumentPropertiesW( 0, hprn, pi->pPrinterName, dm, NULL, DM_OUT_BUFFER ) != IDOK) goto done;
+
+    memset( &params, 0, sizeof(params) );
+    params.has_current_page   = !(lppd->Flags & PD_NOCURRENTPAGE);
+    params.has_selected_pages = !(lppd->Flags & PD_NOSELECTION);
+    params.print_to_file      = !(lppd->Flags & (PD_DISABLEPRINTTOFILE | PD_HIDEPRINTTOFILE));
+    if (lppd->nCopies > 1) params.copies = lppd->nCopies;
+    /* Orientation hint: the app's last settings for this printer, else the driver's. */
+    if (unicode && lppd->hDevMode && (app_dm = GlobalLock( lppd->hDevMode )))
+    {
+        if ((app_dm->dmFields & DM_ORIENTATION) && !wcscmp( app_dm->dmDeviceName, pi->pPrinterName ))
+            params.orientation = app_dm->dmOrientation == DMORIENT_LANDSCAPE ? PORTAL_ORIENT_LANDSCAPE : PORTAL_ORIENT_PORTRAIT;
+        GlobalUnlock( lppd->hDevMode );
+    }
+    if (!params.orientation && (dm->dmFields & DM_ORIENTATION))
+        params.orientation = dm->dmOrientation == DMORIENT_LANDSCAPE ? PORTAL_ORIENT_LANDSCAPE : PORTAL_ORIENT_PORTRAIT;
+
+    res = COMDLG32_RunPortalPrintDialog( NULL, &params );
+    if (res == PORTAL_FALLBACK) goto done;
+    handled = TRUE;
+    if (res == PORTAL_CANCELLED)
+    {
+        *result = FALSE;
+        goto done;
+    }
+
+    if (params.orientation)
+    {
+        dm->dmOrientation = params.orientation == PORTAL_ORIENT_LANDSCAPE ? DMORIENT_LANDSCAPE : DMORIENT_PORTRAIT;
+        dm->dmFields |= DM_ORIENTATION;
+    }
+    portal_set_paper( dm, pi->pPrinterName, pi->pPortName, params.paper_width, params.paper_height );
+    dm->dmCopies = 1; /* the host makes the copies */
+    dm->dmFields |= DM_COPIES;
+    if (dm->dmFields & DM_COLLATE) dm->dmCollate = DMCOLLATE_FALSE;
+    if (dm->dmFields & DM_DUPLEX)
+        dm->dmDuplex = params.duplex == PORTAL_DUPLEX_LONG_EDGE ? DMDUP_VERTICAL :
+                       params.duplex == PORTAL_DUPLEX_SHORT_EDGE ? DMDUP_HORIZONTAL : DMDUP_SIMPLEX;
+    if (dm->dmFields & DM_COLOR) dm->dmColor = params.color ? DMCOLOR_COLOR : DMCOLOR_MONOCHROME;
+    /* The reported resolution is the dialog's (often the screen's), not the
+     * printer's; the driver's own default is the right one for the PostScript. */
+    if (DocumentPropertiesW( 0, hprn, pi->pPrinterName, dm, dm, DM_IN_BUFFER | DM_OUT_BUFFER ) != IDOK)
+        WARN( "driver rejected the merged DEVMODE, using it unvalidated\n" );
+
+    if (unicode)
+    {
+        lppd->hDevMode = update_devmode_handleW( lppd->hDevMode, dm );
+        PRINTDLG_CreateDevNamesW( &lppd->hDevNames, di->pDriverPath, pi->pPrinterName, pi->pPortName );
+    }
+    else
+    {
+        DEVMODEA *dmA = convert_to_devmodeA( dm );
+        char driver[MAX_PATH], printer[256], port[64];
+
+        lppd->hDevMode = update_devmode_handleA( lppd->hDevMode, dmA );
+        free( dmA );
+        WideCharToMultiByte( CP_ACP, 0, di->pDriverPath, -1, driver, sizeof(driver), NULL, NULL );
+        WideCharToMultiByte( CP_ACP, 0, pi->pPrinterName, -1, printer, sizeof(printer), NULL, NULL );
+        WideCharToMultiByte( CP_ACP, 0, pi->pPortName, -1, port, sizeof(port), NULL, NULL );
+        PRINTDLG_CreateDevNames( &lppd->hDevNames, driver, printer, port );
+    }
+
+    lppd->Flags &= ~(PD_PAGENUMS | PD_SELECTION | PD_CURRENTPAGE | PD_PRINTTOFILE | PD_COLLATE);
+    switch (params.print_pages)
+    {
+    case PORTAL_PAGES_RANGES:
+        if (!(lppd->Flags & PD_NOPAGENUMS) && portal_first_range( params.page_ranges, &from, &to ))
+        {
+            if (lppd->nMaxPage)
+            {
+                from = max( from, lppd->nMinPage );
+                to = min( to, lppd->nMaxPage );
+            }
+            if (from <= to)
+            {
+                lppd->nFromPage = from;
+                lppd->nToPage = to;
+                lppd->Flags |= PD_PAGENUMS;
+            }
+        }
+        break;
+    case PORTAL_PAGES_CURRENT:   lppd->Flags |= PD_CURRENTPAGE; break;
+    case PORTAL_PAGES_SELECTION: lppd->Flags |= PD_SELECTION; break;
+    }
+    lppd->nCopies = 1;
+    *result = lppd->hDevMode && lppd->hDevNames;
+
+done:
+    free( dm );
+    free( pi );
+    free( di );
+    if (hprn) ClosePrinter( hprn );
+    return handled;
+}
+
+/***********************************************************************
  *           PrintDlgA   (COMDLG32.@)
  *
  *  Displays the PRINT dialog box, which enables the user to specify
@@ -2380,6 +2581,8 @@ BOOL WINAPI PrintDlgA(LPPRINTDLGA lppd)
 	free(pbuf);
 	free(dbuf);
 	bRet = TRUE;
+    } else if (PRINTDLG_PortalDialog( (PRINTDLGW *)lppd, FALSE, &bRet )) {
+        /* handled by the host print dialog */
     } else {
 	HGLOBAL hDlgTmpl;
 	PRINT_PTRA *PrintStructures;
@@ -2516,6 +2719,8 @@ BOOL WINAPI PrintDlgW(LPPRINTDLGW lppd)
 	free(pbuf);
 	free(dbuf);
 	bRet = TRUE;
+    } else if (PRINTDLG_PortalDialog( lppd, TRUE, &bRet )) {
+        /* handled by the host print dialog */
     } else {
 	HGLOBAL hDlgTmpl;
 	PRINT_PTRW *PrintStructures;
@@ -4105,8 +4310,25 @@ HRESULT WINAPI PrintDlgExA(LPPRINTDLGEXA lppd)
     {
         PRINTDLGA pdlg;
         struct callback_data cb_data = { 0 };
+        BOOL accepted;
 
         FIXME("(%p) semi-stub\n", lppd);
+
+        /*
+         * PRINTDLGEXA/W and PRINTDLGA/W layout is the same for A and W variants.
+         */
+        pdlgex_to_pdlg((const PRINTDLGEXW *)lppd, (PRINTDLGW *)&pdlg);
+
+        /* The host print dialog cannot host the app's property pages; without
+         * any, it stands in for the whole sheet. */
+        if (!lppd->nPropertyPages && PRINTDLG_PortalDialog((PRINTDLGW *)&pdlg, FALSE, &accepted))
+        {
+            if (accepted && (pdlg.Flags & (PD_RETURNDC | PD_RETURNIC)))
+                accepted = PRINTDLG_CreateDCA(&pdlg);
+            if (accepted) pdlg_to_pdlgex((const PRINTDLGW *)&pdlg, (PRINTDLGEXW *)lppd);
+            lppd->dwResultAction = accepted ? PD_RESULT_PRINT : PD_RESULT_CANCEL;
+            return S_OK;
+        }
 
         if (lppd->lpCallback)
         {
@@ -4114,10 +4336,6 @@ HRESULT WINAPI PrintDlgExA(LPPRINTDLGEXA lppd)
             IUnknown_QueryInterface((IUnknown *)lppd->lpCallback, &IID_IObjectWithSite, (void **)&cb_data.object);
         }
 
-        /*
-         * PRINTDLGEXA/W and PRINTDLGA/W layout is the same for A and W variants.
-         */
-        pdlgex_to_pdlg((const PRINTDLGEXW *)lppd, (PRINTDLGW *)&pdlg);
         pdlg.Flags |= PD_ENABLEPRINTHOOK;
         pdlg.lpfnPrintHook = pdlgex_hook_proc;
         pdlg.lCustData = (LPARAM)&cb_data;
@@ -4256,8 +4474,22 @@ HRESULT WINAPI PrintDlgExW(LPPRINTDLGEXW lppd)
     {
         PRINTDLGW pdlg;
         struct callback_data cb_data = { 0 };
+        BOOL accepted;
 
         FIXME("(%p) semi-stub\n", lppd);
+
+        pdlgex_to_pdlg(lppd, &pdlg);
+
+        /* The host print dialog cannot host the app's property pages; without
+         * any, it stands in for the whole sheet. */
+        if (!lppd->nPropertyPages && PRINTDLG_PortalDialog(&pdlg, TRUE, &accepted))
+        {
+            if (accepted && (pdlg.Flags & (PD_RETURNDC | PD_RETURNIC)))
+                accepted = PRINTDLG_CreateDCW(&pdlg);
+            if (accepted) pdlg_to_pdlgex(&pdlg, lppd);
+            lppd->dwResultAction = accepted ? PD_RESULT_PRINT : PD_RESULT_CANCEL;
+            return S_OK;
+        }
 
         if (lppd->lpCallback)
         {
@@ -4265,7 +4497,6 @@ HRESULT WINAPI PrintDlgExW(LPPRINTDLGEXW lppd)
             IUnknown_QueryInterface((IUnknown *)lppd->lpCallback, &IID_IObjectWithSite, (void **)&cb_data.object);
         }
 
-        pdlgex_to_pdlg(lppd, &pdlg);
         pdlg.Flags |= PD_ENABLEPRINTHOOK;
         pdlg.lpfnPrintHook = pdlgex_hook_proc;
         pdlg.lCustData = (LPARAM)&cb_data;

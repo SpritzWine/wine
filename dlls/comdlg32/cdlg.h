@@ -45,6 +45,11 @@ enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL dir
         const WCHAR *filter, ULONG current_filter,
         WCHAR *dos_out, DWORD dos_out_len, ULONG *out_filter );
 
+/* portal.c: show the host's print dialog. The caller fills the in-fields of
+ * params; on PORTAL_CHOSEN the out-fields hold the user's choice. */
+struct prepare_print_params;
+enum portal_result COMDLG32_RunPortalPrintDialog( const WCHAR *title, struct prepare_print_params *params );
+
 /* Append ".<defext>" to a single chosen save path that has no extension,
  * matching Windows' lpstrDefExt behavior. Keeps the list double-NUL terminated. */
 void COMDLG32_AppendDefaultExt( WCHAR *path, const WCHAR *defext );

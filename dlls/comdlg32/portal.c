@@ -77,6 +77,11 @@ static BOOL portal_disabled(void)
     return GetEnvironmentVariableW( L"WINE_NO_PORTAL_FILEDIALOG", NULL, 0 ) != 0;
 }
 
+static BOOL print_portal_disabled(void)
+{
+    return GetEnvironmentVariableW( L"WINE_NO_PORTAL_PRINTDIALOG", NULL, 0 ) != 0;
+}
+
 /* UTF-16 -> heap UTF-8 (free with free()); NULL/empty -> NULL. */
 static char *utf8_dup( const WCHAR *str )
 {
@@ -245,6 +250,29 @@ enum portal_result COMDLG32_RunPortalChooser( BOOL save, BOOL multiple, BOOL dir
         break;
     }
     return ret;
+}
+
+/* Print dialog: hand the pre-filled request to the portal client and report how
+ * it ended. The DEVMODE/DEVNAMES work from the answer stays in printdlg.c. */
+enum portal_result COMDLG32_RunPortalPrintDialog( const WCHAR *title, struct prepare_print_params *params )
+{
+    NTSTATUS status;
+
+    if (!COMDLG32_unixlib_initialized || print_portal_disabled())
+        return PORTAL_FALLBACK;
+
+    params->title = utf8_dup( title );
+    status = COMDLG32_CALL( prepare_print, params );
+    TRACE( "portal print dialog returned %#lx\n", status );
+    free( (void *)params->title );
+    params->title = NULL;
+
+    switch (status)
+    {
+    case STATUS_SUCCESS:   return PORTAL_CHOSEN;
+    case STATUS_CANCELLED: return PORTAL_CANCELLED;
+    default:               return PORTAL_FALLBACK;
+    }
 }
 
 /* Folder-picker entry exported for shell32's SHBrowseForFolder, which lives in

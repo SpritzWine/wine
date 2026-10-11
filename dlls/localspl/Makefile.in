@@ -2,7 +2,10 @@ MODULE    = localspl.dll
 UNIXLIB   = localspl.so
 IMPORTS   = spoolss user32 advapi32
 UNIX_CFLAGS  = $(CUPS_CFLAGS)
-UNIX_LIBS    = $(APPLICATIONSERVICES_LIBS)
+# The PORTAL: port delivers through the Rust portal client shared with comdlg32
+# (libwine_comdlg32.so): one copy in the process, so the dialog's token is
+# still in memory when the job is spooled.
+UNIX_LIBS    = $(APPLICATIONSERVICES_LIBS) $(WINE_RUST_LDFLAGS) -Wl,-lwine_comdlg32
 
 EXTRADLLFLAGS = -Wb,--prefer-native
 
