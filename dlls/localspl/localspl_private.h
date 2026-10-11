@@ -166,6 +166,7 @@ extern HINSTANCE localspl_instance;
 #define PORT_IS_PIPE     6
 #define PORT_IS_CUPS     7
 #define PORT_IS_LPR      8
+#define PORT_IS_PORTAL   9
 
 struct start_doc_params
 {

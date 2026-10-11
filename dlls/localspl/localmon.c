@@ -279,6 +279,9 @@ static DWORD get_type_from_name(LPCWSTR name, BOOL check_filename)
     if (!wcsncmp(name, L"LPR:", ARRAY_SIZE(L"LPR:") - 1))
         return PORT_IS_LPR;
 
+    if (!wcsncmp(name, L"PORTAL:", ARRAY_SIZE(L"PORTAL:") - 1))
+        return PORT_IS_PORTAL;
+
     if (!check_filename)
         return PORT_IS_UNKNOWN;
 
