@@ -787,6 +787,9 @@ CORETEXT_LIBS
 CONFIGURE_TARGETS
 DISABLED_SUBDIRS
 SUBDIRS
+READELF
+OTOOL
+LDD
 WINEPRELOADER_LDFLAGS
 WINELOADER_LDFLAGS
 TOP_INSTALL_DEV
@@ -797,9 +800,6 @@ EXTRACFLAGS
 LDEXECFLAGS
 LDDLLFLAGS
 DLLFLAGS
-READELF
-OTOOL
-LDD
 OPENGL_LIBS
 I386_LIBS
 DLLEXT
@@ -11000,7 +11000,7 @@ fi
 ac_fn_c_check_header_compile "$LINENO" "asm/hwcap.h" "ac_cv_header_asm_hwcap_h" "$ac_includes_default"
 if test "x$ac_cv_header_asm_hwcap_h" = xyes
 then :
-  printf "%s\n" "#define HAVE_ASM_HWCAP_H 1" >>confdefs.h
+  printf '%s\n' "#define HAVE_ASM_HWCAP_H 1" >>confdefs.h
 
 fi
 ac_fn_c_check_header_compile "$LINENO" "asm/termbits.h" "ac_cv_header_asm_termbits_h" "$ac_includes_default"
@@ -11030,7 +11030,7 @@ fi
 ac_fn_c_check_header_compile "$LINENO" "dev/evdev/input.h" "ac_cv_header_dev_evdev_input_h" "$ac_includes_default"
 if test "x$ac_cv_header_dev_evdev_input_h" = xyes
 then :
-  printf "%s\n" "#define HAVE_DEV_EVDEV_INPUT_H 1" >>confdefs.h
+  printf '%s\n' "#define HAVE_DEV_EVDEV_INPUT_H 1" >>confdefs.h
 
 fi
 ac_fn_c_check_header_compile "$LINENO" "elf.h" "ac_cv_header_elf_h" "$ac_includes_default"
@@ -12200,340 +12200,6 @@ then :
 
 fi
 
-
-if test "x$ac_cv_header_bluetooth_rfcomm_h" = xyes
-then
-    # Extract the first word of "ldd", so it can be a program name with args.
-set dummy ldd; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_path_LDD+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) case $LDD in
-  [\\/]* | ?:[\\/]*)
-  ac_cv_path_LDD="$LDD" # Let the user override the test with a path.
-  ;;
-  *)
-  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-as_dummy="/sbin:/usr/sbin:$PATH"
-for as_dir in $as_dummy
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_path_LDD="$as_dir$ac_word$ac_exec_ext"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-  test -z "$ac_cv_path_LDD" && ac_cv_path_LDD="true"
-  ;;
-esac ;;
-esac
-fi
-LDD=$ac_cv_path_LDD
-if test -n "$LDD"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $LDD" >&5
-printf "%s\n" "$LDD" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-
-if test -n "$ac_tool_prefix"; then
-  # Extract the first word of "${ac_tool_prefix}otool", so it can be a program name with args.
-set dummy ${ac_tool_prefix}otool; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_prog_OTOOL+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) if test -n "$OTOOL"; then
-  ac_cv_prog_OTOOL="$OTOOL" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_prog_OTOOL="${ac_tool_prefix}otool"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-fi ;;
-esac
-fi
-OTOOL=$ac_cv_prog_OTOOL
-if test -n "$OTOOL"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $OTOOL" >&5
-printf "%s\n" "$OTOOL" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-
-fi
-if test -z "$ac_cv_prog_OTOOL"; then
-  ac_ct_OTOOL=$OTOOL
-  # Extract the first word of "otool", so it can be a program name with args.
-set dummy otool; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_prog_ac_ct_OTOOL+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) if test -n "$ac_ct_OTOOL"; then
-  ac_cv_prog_ac_ct_OTOOL="$ac_ct_OTOOL" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_prog_ac_ct_OTOOL="otool"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-fi ;;
-esac
-fi
-ac_ct_OTOOL=$ac_cv_prog_ac_ct_OTOOL
-if test -n "$ac_ct_OTOOL"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_ct_OTOOL" >&5
-printf "%s\n" "$ac_ct_OTOOL" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-  if test "x$ac_ct_OTOOL" = x; then
-    OTOOL="otool"
-  else
-    case $cross_compiling:$ac_tool_warned in
-yes:)
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
-printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
-ac_tool_warned=yes ;;
-esac
-    OTOOL=$ac_ct_OTOOL
-  fi
-else
-  OTOOL="$ac_cv_prog_OTOOL"
-fi
-
-if test -n "$ac_tool_prefix"; then
-  # Extract the first word of "${ac_tool_prefix}readelf", so it can be a program name with args.
-set dummy ${ac_tool_prefix}readelf; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_prog_READELF+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) if test -n "$READELF"; then
-  ac_cv_prog_READELF="$READELF" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_prog_READELF="${ac_tool_prefix}readelf"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-fi ;;
-esac
-fi
-READELF=$ac_cv_prog_READELF
-if test -n "$READELF"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $READELF" >&5
-printf "%s\n" "$READELF" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-
-fi
-if test -z "$ac_cv_prog_READELF"; then
-  ac_ct_READELF=$READELF
-  # Extract the first word of "readelf", so it can be a program name with args.
-set dummy readelf; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_prog_ac_ct_READELF+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) if test -n "$ac_ct_READELF"; then
-  ac_cv_prog_ac_ct_READELF="$ac_ct_READELF" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_prog_ac_ct_READELF="readelf"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-fi ;;
-esac
-fi
-ac_ct_READELF=$ac_cv_prog_ac_ct_READELF
-if test -n "$ac_ct_READELF"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_ct_READELF" >&5
-printf "%s\n" "$ac_ct_READELF" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-  if test "x$ac_ct_READELF" = x; then
-    READELF="true"
-  else
-    case $cross_compiling:$ac_tool_warned in
-yes:)
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
-printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
-ac_tool_warned=yes ;;
-esac
-    READELF=$ac_ct_READELF
-  fi
-else
-  READELF="$ac_cv_prog_READELF"
-fi
-
-       for ac_header in bluetooth/sdp_lib.h
-do :
-  ac_fn_c_check_header_compile "$LINENO" "bluetooth/sdp_lib.h" "ac_cv_header_bluetooth_sdp_lib_h" "#include <bluetooth/bluetooth.h>
-#include <bluetooth/sdp.h>
-"
-if test "x$ac_cv_header_bluetooth_sdp_lib_h" = xyes
-then :
-  printf "%s\n" "#define HAVE_BLUETOOTH_SDP_LIB_H 1" >>confdefs.h
- { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for -lbluetooth" >&5
-printf %s "checking for -lbluetooth... " >&6; }
-if test ${ac_cv_lib_soname_bluetooth+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) ac_check_soname_save_LIBS=$LIBS
-LIBS="-lbluetooth  $LIBS"
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-/* Override any GCC internal prototype to avoid an error.
-   Use char because int might match the return type of a GCC
-   builtin and then its argument prototype would still apply.
-   The 'extern "C"' is for builds by C++ compilers;
-   although this is not generally supported in C code supporting it here
-   has little cost and some practical benefit (sr 110532).  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char sdp_connect (void);
-int
-main (void)
-{
-return sdp_connect ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"
-then :
-  case "$LIBEXT" in
-    dll) ac_cv_lib_soname_bluetooth=`$ac_cv_path_LDD conftest.exe | grep "bluetooth" | sed -e "s/dll.*/dll/"';2,$d'` ;;
-    dylib) ac_cv_lib_soname_bluetooth=`$OTOOL -L conftest$ac_exeext | grep "libbluetooth\\.[0-9A-Za-z.]*dylib" | sed -e "s/^.*\/\(libbluetooth\.[0-9A-Za-z.]*dylib\).*$/\1/"';2,$d'` ;;
-    *) ac_cv_lib_soname_bluetooth=`$READELF -d conftest$ac_exeext | grep "NEEDED.*libbluetooth\\.$LIBEXT" | sed -e "s/^.*\\[\\(libbluetooth\\.$LIBEXT[^	 ]*\\)\\].*$/\1/"';2,$d'`
-       if ${ac_cv_lib_soname_bluetooth:+false} :
-then :
-  ac_cv_lib_soname_bluetooth=`$LDD conftest$ac_exeext | grep "libbluetooth\\.$LIBEXT" | sed -e "s/^.*\(libbluetooth\.$LIBEXT[^	 ]*\).*$/\1/"';2,$d'`
-fi ;;
-  esac
-else case e in #(
-  e) ac_cv_lib_soname_bluetooth= ;;
-esac
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.beam \
-    conftest$ac_exeext conftest.$ac_ext
-  LIBS=$ac_check_soname_save_LIBS ;;
-esac
-fi
-if ${ac_cv_lib_soname_bluetooth:+false} :
-then :
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-printf "%s\n" "not found" >&6; }
-
-else case e in #(
-  e) { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_soname_bluetooth" >&5
-printf "%s\n" "$ac_cv_lib_soname_bluetooth" >&6; }
-
-printf "%s\n" "#define SONAME_LIBBLUETOOTH \"$ac_cv_lib_soname_bluetooth\"" >>confdefs.h
-
-        ;;
-esac
-fi
-fi
-
-done
-fi
 
 if test "x$ac_cv_header_sys_xattr_h" = xyes
 then
@@ -24903,9 +24569,6 @@ PE_ARCHS = $PE_ARCHS
 DLLEXT = $DLLEXT
 I386_LIBS = $I386_LIBS
 OPENGL_LIBS = $OPENGL_LIBS
-LDD = $LDD
-OTOOL = $OTOOL
-READELF = $READELF
 DLLFLAGS = $DLLFLAGS
 LDDLLFLAGS = $LDDLLFLAGS
 LDEXECFLAGS = $LDEXECFLAGS
@@ -24916,6 +24579,9 @@ TOP_INSTALL_LIB = $TOP_INSTALL_LIB
 TOP_INSTALL_DEV = $TOP_INSTALL_DEV
 WINELOADER_LDFLAGS = $WINELOADER_LDFLAGS
 WINEPRELOADER_LDFLAGS = $WINEPRELOADER_LDFLAGS
+LDD = $LDD
+OTOOL = $OTOOL
+READELF = $READELF
 SUBDIRS = $SUBDIRS
 DISABLED_SUBDIRS = $DISABLED_SUBDIRS
 CONFIGURE_TARGETS = $CONFIGURE_TARGETS
