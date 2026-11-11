@@ -1013,6 +1013,17 @@ static NTSTATUS oss_release_render_buffer(void *args)
     return oss_unlock_result(stream, &params->result, S_OK);
 }
 
+/* QPC ticks are not 100 ns once the user-mode bypass is on; divide first,
+ * multiplying first overflows after a few days of TSC uptime. */
+static INT64 qpc_time_100ns(void)
+{
+    LARGE_INTEGER stamp, freq;
+
+    NtQueryPerformanceCounter(&stamp, &freq);
+    return stamp.QuadPart / freq.QuadPart * 10000000 +
+        stamp.QuadPart % freq.QuadPart * 10000000 / freq.QuadPart;
+}
+
 static NTSTATUS oss_get_capture_buffer(void *args)
 {
     struct get_capture_buffer_params *params = args;
@@ -1071,9 +1082,7 @@ static NTSTATUS oss_get_capture_buffer(void *args)
     if(devpos)
        *devpos = stream->written_frames;
     if(qpcpos){
-        LARGE_INTEGER stamp, freq;
-        NtQueryPerformanceCounter(&stamp, &freq);
-        *qpcpos = (stamp.QuadPart * (INT64)10000000) / freq.QuadPart;
+        *qpcpos = qpc_time_100ns();
     }
 
     return oss_unlock_result(stream, &params->result, *frames ? S_OK : AUDCLNT_S_BUFFER_EMPTY);
@@ -1347,9 +1356,7 @@ static NTSTATUS oss_get_position(void *args)
         *pos *= stream->fmt->nBlockAlign;
 
     if(qpctime){
-        LARGE_INTEGER stamp, freq;
-        NtQueryPerformanceCounter(&stamp, &freq);
-        *qpctime = (stamp.QuadPart * (INT64)10000000) / freq.QuadPart;
+        *qpctime = qpc_time_100ns();
     }
 
     return oss_unlock_result(stream, &params->result, S_OK);
